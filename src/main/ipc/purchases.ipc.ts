@@ -32,6 +32,7 @@ import {
   requirePositiveMoney,
   optionalNonNegativeInteger,
   requirePositiveNumber,
+  optionalBooleanValue,
   optionalDateOnly,
 } from './input-validation';
 import { requireAdminPassword } from './permission-helper';
@@ -158,6 +159,12 @@ function normalizePurchaseWriteInput(input: unknown) {
       'المبلغ المدفوع',
     ),
 
+    settle_full_balance:
+      optionalBooleanValue(
+        payload.settle_full_balance,
+        'تسوية كامل فاتورة الشراء',
+      ) ?? false,
+
     payment_method: requireEnumValue(
       payload.payment_method ?? 'cash',
       PURCHASE_PAYMENT_METHODS,
@@ -225,6 +232,17 @@ function normalizePurchaseReturnInput(input: unknown) {
       PURCHASE_PAYMENT_METHODS,
       'حساب رد مرتجع الشراء',
     ),
+
+    cash_refund_amount: optionalNonNegativeNumber(
+      payload.cash_refund_amount,
+      'المبلغ المستلم من المورد',
+    ),
+
+    settle_cash_refund:
+      optionalBooleanValue(
+        payload.settle_cash_refund,
+        'تسوية كامل رد المورد',
+      ) ?? false,
 
     notes: optionalTrimmedString(payload.notes, 'ملاحظات مرتجع الشراء', 2000),
 
@@ -635,7 +653,11 @@ export function registerPurchasesIpc(): void {
           restored_debt: result.restored_debt,
 
           reversed_cash: result.reversed_cash,
+          reversed_credit: result.reversed_credit,
 
+          reversed_rounding_adjustment: result.reversed_rounding_adjustment,
+
+          supplier_balance: result.supplier_balance,
           items_count: result.items_count,
 
           cancelled_shift_id: result.cancelled_shift_id,
@@ -723,6 +745,17 @@ export function registerPurchasesIpc(): void {
         PURCHASE_PAYMENT_METHODS,
         'حساب رد مرتجع الشراء',
       ),
+
+      cash_refund_amount: optionalNonNegativeNumber(
+        payload.cash_refund_amount,
+        'المبلغ المستلم من المورد',
+      ),
+
+      settle_cash_refund:
+        optionalBooleanValue(
+          payload.settle_cash_refund,
+          'تسوية كامل رد المورد',
+        ) ?? false,
 
       items,
     };
@@ -815,7 +848,11 @@ export function registerPurchasesIpc(): void {
     const actorId = actor.id;
 
     const payload = requireObjectInput(input, 'بيانات دفعة المورد');
-
+    const settleFullBalance =
+      optionalBooleanValue(
+        payload.settle_full_balance,
+        'تسوية كامل رصيد المورد',
+      ) ?? false;
     const paymentMethod = requireEnumValue(
       payload.payment_method ?? 'cash',
       PURCHASE_PAYMENT_METHODS,
@@ -834,7 +871,11 @@ export function registerPurchasesIpc(): void {
         'رقم فاتورة الشراء',
       ),
 
-      amount: requirePositiveMoney(payload.amount, 'مبلغ دفعة المورد'),
+      amount: settleFullBalance
+        ? (optionalNonNegativeMoney(payload.amount, 'مبلغ دفعة المورد') ?? 0)
+        : requirePositiveMoney(payload.amount, 'مبلغ دفعة المورد'),
+
+      settle_full_balance: settleFullBalance,
 
       payment_method: paymentMethod,
 
@@ -862,7 +903,11 @@ export function registerPurchasesIpc(): void {
           supplier_id: result.supplier_id,
 
           amount: result.paid_amount,
+          cash_amount: result.cash_amount,
 
+          rounding_adjustment: result.rounding_adjustment,
+
+          settle_full_balance: result.settle_full_balance,
           allocations: result.allocations,
 
           shift_id: result.shift_id,
@@ -957,7 +1002,11 @@ export function registerPurchasesIpc(): void {
       const actorId = requireAuthenticatedAdmin(event);
 
       const payload = requireObjectInput(input, 'بيانات دفعة المورد');
-
+      const settleFullBalance =
+        optionalBooleanValue(
+          payload.settle_full_balance,
+          'تسوية كامل رصيد المورد',
+        ) ?? false;
       const batchId = requirePositiveInteger(
         payload.batch_id,
         'رقم دفعة المورد',
@@ -986,7 +1035,12 @@ export function registerPurchasesIpc(): void {
           updateSupplierPaymentBatch({
             batch_id: batchId,
 
-            amount: requirePositiveMoney(payload.amount, 'مبلغ دفعة المورد'),
+            amount: settleFullBalance
+              ? (optionalNonNegativeMoney(payload.amount, 'مبلغ دفعة المورد') ??
+                0)
+              : requirePositiveMoney(payload.amount, 'مبلغ دفعة المورد'),
+
+            settle_full_balance: settleFullBalance,
 
             payment_method: requireEnumValue(
               payload.payment_method,
@@ -1022,7 +1076,13 @@ export function registerPurchasesIpc(): void {
             old_amount: result.old_amount,
 
             new_amount: result.new_amount,
+            old_cash_amount: result.old_cash_amount,
 
+            new_cash_amount: result.new_cash_amount,
+
+            rounding_adjustment: result.new_rounding_adjustment,
+
+            settle_full_balance: result.settle_full_balance,
             payment_method: result.payment_method,
 
             shift_id: result.shift_id,

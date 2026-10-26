@@ -6,7 +6,10 @@ import {
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
   allocateProportionalAmount,
+  formatMoney,
+  resolveWholeMoneySettlement,
   roundCost,
+  roundFinancial,
   roundMoney,
 } from '../../../shared/money';
 import {
@@ -102,6 +105,7 @@ export type CreatePurchaseInput = {
   discount_type?: 'amount' | 'percent' | string;
   discount_input?: number;
   discount_value?: number;
+  settle_full_balance?: boolean;
   payment_method?: string;
   notes?: string | null;
   items: PurchaseItemInput[];
@@ -118,6 +122,8 @@ export type CreatePurchaseReturnInput = {
   notes?: string | null;
   refund_payment_method?: string | null;
   refund_mode?: 'cash' | 'credit' | string;
+  cash_refund_amount?: number;
+  settle_cash_refund?: boolean;
   actor_id?: number | null;
   items: Array<{
     purchase_item_id?: number;
@@ -161,7 +167,9 @@ export type UpdatePurchaseReturnInput = {
 
   refund_payment_method?: string | null;
   refund_mode?: 'cash' | 'credit' | string;
+  cash_refund_amount?: number;
 
+  settle_cash_refund?: boolean;
   items: Array<{
     purchase_item_id?: number;
     variant_id?: number;
@@ -220,6 +228,115 @@ function normalizePaymentStatus(
   if (remainingAmount <= 0) return 'paid';
   if (paidAmount > 0 && paidAmount < totalAmount) return 'partial';
   return 'unpaid';
+}
+
+function calculateSupplierNetBalance(
+  db: ReturnType<typeof getDb>,
+  supplierId: number,
+) {
+  const row = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          (
+            SELECT SUM(
+              CASE
+                WHEN
+                  IFNULL(
+                    pi.status,
+                    'active'
+                  ) != 'cancelled'
+
+                  AND
+                  pi.remaining_amount > 0
+
+                THEN pi.remaining_amount
+
+                ELSE 0
+              END
+            )
+
+            FROM purchase_invoices pi
+
+            WHERE pi.supplier_id = ?
+          ),
+          0
+        ) AS open_debt,
+
+        IFNULL(
+          (
+            SELECT SUM(
+              CASE
+                WHEN
+                  pr.cancelled_at IS NULL
+
+                  AND
+                  pr.refund_mode = 'credit'
+
+                THEN MAX(
+                  0,
+
+                  COALESCE(
+                    NULLIF(
+                      pr.exact_total_amount,
+                      0
+                    ),
+
+                    pr.total_amount,
+
+                    0
+                  )
+                  -
+                  IFNULL(
+                    pr.debt_reduction_amount,
+                    0
+                  )
+                )
+
+                ELSE 0
+              END
+            )
+
+            FROM purchase_returns pr
+
+            WHERE pr.supplier_id = ?
+          ),
+          0
+        ) AS supplier_credit
+      `,
+    )
+    .get(supplierId, supplierId) as {
+    open_debt: number;
+    supplier_credit: number;
+  };
+
+  return roundFinancial(
+    Number(row?.open_debt || 0) - Number(row?.supplier_credit || 0),
+  );
+}
+
+function rebuildSupplierBalance(
+  db: ReturnType<typeof getDb>,
+  supplierId: number,
+) {
+  const balance = calculateSupplierNetBalance(db, supplierId);
+
+  db.prepare(
+    `
+    UPDATE suppliers
+
+    SET
+      balance = ?,
+
+      updated_at =
+        CURRENT_TIMESTAMP
+
+    WHERE id = ?
+    `,
+  ).run(balance, supplierId);
+
+  return balance;
 }
 
 function resolvePurchaseItemBasePricing(
@@ -391,14 +508,14 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     throw new Error('المبلغ المدفوع غير صحيح');
   }
 
-  const paidAmountInput = roundMoney(rawPaidAmountInput);
+  const cashAmountInput = roundMoney(rawPaidAmountInput);
 
   const actorId = Number(input.actor_id || 0);
 
   const paymentMethod = resolveCashAccount(input.payment_method || 'cash');
 
   const openShift =
-    paidAmountInput > 0
+    cashAmountInput > 0
       ? resolveFinancialOperationShift(
           actorId,
           [paymentMethod],
@@ -499,12 +616,76 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     );
 
     /*
-     * التسوية الفعلية مع المورد
-     * تظل بالجنيه الصحيح.
+     * قيمة الفاتورة المحاسبية
+     * تظل بالقروش.
+     *
+     * لا نغير أصل الفاتورة
+     * لمجرد أن الكاش بالجنيه الصحيح.
      */
-    const totalAmount = roundMoney(exactTotalAmount);
+    const totalAmount = exactTotalAmount;
 
-    const roundingAdjustment = roundCost(totalAmount - exactTotalAmount);
+    const settleFullBalance = Boolean(input.settle_full_balance);
+
+    let paidAmount = 0;
+
+    let remainingAmount = totalAmount;
+
+    let roundingAdjustment = 0;
+
+    /*
+     * المبلغ الخارج فعليًا
+     * دائمًا جنيه صحيح.
+     */
+    const cashPaidAmount = cashAmountInput;
+
+    if (settleFullBalance) {
+      const settlement = resolveWholeMoneySettlement(
+        cashPaidAmount,
+        totalAmount,
+      );
+
+      /*
+       * لو المستحق أقل من 50 قرش،
+       * أقرب جنيه ممكن يكون صفر.
+       * ولا يتم السماح بده إلا
+       * مع اختيار التسوية صراحة.
+       */
+      const zeroCashSettlement =
+        cashPaidAmount === 0 && roundMoney(totalAmount) === 0;
+
+      if (!settlement.isFullSettlement && !zeroCashSettlement) {
+        throw new Error(
+          `لتسوية كامل الفاتورة يجب أن يكون المبلغ المدفوع ${roundMoney(
+            totalAmount,
+          )} ج.م`,
+        );
+      }
+
+      /*
+       * محاسبيًا نقفل الدين كله.
+       */
+      paidAmount = totalAmount;
+
+      remainingAmount = 0;
+
+      roundingAdjustment = roundFinancial(cashPaidAmount - totalAmount);
+    } else {
+      /*
+       * بدون اختيار التسوية:
+       * ممنوع إغلاق القروش تلقائيًا.
+       */
+      if (cashPaidAmount > totalAmount + 0.0001) {
+        throw new Error(
+          'المبلغ المدفوع أكبر من المستحق؛ فعّل تسوية كامل الفاتورة إذا كنت تريد إقفال فرق القروش',
+        );
+      }
+
+      paidAmount = roundFinancial(Math.min(cashPaidAmount, totalAmount));
+
+      remainingAmount = roundFinancial(Math.max(0, totalAmount - paidAmount));
+
+      roundingAdjustment = 0;
+    }
 
     const discountInputRaw = Number(input.discount_input || 0);
 
@@ -513,12 +694,6 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         ? Math.max(0, discountInputRaw)
         : Math.max(0, roundCost(discountInputRaw))
       : 0;
-
-    const paidAmount = roundMoney(
-      Math.min(Math.max(paidAmountInput, 0), totalAmount),
-    );
-
-    const remainingAmount = roundMoney(Math.max(0, totalAmount - paidAmount));
 
     const paymentStatus =
       remainingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
@@ -661,9 +836,27 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       `
       UPDATE suppliers
       SET
-        total_purchased = ROUND(IFNULL(total_purchased, 0) + ?, 0),
-        balance = ROUND(IFNULL(balance, 0) + ?, 0),
-        updated_at = CURRENT_TIMESTAMP
+        total_purchased =
+          ROUND(
+            IFNULL(
+              total_purchased,
+              0
+            ) + ?,
+            2
+          ),
+
+        balance =
+          ROUND(
+            IFNULL(
+              balance,
+              0
+            ) + ?,
+            2
+          ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
       WHERE id = ?
     `,
     ).run(totalAmount, remainingAmount, supplierId);
@@ -692,7 +885,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         type: 'supplier_payment',
         direction: 'out',
 
-        amount: paidAmount,
+        amount: cashPaidAmount,
 
         payment_method: paymentMethod,
 
@@ -2324,18 +2517,103 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       throw new Error('قيمة المرتجع أكبر من القيمة المتبقية في فاتورة الشراء');
     }
 
-    const totalAmount = roundMoney(exactReturnAmount);
+    /*
+     * قيمة المرتجع المحاسبية نفسها
+     * تظل بالقروش.
+     */
+    const totalAmount = exactReturnAmount;
 
-    const roundingAdjustment = roundCost(totalAmount - exactReturnAmount);
+    const oldRemaining = roundFinancial(Number(purchase.remaining_amount || 0));
 
-    const oldRemaining = roundMoney(Number(purchase.remaining_amount || 0));
-
-    const debtReductionAmount = roundMoney(Math.min(totalAmount, oldRemaining));
-
-    const cashRefundAmount = roundMoney(
-      Math.max(0, totalAmount - debtReductionAmount),
+    /*
+     * أول جزء من المرتجع يخفض
+     * المديونية القائمة على الفاتورة.
+     */
+    const debtReductionAmount = roundFinancial(
+      Math.min(totalAmount, oldRemaining),
     );
+
+    /*
+     * أي جزء زائد عن المديونية
+     * هو حق لنا عند المورد.
+     *
+     * إما:
+     * - نستلمه فعليًا.
+     * - أو يظل رصيدًا دائنًا.
+     */
+    const refundableAmount = roundFinancial(
+      Math.max(
+        0,
+
+        totalAmount - debtReductionAmount,
+      ),
+    );
+
     const refundMode = input.refund_mode === 'credit' ? 'credit' : 'cash';
+
+    const settleCashRefund =
+      refundMode === 'cash' && Boolean(input.settle_cash_refund);
+
+    let cashRefundAmount = 0;
+
+    let creditAmount = 0;
+
+    let roundingAdjustment = 0;
+
+    if (refundMode === 'credit') {
+      /*
+       * لا يوجد كاش.
+       *
+       * الجزء الزائد عن الدين
+       * يظل حقًا لنا عند المورد.
+       */
+      creditAmount = refundableAmount;
+    } else if (refundableAmount > 0) {
+      const rawCashRefund = Number(
+        input.cash_refund_amount ?? refundableAmount,
+      );
+
+      if (!Number.isFinite(rawCashRefund) || rawCashRefund < 0) {
+        throw new Error('المبلغ المستلم من المورد غير صحيح');
+      }
+
+      cashRefundAmount = roundFinancial(rawCashRefund);
+
+      if (settleCashRefund) {
+        const expectedCash = roundMoney(refundableAmount);
+
+        if (Math.abs(cashRefundAmount - expectedCash) > 0.001) {
+          throw new Error(
+            `لتسوية كامل رد المورد يجب أن يكون المبلغ النقدي ${expectedCash} ج.م`,
+          );
+        }
+
+        /*
+         * موجب:
+         * استلمنا زيادة.
+         *
+         * سالب:
+         * استلمنا أقل.
+         */
+        roundingAdjustment = roundFinancial(
+          cashRefundAmount - refundableAmount,
+        );
+      } else {
+        /*
+         * بدون اختيار التسوية:
+         * لازم نستلم القيمة المحاسبية
+         * بالقرش كما هي.
+         */
+        if (Math.abs(cashRefundAmount - refundableAmount) > 0.001) {
+          throw new Error(
+            'المبلغ المستلم لا يساوي قيمة رد المورد؛ فعّل خيار تسوية كامل المبلغ إذا كنت تريد تقريب الكاش',
+          );
+        }
+
+        roundingAdjustment = 0;
+      }
+    }
+
     const refundPaymentMethod =
       input.refund_payment_method?.trim() ||
       purchase.payment_method ||
@@ -2349,16 +2627,14 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       refundMode === 'cash' && cashRefundAmount > 0
         ? resolveFinancialOperationShift(
             actorId,
+
             [resolvedRefundAccount],
+
             'لا يمكن استلام كاش مرتجع شراء في درج المحل بدون شفت مفتوح',
           )
         : null;
 
     const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
-
-    const supplierBalanceReduction = roundMoney(
-      debtReductionAmount + (refundMode === 'credit' ? cashRefundAmount : 0),
-    );
 
     const returnResult = db
       .prepare(
@@ -2372,33 +2648,63 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           rounding_adjustment,
 
           debt_reduction_amount,
+
           cash_refund_amount,
+
+          credit_amount,
+
+          settle_cash_refund,
+
           refund_payment_method,
+
           refund_mode,
+
           notes,
+
           created_by,
+
           business_date,
+
           shift_id
         )
+
         VALUES (
-          ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?
         )
-      `,
+        `,
       )
       .run(
         purchaseId,
+
         Number(purchase.supplier_id),
+
         totalAmount,
+
         exactReturnAmount,
+
         roundingAdjustment,
+
         debtReductionAmount,
-        refundMode === 'cash' ? cashRefundAmount : 0,
+
+        cashRefundAmount,
+
+        creditAmount,
+
+        settleCashRefund ? 1 : 0,
+
         refundMode === 'cash' ? refundPaymentMethod : null,
+
         refundMode,
+
         input.notes?.trim() || null,
+
         input.actor_id ?? null,
+
         businessDate,
+
         openShift?.id ?? null,
       );
 
@@ -2458,16 +2764,23 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       });
     }
 
-    const oldPaid = roundMoney(Number(purchase.paid_amount || 0));
+    const oldPaid = roundFinancial(Number(purchase.paid_amount || 0));
 
-    const oldTotal = roundMoney(Number(purchase.total_amount || 0));
+    const oldTotal = roundFinancial(Number(purchase.total_amount || 0));
 
-    const newRemaining = roundMoney(
-      Math.max(0, oldRemaining - debtReductionAmount),
+    const newRemaining = roundFinancial(
+      Math.max(
+        0,
+
+        oldRemaining - debtReductionAmount,
+      ),
     );
+
     const newPaymentStatus = normalizePaymentStatus(
       oldTotal,
+
       oldPaid,
+
       newRemaining,
     );
 
@@ -2481,22 +2794,51 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
     `,
     ).run(newRemaining, newPaymentStatus, purchaseId);
 
+    /*
+     * صافي المشتريات ينخفض
+     * بقيمة المرتجع الدقيقة.
+     */
     db.prepare(
       `
       UPDATE suppliers
+
       SET
-        total_purchased = MAX(
-          ROUND(IFNULL(total_purchased, 0) - ?, 0),
-          0
-        ),
-        balance = ROUND(
-          IFNULL(balance, 0) - ?,
-          0
-        ),
-        updated_at = CURRENT_TIMESTAMP
+        total_purchased =
+          MAX(
+            ROUND(
+              IFNULL(
+                total_purchased,
+                0
+              ) - ?,
+              2
+            ),
+
+            0
+          ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
       WHERE id = ?
-    `,
-    ).run(totalAmount, supplierBalanceReduction, Number(purchase.supplier_id));
+      `,
+    ).run(
+      totalAmount,
+
+      Number(purchase.supplier_id),
+    );
+
+    /*
+     * الرصيد نفسه لا نحسبه يدويًا.
+     *
+     * = ديون الفواتير المفتوحة
+     * - الرصيد الدائن الناتج
+     *   عن المرتجعات.
+     */
+    const supplierBalance = rebuildSupplierBalance(
+      db,
+
+      Number(purchase.supplier_id),
+    );
 
     if (refundMode === 'cash' && cashRefundAmount > 0) {
       createCashMovement({
@@ -2523,17 +2865,51 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
     return {
       ok: true,
+
       return_id: returnId,
+
       purchase_id: purchaseId,
+
       supplier_id: Number(purchase.supplier_id),
+
+      /*
+       * قيمة المرتجع المحاسبية.
+       */
       total_amount: totalAmount,
+
       exact_total_amount: exactReturnAmount,
+
+      /*
+       * cash - قيمة الحق
+       * الذي تم تسويته نقديًا.
+       */
       rounding_adjustment: roundingAdjustment,
+
+      /*
+       * الذي خفض الدين القديم.
+       */
       debt_reduction_amount: debtReductionAmount,
-      cash_refund_amount: refundMode === 'cash' ? cashRefundAmount : 0,
+
+      /*
+       * الكاش الحقيقي الداخل.
+       */
+      cash_refund_amount: cashRefundAmount,
+
+      /*
+       * حق متبقٍ لنا عند المورد.
+       */
+      credit_amount: creditAmount,
+
+      settle_cash_refund: settleCashRefund,
+
+      supplier_balance: supplierBalance,
+
       refund_mode: refundMode,
+
       refund_payment_method: refundMode === 'cash' ? refundPaymentMethod : null,
+
       items_count: preparedItems.length,
+
       shift_id: openShift?.id ?? null,
     };
   });
@@ -2665,28 +3041,34 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
   const { db, purchaseReturn, items } =
     getPurchaseReturnMutationContext(returnId);
 
-  const totalAmount = roundMoney(Number(purchaseReturn.total_amount || 0));
+  /*
+   * القيمة المحاسبية للمرتجع
+   * تظل بالقروش.
+   */
+  const totalAmount = roundFinancial(
+    Number(
+      purchaseReturn.exact_total_amount ?? purchaseReturn.total_amount ?? 0,
+    ),
+  );
 
-  const debtReductionAmount = roundMoney(
+  const debtReductionAmount = roundFinancial(
     Number(purchaseReturn.debt_reduction_amount || 0),
+  );
+
+  const cashRefundAmount = roundFinancial(
+    Number(purchaseReturn.cash_refund_amount || 0),
+  );
+
+  const creditAmount = roundFinancial(
+    Number(purchaseReturn.credit_amount || 0),
+  );
+
+  const roundingAdjustment = roundFinancial(
+    Number(purchaseReturn.rounding_adjustment || 0),
   );
 
   const refundMode =
     purchaseReturn.refund_mode === 'credit' ? 'credit' : 'cash';
-
-  const derivedCashRefund = roundMoney(
-    Math.max(0, totalAmount - debtReductionAmount),
-  );
-
-  const cashRefundAmount =
-    refundMode === 'cash'
-      ? roundMoney(
-          Math.max(
-            Number(purchaseReturn.cash_refund_amount || 0),
-            derivedCashRefund,
-          ),
-        )
-      : 0;
 
   const refundAccount = resolveCashAccount(
     purchaseReturn.refund_payment_method ||
@@ -2698,6 +3080,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
     cashRefundAmount > 0
       ? resolveFinancialOperationShift(
           actorId,
+
           [refundAccount],
 
           'لا يمكن إلغاء مرتجع شراء يؤثر على درج المحل بدون شفت مفتوح',
@@ -2707,14 +3090,15 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
   const cancellationBusinessDate = resolveFinancialBusinessDate(
     openShift?.id ?? null,
   );
+
   const reason = String(input.reason || '').trim() || 'إلغاء مرتجع شراء';
 
   const tx = db.transaction(() => {
     /*
-     * المرتجع كان خرج مخزون.
-     * الإلغاء يرجعه للمخزون.
+     * المرتجع أخرج بضاعة.
+     * الإلغاء يعيد نفس الكمية
+     * ونفس قيمة التكلفة التاريخية.
      */
-
     for (const item of items) {
       receiveStockAtCost(db, {
         variant_id: Number(item.variant_id),
@@ -2723,14 +3107,9 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
         unit_cost: roundCost(Number(item.unit_cost || 0)),
 
-        /*
-         * إلغاء المرتجع يجب أن يعيد
-         * نفس القيمة التاريخية التي خرجت
-         * وقت إنشاء المرتجع بالضبط.
-         */
         cost_value: roundCost(Number(item.line_total || 0)),
 
-        created_by: actorId || null,
+        created_by: actorId,
 
         reference_id: returnId,
 
@@ -2741,9 +3120,9 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
     }
 
     /*
-     * لو المورد كان رجع فلوس،
-     * إلغاء المرتجع يعيد المبلغ
-     * لنفس الحساب.
+     * لو استلمنا كاش من المورد
+     * وقت المرتجع، نرجع له
+     * نفس الكاش الحقيقي فقط.
      */
     if (cashRefundAmount > 0) {
       createCashMovement({
@@ -2769,21 +3148,31 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       });
     }
 
-    const purchaseTotal = roundMoney(
+    /*
+     * نعيد الجزء الذي كان
+     * قد خفّض مديونية الفاتورة.
+     */
+    const purchaseTotal = roundFinancial(
       Number(purchaseReturn.purchase_total_amount || 0),
     );
 
-    const purchasePaid = roundMoney(
+    const purchasePaid = roundFinancial(
       Number(purchaseReturn.purchase_paid_amount || 0),
     );
 
-    const currentRemaining = roundMoney(
+    const currentRemaining = roundFinancial(
       Number(purchaseReturn.purchase_remaining_amount || 0),
     );
 
-    const maxRemaining = roundMoney(Math.max(0, purchaseTotal - purchasePaid));
+    const maxRemaining = roundFinancial(
+      Math.max(
+        0,
 
-    const newRemaining = roundMoney(
+        purchaseTotal - purchasePaid,
+      ),
+    );
+
+    const newRemaining = roundFinancial(
       Math.min(
         maxRemaining,
 
@@ -2793,87 +3182,55 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
     const newPaymentStatus = normalizePaymentStatus(
       purchaseTotal,
+
       purchasePaid,
+
       newRemaining,
     );
 
     db.prepare(
       `
-      UPDATE purchase_invoices
+        UPDATE purchase_invoices
 
-      SET
-        remaining_amount = ?,
-        payment_status = ?
+        SET
+          remaining_amount = ?,
 
-      WHERE id = ?
-      `,
+          payment_status = ?
+
+        WHERE id = ?
+        `,
     ).run(
       newRemaining,
+
       newPaymentStatus,
 
       Number(purchaseReturn.purchase_id),
     );
 
     /*
-     * Cash mode:
-     * رجوع المديونية فقط.
+     * أولًا نعلّم المرتجع ملغي.
      *
-     * Credit mode:
-     * المرتجع كله كان خصمًا
-     * من حساب المورد.
+     * مهم جدًا:
+     * rebuildSupplierBalance
+     * بعدها لن يحسب الرصيد
+     * الدائن الخاص بهذا المرتجع.
      */
-    const balanceRestore =
-      refundMode === 'credit' ? totalAmount : debtReductionAmount;
-
     db.prepare(
       `
-      UPDATE suppliers
+        UPDATE purchase_returns
 
-      SET
-        total_purchased =
-          ROUND(
-            IFNULL(
-              total_purchased,
-              0
-            ) + ?,
-            0
-          ),
+        SET
+          cancelled_at =
+            CURRENT_TIMESTAMP,
 
-        balance =
-          ROUND(
-            IFNULL(balance, 0)
-            + ?,
-            0
-          ),
+          cancelled_by = ?,
 
-        updated_at =
-          CURRENT_TIMESTAMP
+          cancelled_shift_id = ?,
 
-      WHERE id = ?
-      `,
-    ).run(
-      totalAmount,
-      balanceRestore,
+          cancel_reason = ?
 
-      Number(purchaseReturn.supplier_id),
-    );
-
-    db.prepare(
-      `
-      UPDATE purchase_returns
-
-      SET
-        cancelled_at =
-          CURRENT_TIMESTAMP,
-
-        cancelled_by = ?,
-
-        cancelled_shift_id = ?,
-
-        cancel_reason = ?
-
-      WHERE id = ?
-      `,
+        WHERE id = ?
+        `,
     ).run(
       actorId,
 
@@ -2882,6 +3239,49 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       reason,
 
       returnId,
+    );
+
+    /*
+     * إجمالي مشتريات المورد
+     * يرجع بالقيمة الدقيقة.
+     */
+    db.prepare(
+      `
+        UPDATE suppliers
+
+        SET
+          total_purchased =
+            ROUND(
+              IFNULL(
+                total_purchased,
+                0
+              ) + ?,
+              2
+            ),
+
+          updated_at =
+            CURRENT_TIMESTAMP
+
+        WHERE id = ?
+        `,
+    ).run(
+      totalAmount,
+
+      Number(purchaseReturn.supplier_id),
+    );
+
+    /*
+     * إعادة بناء الرصيد بعد
+     * إلغاء المرتجع:
+     *
+     * ديون الفواتير
+     * -
+     * الأرصدة الدائنة النشطة.
+     */
+    const supplierBalance = rebuildSupplierBalance(
+      db,
+
+      Number(purchaseReturn.supplier_id),
     );
 
     return {
@@ -2897,7 +3297,25 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
       restored_debt: debtReductionAmount,
 
+      /*
+       * الرصيد الدائن الذي
+       * تم إلغاؤه.
+       */
+      reversed_credit: creditAmount,
+
+      /*
+       * الكاش الحقيقي الذي
+       * خرج عند الإلغاء.
+       */
       reversed_cash: cashRefundAmount,
+
+      /*
+       * فرق التسوية الذي لم
+       * يعد فعالًا بعد الإلغاء.
+       */
+      reversed_rounding_adjustment: roundingAdjustment,
+
+      supplier_balance: supplierBalance,
 
       items_count: items.length,
 
@@ -2958,6 +3376,10 @@ export function updatePurchaseReturn(input: UpdatePurchaseReturnInput) {
       refund_payment_method: input.refund_payment_method,
 
       refund_mode: input.refund_mode,
+
+      cash_refund_amount: input.cash_refund_amount,
+
+      settle_cash_refund: input.settle_cash_refund,
 
       actor_id: actorId,
 
@@ -3060,8 +3482,11 @@ export function listPurchaseInvoices(input?: {
     (
       IFNULL(pi.status, 'active') <> 'cancelled'
       AND ROUND(
-        IFNULL(pi.remaining_amount, 0),
-        0
+        IFNULL(
+          pi.remaining_amount,
+          0
+        ),
+        2
       ) <= 0
     )
   `);
@@ -3070,8 +3495,11 @@ export function listPurchaseInvoices(input?: {
     (
       IFNULL(pi.status, 'active') <> 'cancelled'
       AND ROUND(
-        IFNULL(pi.remaining_amount, 0),
-        0
+        IFNULL(
+          pi.remaining_amount,
+          0
+        ),
+        2
       ) > 0
     )
   `);
@@ -3094,39 +3522,13 @@ export function listPurchaseInvoices(input?: {
           0
         ) AS effective_exact_total_amount,
 
-        CASE
-          WHEN ABS(
+          ROUND(
             IFNULL(
               pi.rounding_adjustment,
               0
-            )
-          ) > 0.0001
-          THEN pi.rounding_adjustment
-
-          ELSE ROUND(
-            ROUND(
-              COALESCE(
-                NULLIF(
-                  pi.exact_total_amount,
-                  0
-                ),
-                pi.total_amount,
-                0
-              ),
-              0
-            )
-            -
-            COALESCE(
-              NULLIF(
-                pi.exact_total_amount,
-                0
-              ),
-              pi.total_amount,
-              0
             ),
-            4
-          )
-        END AS effective_rounding_adjustment,
+            2
+          ) AS effective_rounding_adjustment,
 
         ROUND(
           COALESCE(
@@ -3137,7 +3539,7 @@ export function listPurchaseInvoices(input?: {
             pi.total_amount,
             0
           ),
-          0
+          2
         ) AS settlement_total_amount,
 
         IFNULL(
@@ -3320,39 +3722,13 @@ export function getPurchaseInvoice(purchaseId: number) {
           0
         ) AS effective_exact_total_amount,
 
-        CASE
-          WHEN ABS(
+          ROUND(
             IFNULL(
               pi.rounding_adjustment,
               0
-            )
-          ) > 0.0001
-          THEN pi.rounding_adjustment
-
-          ELSE ROUND(
-            ROUND(
-              COALESCE(
-                NULLIF(
-                  pi.exact_total_amount,
-                  0
-                ),
-                pi.total_amount,
-                0
-              ),
-              0
-            )
-            -
-            COALESCE(
-              NULLIF(
-                pi.exact_total_amount,
-                0
-              ),
-              pi.total_amount,
-              0
             ),
-            4
-          )
-        END AS effective_rounding_adjustment,
+            2
+          ) AS effective_rounding_adjustment,
 
         ROUND(
           COALESCE(
@@ -3363,7 +3739,7 @@ export function getPurchaseInvoice(purchaseId: number) {
             pi.total_amount,
             0
           ),
-          0
+          2
         ) AS settlement_total_amount,
 
         IFNULL(
@@ -3422,6 +3798,19 @@ export function getPurchaseInvoice(purchaseId: number) {
           WHERE pri.purchase_item_id = pii.id
             AND pr.cancelled_at IS NULL
         ), 0) AS returned_quantity,
+
+        IFNULL((
+          SELECT SUM(pri.line_total)
+
+          FROM purchase_return_items pri
+
+          JOIN purchase_returns pr
+            ON pr.id = pri.return_id
+
+          WHERE pri.purchase_item_id = pii.id
+            AND pr.cancelled_at IS NULL
+        ), 0) AS returned_value,
+
         MAX(
           pii.quantity - IFNULL((
             SELECT SUM(pri.quantity)
@@ -3515,53 +3904,199 @@ export function getPurchaseReturn(returnId: number) {
 
 export function recordSupplierPayment(input: {
   supplier_id: number;
+
   purchase_id?: number | null;
+
+  /*
+   * الكاش الحقيقي الخارج.
+   */
   amount: number;
+
+  /*
+   * true =
+   * المستخدم اختار صراحة
+   * تسوية كامل الرصيد.
+   */
+  settle_full_balance?: boolean;
+
   payment_method?: string;
+
   notes?: string | null;
+
   actor_id?: number | null;
 }) {
   const db = getDb();
 
   const supplierId = Number(input.supplier_id);
+
   const purchaseId = input.purchase_id ? Number(input.purchase_id) : null;
-  const amountInput = roundMoney(Number(input.amount || 0));
+
+  const rawCashAmount = Number(input.amount ?? 0);
+
+  if (!Number.isFinite(rawCashAmount) || rawCashAmount < 0) {
+    throw new Error('مبلغ الدفعة غير صحيح');
+  }
+
+  const cashAmount = roundMoney(rawCashAmount);
+
+  const settleFullBalance = Boolean(input.settle_full_balance);
+
+  /*
+   * صفر مسموح فقط في تسوية
+   * رصيد أقل من نصف جنيه.
+   */
+  if (!settleFullBalance && cashAmount <= 0) {
+    throw new Error('مبلغ الدفعة غير صحيح');
+  }
 
   const actorId = Number(input.actor_id || 0);
 
   const paymentMethod = resolveCashAccount(input.payment_method || 'cash');
 
-  const openShift = resolveFinancialOperationShift(
-    actorId,
-    [paymentMethod],
-    'لا يمكن تسجيل دفعة مورد من درج المحل بدون شفت مفتوح',
-  );
+  const openShift =
+    cashAmount > 0
+      ? resolveFinancialOperationShift(
+          actorId,
+
+          [paymentMethod],
+
+          'لا يمكن تسجيل دفعة مورد من درج المحل بدون شفت مفتوح',
+        )
+      : null;
 
   if (!supplierId) {
     throw new Error('Supplier ID is required');
   }
 
-  if (!Number.isFinite(amountInput) || amountInput <= 0) {
-    throw new Error('مبلغ الدفعة غير صحيح');
-  }
-
   const tx = db.transaction(() => {
     const supplier = db
-      .prepare(`SELECT * FROM suppliers WHERE id = ? AND is_active = 1 LIMIT 1`)
+      .prepare(
+        `
+        SELECT *
+
+        FROM suppliers
+
+        WHERE id = ?
+          AND is_active = 1
+
+        LIMIT 1
+        `,
+      )
       .get(supplierId) as any;
 
     if (!supplier) {
       throw new Error('المورد غير موجود');
     }
 
-    const supplierBalance = roundMoney(Number(supplier.balance || 0));
+    /*
+     * مصدر حقيقة مديونية المورد:
+     * الفواتير المفتوحة نفسها،
+     * وليس suppliers.balance
+     * لأنه قد يحتوي بيانات قديمة
+     * من سياسة التقريب السابقة.
+     */
+    const openPurchases = db
+      .prepare(
+        `
+        SELECT *
 
-    if (supplierBalance <= 0) {
-      throw new Error('لا يوجد رصيد مستحق على المورد');
+        FROM purchase_invoices
+
+        WHERE supplier_id = ?
+
+          AND remaining_amount > 0
+
+          AND IFNULL(
+            status,
+            'active'
+          ) != 'cancelled'
+
+        ORDER BY id ASC
+        `,
+      )
+      .all(supplierId) as any[];
+
+    if (openPurchases.length === 0) {
+      throw new Error('لا توجد مديونية مفتوحة على المورد');
     }
 
-    if (amountInput > supplierBalance) {
-      throw new Error('قيمة الدفع أكبر من رصيد المورد');
+    let targetPurchases = openPurchases;
+
+    if (purchaseId) {
+      const purchase = openPurchases.find(
+        (row) => Number(row.id) === purchaseId,
+      );
+
+      if (!purchase) {
+        throw new Error('فاتورة الشراء غير موجودة أو مدفوعة بالكامل');
+      }
+
+      targetPurchases = [purchase];
+    }
+
+    const targetInvoiceOutstanding = roundFinancial(
+      targetPurchases.reduce(
+        (sum, purchase) => sum + Number(purchase.remaining_amount || 0),
+
+        0,
+      ),
+    );
+
+    const supplierNetPayable = roundFinancial(
+      Math.max(
+        0,
+
+        calculateSupplierNetBalance(db, supplierId),
+      ),
+    );
+
+    const targetOutstanding = roundFinancial(
+      Math.min(targetInvoiceOutstanding, supplierNetPayable),
+    );
+
+    if (targetOutstanding <= 0) {
+      throw new Error('لا يوجد صافي مستحق للمورد بعد احتساب الرصيد الدائن');
+    }
+
+    let accountingAmount = 0;
+
+    let roundingAdjustment = 0;
+
+    if (settleFullBalance) {
+      const settlement = resolveWholeMoneySettlement(
+        cashAmount,
+        targetOutstanding,
+      );
+
+      /*
+       * رصيد أقل من 0.50:
+       * أقرب جنيه = صفر.
+       * نسمح بإقفاله كتسوية صريحة.
+       */
+      const zeroCashSettlement =
+        cashAmount === 0 && roundMoney(targetOutstanding) === 0;
+
+      if (!settlement.isFullSettlement && !zeroCashSettlement) {
+        throw new Error(
+          `لتسوية كامل الرصيد يجب أن يكون المبلغ النقدي ${roundMoney(
+            targetOutstanding,
+          )} ج.م`,
+        );
+      }
+
+      accountingAmount = targetOutstanding;
+
+      roundingAdjustment = roundFinancial(cashAmount - accountingAmount);
+    } else {
+      if (cashAmount > targetOutstanding + 0.0001) {
+        throw new Error('قيمة الدفع أكبر من المديونية المحددة');
+      }
+
+      accountingAmount = roundFinancial(cashAmount);
+    }
+
+    if (accountingAmount <= 0) {
+      throw new Error('قيمة التسوية المحاسبية غير صحيحة');
     }
 
     const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
@@ -3569,215 +4104,238 @@ export function recordSupplierPayment(input: {
     const batchResult = db
       .prepare(
         `
-    INSERT INTO supplier_payment_batches (
-      supplier_id,
-      purchase_id,
-      amount,
-      payment_method,
-      notes,
-      created_by,
-      business_date,
-      shift_id
-    )
-    VALUES (?, ?, 0, ?, ?, ?, ?, ?)
-    `,
+        INSERT INTO supplier_payment_batches (
+          supplier_id,
+
+          purchase_id,
+
+          amount,
+
+          cash_amount,
+
+          rounding_adjustment,
+
+          settle_full_balance,
+
+          payment_method,
+
+          notes,
+
+          created_by,
+
+          business_date,
+
+          shift_id
+        )
+
+        VALUES (
+          ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?
+        )
+        `,
       )
       .run(
         supplierId,
+
         purchaseId,
+
+        accountingAmount,
+
+        cashAmount,
+
+        roundingAdjustment,
+
+        settleFullBalance ? 1 : 0,
+
         paymentMethod,
+
         input.notes?.trim() || null,
+
         input.actor_id ?? null,
+
         businessDate,
+
         openShift?.id ?? null,
       );
 
     const paymentBatchId = Number(batchResult.lastInsertRowid);
 
-    const insertPayment = db.prepare(`
-      INSERT INTO supplier_payments (
-        supplier_id,
-        purchase_id,
-        batch_id,
-        amount,
-        payment_method,
-        notes
-      )
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
+    const insertPayment = db.prepare(
+      `
+        INSERT INTO supplier_payments (
+          supplier_id,
 
-    const updatePurchase = db.prepare(`
-      UPDATE purchase_invoices
-      SET
-        paid_amount = ?,
-        remaining_amount = ?,
-        payment_status = ?
-      WHERE id = ?
-    `);
+          purchase_id,
+
+          batch_id,
+
+          amount,
+
+          payment_method,
+
+          notes
+        )
+
+        VALUES (
+          ?, ?, ?, ?, ?, ?
+        )
+        `,
+    );
+
+    const updatePurchase = db.prepare(
+      `
+        UPDATE purchase_invoices
+
+        SET
+          paid_amount = ?,
+
+          remaining_amount = ?,
+
+          payment_status = ?
+
+        WHERE id = ?
+        `,
+    );
+
+    let remainingPayment = accountingAmount;
 
     let totalPaid = 0;
+
     const allocations: Array<{
       purchase_id: number | null;
       amount: number;
     }> = [];
 
-    if (purchaseId) {
-      const purchase = db
-        .prepare(
-          `
-          SELECT *
-          FROM purchase_invoices
-          WHERE id = ?
-            AND supplier_id = ?
-            AND IFNULL(status, 'active') != 'cancelled'
-          LIMIT 1
-        `,
-        )
-        .get(purchaseId, supplierId) as any;
-
-      if (!purchase) {
-        throw new Error('فاتورة الشراء غير موجودة أو ملغاة');
+    for (const purchase of targetPurchases) {
+      if (remainingPayment <= 0.0001) {
+        break;
       }
 
-      const remaining = roundMoney(Number(purchase.remaining_amount || 0));
-
-      if (remaining <= 0) {
-        throw new Error('الفاتورة مدفوعة بالكامل بالفعل');
-      }
-
-      const finalAmount = roundMoney(Math.min(amountInput, remaining));
-
-      const newPaid = roundMoney(
-        Number(purchase.paid_amount || 0) + finalAmount,
+      const purchaseRemaining = roundFinancial(
+        Number(purchase.remaining_amount || 0),
       );
 
-      const newRemaining = roundMoney(Math.max(0, remaining - finalAmount));
+      if (purchaseRemaining <= 0) {
+        continue;
+      }
 
-      const newStatus =
-        newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
+      const payNow = roundFinancial(
+        Math.min(remainingPayment, purchaseRemaining),
+      );
 
-      updatePurchase.run(newPaid, newRemaining, newStatus, purchaseId);
+      if (payNow <= 0) {
+        continue;
+      }
+
+      const newPaid = roundFinancial(
+        Number(purchase.paid_amount || 0) + payNow,
+      );
+
+      const newRemaining = roundFinancial(
+        Math.max(0, purchaseRemaining - payNow),
+      );
+
+      const newStatus = normalizePaymentStatus(
+        Number(purchase.total_amount || 0),
+
+        newPaid,
+
+        newRemaining,
+      );
+
+      updatePurchase.run(
+        newPaid,
+
+        newRemaining,
+
+        newStatus,
+
+        Number(purchase.id),
+      );
 
       insertPayment.run(
         supplierId,
-        purchaseId,
+
+        Number(purchase.id),
+
         paymentBatchId,
-        finalAmount,
+
+        payNow,
+
         paymentMethod,
-        input.notes?.trim() || `دفعة على فاتورة شراء رقم ${purchaseId}`,
+
+        input.notes?.trim() ||
+          (purchaseId
+            ? `دفعة على فاتورة شراء رقم ${purchase.id}`
+            : `دفعة عامة موزعة على فاتورة شراء رقم ${purchase.id}`),
       );
 
-      totalPaid = finalAmount;
+      totalPaid = roundFinancial(totalPaid + payNow);
+
+      remainingPayment = roundFinancial(remainingPayment - payNow);
+
       allocations.push({
-        purchase_id: purchaseId,
-        amount: finalAmount,
+        purchase_id: Number(purchase.id),
+
+        amount: payNow,
       });
-    } else {
-      let remainingPayment = roundMoney(Math.min(amountInput, supplierBalance));
-
-      const openPurchases = db
-        .prepare(
-          `
-          SELECT *
-          FROM purchase_invoices
-          WHERE supplier_id = ?
-            AND remaining_amount > 0
-            AND IFNULL(status, 'active') != 'cancelled'
-          ORDER BY id ASC
-        `,
-        )
-        .all(supplierId) as any[];
-
-      if (openPurchases.length === 0) {
-        throw new Error('لا توجد فواتير مفتوحة لهذا المورد');
-      }
-
-      for (const purchase of openPurchases) {
-        if (remainingPayment <= 0) break;
-
-        const purchaseRemaining = roundMoney(
-          Number(purchase.remaining_amount || 0),
-        );
-
-        const payNow = roundMoney(
-          Math.min(remainingPayment, purchaseRemaining),
-        );
-
-        const newPaid = roundMoney(Number(purchase.paid_amount || 0) + payNow);
-
-        const newRemaining = roundMoney(
-          Math.max(0, purchaseRemaining - payNow),
-        );
-
-        const newStatus =
-          newRemaining === 0 ? 'paid' : newPaid > 0 ? 'partial' : 'unpaid';
-
-        updatePurchase.run(newPaid, newRemaining, newStatus, purchase.id);
-
-        insertPayment.run(
-          supplierId,
-          purchase.id,
-          paymentBatchId,
-          payNow,
-          paymentMethod,
-          input.notes?.trim() ||
-            `دفعة عامة موزعة على فاتورة شراء رقم ${purchase.id}`,
-        );
-
-        totalPaid = roundMoney(totalPaid + payNow);
-
-        remainingPayment = roundMoney(remainingPayment - payNow);
-
-        allocations.push({
-          purchase_id: purchase.id,
-          amount: payNow,
-        });
-      }
     }
 
-    if (totalPaid <= 0) {
-      throw new Error('لم يتم تسجيل أي دفعة');
+    if (remainingPayment > 0.0001) {
+      throw new Error('تعذر توزيع كامل قيمة الدفعة على فواتير المورد');
     }
 
-    db.prepare(
-      `
-  UPDATE supplier_payment_batches
-  SET amount = ?
-  WHERE id = ?
-  `,
-    ).run(totalPaid, paymentBatchId);
+    if (Math.abs(totalPaid - accountingAmount) > 0.001) {
+      throw new Error('قيمة توزيعات دفعة المورد غير متطابقة');
+    }
+
+    const supplierBalance = rebuildSupplierBalance(db, supplierId);
 
     db.prepare(
       `
       UPDATE suppliers
+
       SET
-        balance = MAX(
-          ROUND(IFNULL(balance, 0) - ?, 0),
-          0
-        ),
-        updated_at = CURRENT_TIMESTAMP
+        balance = ?,
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
       WHERE id = ?
-    `,
-    ).run(totalPaid, supplierId);
+      `,
+    ).run(
+      supplierBalance,
 
-    createCashMovement({
-      type: 'supplier_payment',
-      direction: 'out',
+      supplierId,
+    );
 
-      amount: totalPaid,
+    /*
+     * الخزنة تتأثر بالكاش الحقيقي فقط.
+     */
+    if (cashAmount > 0) {
+      createCashMovement({
+        type: 'supplier_payment',
 
-      payment_method: paymentMethod,
+        direction: 'out',
 
-      reference_id: paymentBatchId,
-      reference_type: 'supplier_payment',
+        amount: cashAmount,
 
-      notes: input.notes?.trim() || 'دفعة للمورد',
+        payment_method: paymentMethod,
 
-      created_by: input.actor_id ?? null,
+        reference_id: paymentBatchId,
 
-      business_date: businessDate,
-      shift_id: openShift?.id ?? null,
-    });
+        reference_type: 'supplier_payment',
+
+        notes: input.notes?.trim() || 'دفعة للمورد',
+
+        created_by: input.actor_id ?? null,
+
+        business_date: businessDate,
+
+        shift_id: openShift?.id ?? null,
+      });
+    }
 
     return {
       ok: true,
@@ -3786,9 +4344,29 @@ export function recordSupplierPayment(input: {
 
       payment_batch_id: paymentBatchId,
 
+      /*
+       * المسدد من الدين.
+       */
       paid_amount: totalPaid,
 
+      /*
+       * الخارج الحقيقي
+       * من الحساب المالي.
+       */
+      cash_amount: cashAmount,
+
+      /*
+       * موجب = دفعنا زيادة
+       * سالب = دفعنا أقل.
+       */
+      rounding_adjustment: roundingAdjustment,
+
+      settle_full_balance: settleFullBalance,
+
+      remaining_supplier_balance: supplierBalance,
+
       allocations,
+
       shift_id: openShift?.id ?? null,
     };
   });
@@ -3959,15 +4537,34 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     );
   }
 
-  const allocationTotal = roundMoney(
+  const allocationTotal = roundFinancial(
     allocations.reduce(
       (sum, allocation) => sum + Number(allocation.amount || 0),
+
       0,
     ),
   );
 
-  if (Math.abs(allocationTotal - Number(batch.amount || 0)) > 0.01) {
+  const batchAmount = roundFinancial(Number(batch.amount || 0));
+
+  if (Math.abs(allocationTotal - batchAmount) > 0.001) {
     throw new Error('بيانات دفعة المورد غير متطابقة');
+  }
+
+  const batchCashAmount = roundFinancial(
+    Number(batch.cash_amount ?? batch.amount ?? 0),
+  );
+
+  const batchRoundingAdjustment = roundFinancial(
+    Number(batch.rounding_adjustment ?? batchCashAmount - batchAmount),
+  );
+
+  const expectedRoundingAdjustment = roundFinancial(
+    batchCashAmount - batchAmount,
+  );
+
+  if (Math.abs(batchRoundingAdjustment - expectedRoundingAdjustment) > 0.001) {
+    throw new Error('فرق تسوية دفعة المورد غير متطابق');
   }
 
   const cashMovement = db
@@ -3977,10 +4574,14 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
 
       FROM cash_movements
 
-      WHERE type = 'supplier_payment'
+      WHERE type =
+        'supplier_payment'
+
         AND direction = 'out'
+
         AND reference_type =
-            'supplier_payment'
+          'supplier_payment'
+
         AND reference_id = ?
 
       ORDER BY id DESC
@@ -3990,26 +4591,55 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     )
     .get(batchId) as any;
 
-  if (!cashMovement) {
-    throw new Error('حركة حساب الدفع الخاصة بدفعة المورد غير موجودة');
-  }
+  if (batchCashAmount > 0) {
+    if (!cashMovement) {
+      throw new Error('حركة حساب الدفع الخاصة بدفعة المورد غير موجودة');
+    }
 
-  if (cashMovement.cancelled_at) {
-    throw new Error('حركة حساب الدفع الخاصة بالدفعة ملغاة بالفعل');
-  }
+    if (cashMovement.cancelled_at) {
+      throw new Error('حركة حساب الدفع الخاصة بالدفعة ملغاة بالفعل');
+    }
 
-  if (
-    Math.abs(roundMoney(Number(cashMovement.amount || 0)) - allocationTotal) >
-    0.01
+    if (
+      Math.abs(
+        roundFinancial(Number(cashMovement.amount || 0)) - batchCashAmount,
+      ) > 0.001
+    ) {
+      throw new Error(
+        'قيمة حركة حساب الدفع لا تطابق الكاش الفعلي لدفعة المورد',
+      );
+    }
+  } else if (
+    cashMovement &&
+    Math.abs(Number(cashMovement.amount || 0)) > 0.001
   ) {
-    throw new Error('قيمة حركة حساب الدفع لا تطابق قيمة دفعة المورد');
+    throw new Error(
+      'دفعة المورد المسواة بدون كاش مرتبطة بحركة مالية غير صحيحة',
+    );
   }
 
   return {
     db,
+
     batch,
+
     allocations,
+
+    /*
+     * الدين المحاسبي الذي تم إقفاله.
+     */
     allocationTotal,
+
+    /*
+     * الكاش الذي خرج بالفعل.
+     */
+    batchCashAmount,
+
+    /*
+     * cash - accounting.
+     */
+    batchRoundingAdjustment,
+
     cashMovement,
   };
 }
@@ -4061,22 +4691,51 @@ export function getSupplierPaymentBatchAccess(
 
 export function cancelSupplierPaymentBatch(input: {
   batch_id: number;
+
   reason?: string | null;
+
   actor_id?: number | null;
 }) {
   const batchId = Number(input.batch_id || 0);
 
   const context = getSupplierPaymentBatchMutationContext(batchId);
 
-  const { db, batch, allocations, allocationTotal, cashMovement } = context;
+  const {
+    db,
+
+    batch,
+
+    allocations,
+
+    allocationTotal,
+
+    batchCashAmount,
+
+    batchRoundingAdjustment,
+
+    cashMovement,
+  } = context;
 
   const actorId = Number(input.actor_id || 0);
 
-  const openShift = resolveFinancialOperationShift(
-    actorId,
-    [cashMovement.payment_method],
-    'لا يمكن إلغاء دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
+  const paymentMethod = resolveCashAccount(
+    cashMovement?.payment_method || batch.payment_method || 'cash',
   );
+
+  /*
+   * لو التسوية تمت بدون خروج كاش
+   * أصلًا، مفيش داعي نطلب شفت.
+   */
+  const openShift =
+    batchCashAmount > 0
+      ? resolveFinancialOperationShift(
+          actorId,
+
+          [paymentMethod],
+
+          'لا يمكن إلغاء دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
+        )
+      : null;
 
   const cancellationBusinessDate = resolveFinancialBusinessDate(
     openShift?.id ?? null,
@@ -4085,241 +4744,14 @@ export function cancelSupplierPaymentBatch(input: {
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة مورد';
 
   const tx = db.transaction(() => {
+    /*
+     * نرجع المبلغ المحاسبي
+     * لكل فاتورة بالقرش.
+     */
     for (const allocation of allocations) {
-      const amount = roundMoney(Number(allocation.amount || 0));
+      const amount = roundFinancial(Number(allocation.amount || 0));
 
-      const nextPaid = roundMoney(
-        Math.max(0, Number(allocation.paid_amount || 0) - amount),
-      );
-
-      const nextRemaining = roundMoney(
-        Math.min(
-          Number(allocation.total_amount || 0),
-
-          Math.max(0, Number(allocation.remaining_amount || 0) + amount),
-        ),
-      );
-
-      const nextStatus = normalizePaymentStatus(
-        Number(allocation.total_amount || 0),
-        nextPaid,
-        nextRemaining,
-      );
-
-      db.prepare(
-        `
-        UPDATE purchase_invoices
-
-        SET
-          paid_amount = ?,
-          remaining_amount = ?,
-          payment_status = ?
-
-        WHERE id = ?
-        `,
-      ).run(
-        nextPaid,
-        nextRemaining,
-        nextStatus,
-        Number(allocation.purchase_id),
-      );
-    }
-
-    db.prepare(
-      `
-      UPDATE suppliers
-
-      SET
-        balance = ROUND(
-          IFNULL(balance, 0) + ?,
-          0
-        ),
-
-        updated_at =
-          CURRENT_TIMESTAMP
-
-      WHERE id = ?
-      `,
-    ).run(allocationTotal, Number(batch.supplier_id));
-
-    db.prepare(
-      `
-      UPDATE supplier_payment_batches
-
-      SET
-        cancelled_at =
-          CURRENT_TIMESTAMP,
-
-        cancelled_by = ?,
-        cancelled_shift_id = ?,
-        cancel_reason = ?
-
-      WHERE id = ?
-      `,
-    ).run(actorId, openShift?.id ?? null, reason, batchId);
-
-    createCashMovement({
-      type: 'supplier_payment',
-
-      direction: 'in',
-
-      amount: allocationTotal,
-
-      payment_method: cashMovement.payment_method,
-
-      reference_id: batchId,
-
-      reference_type: 'supplier_payment_cancel',
-
-      notes: `عكس دفعة مورد ملغاة #${batchId}`,
-
-      created_by: actorId,
-
-      business_date: cancellationBusinessDate,
-
-      shift_id: openShift?.id ?? null,
-    });
-
-    return {
-      success: true,
-
-      batch_id: batchId,
-
-      supplier_id: Number(batch.supplier_id),
-
-      cancelled_amount: allocationTotal,
-
-      cancelled_shift_id: openShift?.id ?? null,
-
-      allocations: allocations.map((allocation) => ({
-        purchase_id: Number(allocation.purchase_id),
-
-        amount: Number(allocation.amount || 0),
-      })),
-    };
-  });
-
-  return tx();
-}
-
-export function updateSupplierPaymentBatch(input: {
-  batch_id: number;
-  amount: number;
-  payment_method?: string;
-  notes?: string | null;
-  actor_id?: number | null;
-}) {
-  const batchId = Number(input.batch_id || 0);
-
-  const amountInput = roundMoney(Number(input.amount || 0));
-
-  if (!batchId) {
-    throw new Error('رقم دفعة المورد غير صحيح');
-  }
-
-  if (!Number.isFinite(amountInput) || amountInput <= 0) {
-    throw new Error('مبلغ الدفعة المعدل غير صحيح');
-  }
-
-  const context = getSupplierPaymentBatchMutationContext(batchId);
-
-  const {
-    db,
-    batch,
-    allocations,
-    allocationTotal: oldTotal,
-    cashMovement,
-  } = context;
-
-  const supplier = db
-    .prepare(
-      `
-      SELECT *
-
-      FROM suppliers
-
-      WHERE id = ?
-
-      LIMIT 1
-      `,
-    )
-    .get(Number(batch.supplier_id)) as any;
-
-  if (!supplier) {
-    throw new Error('المورد غير موجود');
-  }
-
-  const specificPurchaseId = Number(batch.purchase_id || 0);
-
-  const availableAfterReverse = roundMoney(
-    Number(supplier.balance || 0) + oldTotal,
-  );
-
-  let availableForNewPayment = availableAfterReverse;
-
-  if (specificPurchaseId) {
-    const targetPurchase = allocations.find(
-      (allocation) => Number(allocation.purchase_id) === specificPurchaseId,
-    );
-
-    if (!targetPurchase) {
-      throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة');
-    }
-
-    const oldAllocationOnPurchase = roundMoney(
-      allocations.reduce(
-        (sum, allocation) =>
-          Number(allocation.purchase_id) === specificPurchaseId
-            ? sum + Number(allocation.amount || 0)
-            : sum,
-        0,
-      ),
-    );
-
-    availableForNewPayment = roundMoney(
-      Math.min(
-        availableAfterReverse,
-
-        Number(targetPurchase.remaining_amount || 0) + oldAllocationOnPurchase,
-      ),
-    );
-  }
-
-  if (amountInput > availableForNewPayment + 0.0001) {
-    throw new Error(
-      `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${roundMoney(
-        availableForNewPayment,
-      )} ج.م`,
-    );
-  }
-
-  const newPaymentMethod = resolveCashAccount(
-    input.payment_method || batch.payment_method || 'cash',
-  );
-
-  const actorId = Number(input.actor_id || 0);
-
-  const openShift = resolveFinancialOperationShift(
-    actorId,
-    [cashMovement.payment_method, newPaymentMethod],
-    'لا يمكن تعديل دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
-  );
-
-  const correctionBusinessDate = resolveFinancialBusinessDate(
-    openShift?.id ?? null,
-  );
-
-  const newNotes =
-    input.notes === undefined
-      ? (batch.notes ?? null)
-      : input.notes?.trim() || null;
-
-  const tx = db.transaction(() => {
-    // عكس تأثير الدفعة القديمة
-    for (const allocation of allocations) {
-      const amount = roundMoney(Number(allocation.amount || 0));
-
-      const nextPaid = roundMoney(
+      const nextPaid = roundFinancial(
         Math.max(
           0,
 
@@ -4327,7 +4759,7 @@ export function updateSupplierPaymentBatch(input: {
         ),
       );
 
-      const nextRemaining = roundMoney(
+      const nextRemaining = roundFinancial(
         Math.min(
           Number(allocation.total_amount || 0),
 
@@ -4341,70 +4773,443 @@ export function updateSupplierPaymentBatch(input: {
 
       const nextStatus = normalizePaymentStatus(
         Number(allocation.total_amount || 0),
+
         nextPaid,
+
         nextRemaining,
       );
 
       db.prepare(
         `
-        UPDATE purchase_invoices
+          UPDATE purchase_invoices
 
-        SET
-          paid_amount = ?,
-          remaining_amount = ?,
-          payment_status = ?
+          SET
+            paid_amount = ?,
 
-        WHERE id = ?
-        `,
+            remaining_amount = ?,
+
+            payment_status = ?
+
+          WHERE id = ?
+          `,
       ).run(
         nextPaid,
+
         nextRemaining,
+
         nextStatus,
+
         Number(allocation.purchase_id),
       );
     }
 
-    // إعادة مديونية الدفعة القديمة
+    const supplierBalance = rebuildSupplierBalance(
+      db,
+      Number(batch.supplier_id),
+    );
+
     db.prepare(
       `
-      UPDATE suppliers
+        UPDATE supplier_payment_batches
 
-      SET
-        balance = ROUND(
-          IFNULL(balance, 0) + ?,
-          0
+        SET
+          cancelled_at =
+            CURRENT_TIMESTAMP,
+
+          cancelled_by = ?,
+
+          cancelled_shift_id = ?,
+
+          cancel_reason = ?
+
+        WHERE id = ?
+        `,
+    ).run(
+      actorId,
+
+      openShift?.id ?? null,
+
+      reason,
+
+      batchId,
+    );
+
+    /*
+     * نعكس الكاش الحقيقي فقط.
+     *
+     * مثال:
+     * الدين المقفول = 100.15
+     * الكاش = 100
+     *
+     * نرجع للخزنة 100 فقط.
+     */
+    if (batchCashAmount > 0) {
+      createCashMovement({
+        type: 'supplier_payment',
+
+        direction: 'in',
+
+        amount: batchCashAmount,
+
+        payment_method: paymentMethod,
+
+        reference_id: batchId,
+
+        reference_type: 'supplier_payment_cancel',
+
+        notes: `عكس دفعة مورد ملغاة #${batchId}`,
+
+        created_by: actorId,
+
+        business_date: cancellationBusinessDate,
+
+        shift_id: openShift?.id ?? null,
+      });
+    }
+
+    return {
+      success: true,
+
+      batch_id: batchId,
+
+      supplier_id: Number(batch.supplier_id),
+
+      /*
+       * الدين الذي أعيد.
+       */
+      cancelled_amount: allocationTotal,
+
+      /*
+       * الكاش الذي عاد للحساب.
+       */
+      cancelled_cash_amount: batchCashAmount,
+
+      /*
+       * فرق التسوية الذي تم إلغاؤه.
+       */
+      cancelled_rounding_adjustment: batchRoundingAdjustment,
+
+      remaining_supplier_balance: supplierBalance,
+
+      cancelled_shift_id: openShift?.id ?? null,
+
+      allocations: allocations.map((allocation) => ({
+        purchase_id: Number(allocation.purchase_id),
+
+        amount: roundFinancial(Number(allocation.amount || 0)),
+      })),
+    };
+  });
+
+  return tx();
+}
+
+export function updateSupplierPaymentBatch(input: {
+  batch_id: number;
+
+  /*
+   * الكاش الحقيقي الجديد.
+   */
+  amount: number;
+
+  settle_full_balance?: boolean;
+
+  payment_method?: string;
+
+  notes?: string | null;
+
+  actor_id?: number | null;
+}) {
+  const batchId = Number(input.batch_id || 0);
+
+  if (!batchId) {
+    throw new Error('رقم دفعة المورد غير صحيح');
+  }
+
+  const rawCashAmount = Number(input.amount ?? 0);
+
+  if (!Number.isFinite(rawCashAmount) || rawCashAmount < 0) {
+    throw new Error('مبلغ الدفعة المعدل غير صحيح');
+  }
+
+  const cashAmount = roundMoney(rawCashAmount);
+
+  const settleFullBalance = Boolean(input.settle_full_balance);
+
+  if (!settleFullBalance && cashAmount <= 0) {
+    throw new Error('مبلغ الدفعة المعدل غير صحيح');
+  }
+
+  const context = getSupplierPaymentBatchMutationContext(batchId);
+
+  const {
+    db,
+
+    batch,
+
+    allocations,
+
+    allocationTotal: oldAccountingAmount,
+
+    batchCashAmount: oldCashAmount,
+
+    cashMovement,
+  } = context;
+
+  const supplierId = Number(batch.supplier_id);
+
+  const specificPurchaseId = Number(batch.purchase_id || 0);
+
+  const oldPaymentMethod = resolveCashAccount(
+    cashMovement?.payment_method || batch.payment_method || 'cash',
+  );
+
+  const newPaymentMethod = resolveCashAccount(
+    input.payment_method || batch.payment_method || 'cash',
+  );
+
+  const actorId = Number(input.actor_id || 0);
+
+  /*
+   * نحتاج شفت فقط لو فيه
+   * كاش قديم سيتم عكسه
+   * أو كاش جديد سيتم دفعه.
+   */
+  const openShift =
+    oldCashAmount > 0 || cashAmount > 0
+      ? resolveFinancialOperationShift(
+          actorId,
+
+          Array.from(new Set([oldPaymentMethod, newPaymentMethod])),
+
+          'لا يمكن تعديل دفعة مورد تؤثر على درج المحل بدون شفت مفتوح',
+        )
+      : null;
+
+  const correctionBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
+
+  const newNotes =
+    input.notes === undefined
+      ? (batch.notes ?? null)
+      : input.notes?.trim() || null;
+
+  const tx = db.transaction(() => {
+    /*
+     * أولًا:
+     * عكس الأثر المحاسبي
+     * للدفعة القديمة.
+     */
+    for (const allocation of allocations) {
+      const amount = roundFinancial(Number(allocation.amount || 0));
+
+      const nextPaid = roundFinancial(
+        Math.max(
+          0,
+
+          Number(allocation.paid_amount || 0) - amount,
         ),
+      );
 
-        updated_at =
-          CURRENT_TIMESTAMP
+      const nextRemaining = roundFinancial(
+        Math.min(
+          Number(allocation.total_amount || 0),
 
-      WHERE id = ?
-      `,
-    ).run(oldTotal, Number(batch.supplier_id));
+          Math.max(
+            0,
 
-    // إنشاء Batch بديل
+            Number(allocation.remaining_amount || 0) + amount,
+          ),
+        ),
+      );
+
+      const nextStatus = normalizePaymentStatus(
+        Number(allocation.total_amount || 0),
+
+        nextPaid,
+
+        nextRemaining,
+      );
+
+      db.prepare(
+        `
+          UPDATE purchase_invoices
+
+          SET
+            paid_amount = ?,
+
+            remaining_amount = ?,
+
+            payment_status = ?
+
+          WHERE id = ?
+          `,
+      ).run(
+        nextPaid,
+
+        nextRemaining,
+
+        nextStatus,
+
+        Number(allocation.purchase_id),
+      );
+    }
+
+    /*
+     * بعد عكس القديمة،
+     * نحدد الفواتير التي يمكن
+     * أن تستقبل الدفعة الجديدة.
+     */
+    let targetPurchases = db
+      .prepare(
+        `
+            SELECT *
+
+            FROM purchase_invoices
+
+            WHERE supplier_id = ?
+
+              AND remaining_amount > 0
+
+              AND IFNULL(
+                status,
+                'active'
+              ) != 'cancelled'
+
+            ORDER BY id ASC
+            `,
+      )
+      .all(supplierId) as any[];
+
+    if (specificPurchaseId) {
+      const targetPurchase = targetPurchases.find(
+        (purchase) => Number(purchase.id) === specificPurchaseId,
+      );
+
+      if (!targetPurchase) {
+        throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة');
+      }
+
+      targetPurchases = [targetPurchase];
+    }
+
+    const targetInvoiceOutstanding = roundFinancial(
+      targetPurchases.reduce(
+        (sum, purchase) => sum + Number(purchase.remaining_amount || 0),
+
+        0,
+      ),
+    );
+
+    const supplierNetPayable = roundFinancial(
+      Math.max(
+        0,
+
+        calculateSupplierNetBalance(db, supplierId),
+      ),
+    );
+
+    const targetOutstanding = roundFinancial(
+      Math.min(targetInvoiceOutstanding, supplierNetPayable),
+    );
+
+    if (targetOutstanding <= 0) {
+      throw new Error('لا يوجد صافي مستحق للمورد بعد احتساب الرصيد الدائن');
+    }
+
+    let accountingAmount = 0;
+
+    let roundingAdjustment = 0;
+
+    if (settleFullBalance) {
+      const settlement = resolveWholeMoneySettlement(
+        cashAmount,
+        targetOutstanding,
+      );
+
+      const zeroCashSettlement =
+        cashAmount === 0 && roundMoney(targetOutstanding) === 0;
+
+      if (!settlement.isFullSettlement && !zeroCashSettlement) {
+        throw new Error(
+          `لتسوية كامل الرصيد يجب أن يكون المبلغ النقدي ${roundMoney(
+            targetOutstanding,
+          )} ج.م`,
+        );
+      }
+
+      accountingAmount = targetOutstanding;
+
+      roundingAdjustment = roundFinancial(cashAmount - accountingAmount);
+    } else {
+      if (cashAmount > targetOutstanding + 0.0001) {
+        throw new Error(
+          `مبلغ الدفعة المعدل أكبر من المديونية المتاحة وهي ${formatMoney(
+            targetOutstanding,
+          )} ج.م`,
+        );
+      }
+
+      accountingAmount = roundFinancial(cashAmount);
+    }
+
+    if (accountingAmount <= 0) {
+      throw new Error('قيمة التسوية المحاسبية غير صحيحة');
+    }
+
+    /*
+     * إنشاء Batch جديد بدل تعديل
+     * القديم حفاظًا على Audit Trail.
+     */
     const newBatchResult = db
       .prepare(
         `
-        INSERT INTO supplier_payment_batches (
-          supplier_id,
-          purchase_id,
-          amount,
-          payment_method,
-          notes,
-          created_by,
-          business_date,
-          shift_id,
-          created_at
-        )
+            INSERT INTO supplier_payment_batches (
+              supplier_id,
 
-        VALUES (?, ?, 0, ?, ?, ?, ?, ?, ?)
-        `,
+              purchase_id,
+
+              amount,
+
+              cash_amount,
+
+              rounding_adjustment,
+
+              settle_full_balance,
+
+              payment_method,
+
+              notes,
+
+              created_by,
+
+              business_date,
+
+              shift_id,
+
+              created_at
+            )
+
+            VALUES (
+              ?, ?,
+              ?, ?, ?, ?,
+              ?, ?, ?, ?, ?, ?
+            )
+            `,
       )
       .run(
-        Number(batch.supplier_id),
+        supplierId,
 
         batch.purchase_id ?? null,
+
+        accountingAmount,
+
+        cashAmount,
+
+        roundingAdjustment,
+
+        settleFullBalance ? 1 : 0,
 
         newPaymentMethod,
 
@@ -4421,299 +5226,251 @@ export function updateSupplierPaymentBatch(input: {
 
     const newBatchId = Number(newBatchResult.lastInsertRowid);
 
-    // القديمة أصبحت مستبدلة
+    /*
+     * القديمة أصبحت مستبدلة.
+     */
     db.prepare(
       `
-      UPDATE supplier_payment_batches
+        UPDATE supplier_payment_batches
 
-      SET
-        cancelled_at =
-          CURRENT_TIMESTAMP,
+        SET
+          cancelled_at =
+            CURRENT_TIMESTAMP,
 
-        cancelled_by = ?,
-        cancelled_shift_id = ?,
-        cancel_reason =
-          'تم تعديل دفعة المورد',
-        replacement_batch_id = ?
+          cancelled_by = ?,
 
-      WHERE id = ?
-      `,
-    ).run(actorId, openShift?.id ?? null, newBatchId, batchId);
+          cancelled_shift_id = ?,
 
-    createCashMovement({
-      type: 'supplier_payment',
+          cancel_reason =
+            'تم تعديل دفعة المورد',
 
-      direction: 'in',
+          replacement_batch_id = ?
 
-      amount: oldTotal,
+        WHERE id = ?
+        `,
+    ).run(
+      actorId,
 
-      payment_method: cashMovement.payment_method,
+      openShift?.id ?? null,
 
-      reference_id: batchId,
+      newBatchId,
 
-      reference_type: 'supplier_payment_update_reverse',
+      batchId,
+    );
 
-      notes: `عكس دفعة مورد قديمة بسبب التعديل #${batchId}`,
+    /*
+     * نعكس الكاش الحقيقي
+     * للدفعة القديمة فقط.
+     */
+    if (oldCashAmount > 0) {
+      createCashMovement({
+        type: 'supplier_payment',
 
-      created_by: actorId,
+        direction: 'in',
 
-      business_date: correctionBusinessDate,
+        amount: oldCashAmount,
 
-      shift_id: openShift?.id ?? null,
-    });
+        payment_method: oldPaymentMethod,
+
+        reference_id: batchId,
+
+        reference_type: 'supplier_payment_update_reverse',
+
+        notes: `عكس دفعة مورد قديمة بسبب التعديل #${batchId}`,
+
+        created_by: actorId,
+
+        business_date: correctionBusinessDate,
+
+        shift_id: openShift?.id ?? null,
+      });
+    }
 
     const insertPayment = db.prepare(
       `
-        INSERT INTO supplier_payments (
-          supplier_id,
-          purchase_id,
-          batch_id,
-          amount,
-          payment_method,
-          notes
-        )
+          INSERT INTO supplier_payments (
+            supplier_id,
 
-        VALUES (?, ?, ?, ?, ?, ?)
-        `,
+            purchase_id,
+
+            batch_id,
+
+            amount,
+
+            payment_method,
+
+            notes
+          )
+
+          VALUES (
+            ?, ?, ?, ?, ?, ?
+          )
+          `,
     );
 
     const updatePurchase = db.prepare(
       `
-        UPDATE purchase_invoices
+          UPDATE purchase_invoices
 
-        SET
-          paid_amount = ?,
-          remaining_amount = ?,
-          payment_status = ?
+          SET
+            paid_amount = ?,
 
-        WHERE id = ?
-        `,
+            remaining_amount = ?,
+
+            payment_status = ?
+
+          WHERE id = ?
+          `,
     );
+
+    let remainingPayment = accountingAmount;
 
     let totalPaid = 0;
 
     const newAllocations: Array<{
       purchase_id: number;
+
       amount: number;
     }> = [];
 
-    if (specificPurchaseId) {
-      const purchase = db
-        .prepare(
-          `
-          SELECT *
-
-          FROM purchase_invoices
-
-          WHERE id = ?
-            AND supplier_id = ?
-            AND IFNULL(
-              status,
-              'active'
-            ) != 'cancelled'
-
-          LIMIT 1
-          `,
-        )
-        .get(specificPurchaseId, Number(batch.supplier_id)) as any;
-
-      if (!purchase) {
-        throw new Error('فاتورة الشراء المرتبطة بالدفعة غير موجودة');
+    for (const purchase of targetPurchases) {
+      if (remainingPayment <= 0.0001) {
+        break;
       }
 
-      const remaining = roundMoney(Number(purchase.remaining_amount || 0));
-
-      if (amountInput > remaining + 0.0001) {
-        throw new Error('مبلغ الدفعة المعدل أكبر من المتبقي على فاتورة الشراء');
-      }
-
-      const newPaid = roundMoney(
-        Number(purchase.paid_amount || 0) + amountInput,
+      const purchaseRemaining = roundFinancial(
+        Number(purchase.remaining_amount || 0),
       );
 
-      const newRemaining = roundMoney(Math.max(0, remaining - amountInput));
+      if (purchaseRemaining <= 0) {
+        continue;
+      }
+
+      const payNow = roundFinancial(
+        Math.min(
+          remainingPayment,
+
+          purchaseRemaining,
+        ),
+      );
+
+      if (payNow <= 0) {
+        continue;
+      }
+
+      const newPaid = roundFinancial(
+        Number(purchase.paid_amount || 0) + payNow,
+      );
+
+      const newRemaining = roundFinancial(
+        Math.max(
+          0,
+
+          purchaseRemaining - payNow,
+        ),
+      );
 
       const newStatus = normalizePaymentStatus(
         Number(purchase.total_amount || 0),
+
         newPaid,
+
         newRemaining,
       );
 
-      updatePurchase.run(newPaid, newRemaining, newStatus, specificPurchaseId);
+      updatePurchase.run(
+        newPaid,
+
+        newRemaining,
+
+        newStatus,
+
+        Number(purchase.id),
+      );
 
       insertPayment.run(
-        Number(batch.supplier_id),
+        supplierId,
 
-        specificPurchaseId,
+        Number(purchase.id),
 
         newBatchId,
 
-        amountInput,
+        payNow,
 
         newPaymentMethod,
 
-        newNotes || `دفعة مورد معدلة على فاتورة شراء رقم ${specificPurchaseId}`,
+        newNotes ||
+          (specificPurchaseId
+            ? `دفعة مورد معدلة على فاتورة شراء رقم ${purchase.id}`
+            : `دفعة مورد معدلة موزعة على فاتورة شراء رقم ${purchase.id}`),
       );
 
-      totalPaid = amountInput;
+      totalPaid = roundFinancial(totalPaid + payNow);
+
+      remainingPayment = roundFinancial(remainingPayment - payNow);
 
       newAllocations.push({
-        purchase_id: specificPurchaseId,
+        purchase_id: Number(purchase.id),
 
-        amount: amountInput,
+        amount: payNow,
       });
-    } else {
-      let remainingPayment = amountInput;
-
-      const openPurchases = db
-        .prepare(
-          `
-          SELECT *
-
-          FROM purchase_invoices
-
-          WHERE supplier_id = ?
-
-            AND remaining_amount > 0
-
-            AND IFNULL(
-              status,
-              'active'
-            ) != 'cancelled'
-
-          ORDER BY id ASC
-          `,
-        )
-        .all(Number(batch.supplier_id)) as any[];
-
-      for (const purchase of openPurchases) {
-        if (remainingPayment <= 0.0001) {
-          break;
-        }
-
-        const purchaseRemaining = roundMoney(
-          Number(purchase.remaining_amount || 0),
-        );
-
-        const payNow = roundMoney(
-          Math.min(remainingPayment, purchaseRemaining),
-        );
-
-        if (payNow <= 0) {
-          continue;
-        }
-
-        const newPaid = roundMoney(Number(purchase.paid_amount || 0) + payNow);
-
-        const newRemaining = roundMoney(
-          Math.max(0, purchaseRemaining - payNow),
-        );
-
-        const newStatus = normalizePaymentStatus(
-          Number(purchase.total_amount || 0),
-          newPaid,
-          newRemaining,
-        );
-
-        updatePurchase.run(
-          newPaid,
-          newRemaining,
-          newStatus,
-          Number(purchase.id),
-        );
-
-        insertPayment.run(
-          Number(batch.supplier_id),
-
-          Number(purchase.id),
-
-          newBatchId,
-
-          payNow,
-
-          newPaymentMethod,
-
-          newNotes ||
-            `دفعة مورد معدلة موزعة على فاتورة شراء رقم ${purchase.id}`,
-        );
-
-        totalPaid = roundMoney(totalPaid + payNow);
-
-        remainingPayment = roundMoney(remainingPayment - payNow);
-
-        newAllocations.push({
-          purchase_id: Number(purchase.id),
-
-          amount: payNow,
-        });
-      }
-
-      if (remainingPayment > 0.0001) {
-        throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة');
-      }
     }
 
-    if (Math.abs(totalPaid - amountInput) > 0.01) {
-      throw new Error('تعذر تسجيل مبلغ دفعة المورد المعدل بالكامل');
+    if (remainingPayment > 0.0001) {
+      throw new Error('تعذر توزيع كامل مبلغ الدفعة المعدلة');
     }
+
+    if (Math.abs(totalPaid - accountingAmount) > 0.001) {
+      throw new Error('قيمة توزيعات دفعة المورد المعدلة غير متطابقة');
+    }
+
+    const supplierBalance = rebuildSupplierBalance(db, supplierId);
 
     db.prepare(
       `
-      UPDATE supplier_payment_batches
+        UPDATE suppliers
 
-      SET amount = ?
+        SET
+          balance = ?,
 
-      WHERE id = ?
-      `,
-    ).run(totalPaid, newBatchId);
+          updated_at =
+            CURRENT_TIMESTAMP
 
-    db.prepare(
-      `
-      UPDATE suppliers
+        WHERE id = ?
+        `,
+    ).run(
+      supplierBalance,
 
-      SET
-        balance = MAX(
-          ROUND(
-            IFNULL(balance, 0) - ?,
-            0
-          ),
-          0
-        ),
-
-        updated_at =
-          CURRENT_TIMESTAMP
-
-      WHERE id = ?
-      `,
-    ).run(totalPaid, Number(batch.supplier_id));
+      supplierId,
+    );
 
     /*
-      حركة الدفع الجديدة.
-      لو الحساب الجديد رصيده غير كافٍ،
-      createCashMovement هترمي Error
-      وكل الـtransaction هتتراجع.
-    */
-    createCashMovement({
-      type: 'supplier_payment',
+     * تسجيل الكاش الجديد
+     * الفعلي فقط.
+     */
+    if (cashAmount > 0) {
+      createCashMovement({
+        type: 'supplier_payment',
 
-      direction: 'out',
+        direction: 'out',
 
-      amount: totalPaid,
+        amount: cashAmount,
 
-      payment_method: newPaymentMethod,
+        payment_method: newPaymentMethod,
 
-      reference_id: newBatchId,
+        reference_id: newBatchId,
 
-      reference_type: 'supplier_payment',
+        reference_type: 'supplier_payment',
 
-      notes: newNotes || 'دفعة مورد معدلة',
+        notes: newNotes || 'دفعة مورد معدلة',
 
-      created_by: actorId,
+        created_by: actorId,
 
-      business_date: correctionBusinessDate,
+        business_date: correctionBusinessDate,
 
-      shift_id: openShift?.id ?? null,
-    });
+        shift_id: openShift?.id ?? null,
+      });
+    }
 
     return {
       success: true,
@@ -4722,11 +5479,27 @@ export function updateSupplierPaymentBatch(input: {
 
       batch_id: newBatchId,
 
-      supplier_id: Number(batch.supplier_id),
+      supplier_id: supplierId,
 
-      old_amount: oldTotal,
+      /*
+       * قيم محاسبية.
+       */
+      old_amount: oldAccountingAmount,
 
       new_amount: totalPaid,
+
+      /*
+       * الكاش الحقيقي.
+       */
+      old_cash_amount: oldCashAmount,
+
+      new_cash_amount: cashAmount,
+
+      new_rounding_adjustment: roundingAdjustment,
+
+      settle_full_balance: settleFullBalance,
+
+      remaining_supplier_balance: supplierBalance,
 
       payment_method: newPaymentMethod,
 
@@ -4800,6 +5573,15 @@ export function getSupplierStatement(
 
         b.amount
           AS batch_amount,
+
+        b.cash_amount
+          AS batch_cash_amount,
+
+        b.rounding_adjustment
+          AS batch_rounding_adjustment,
+
+        b.settle_full_balance
+          AS batch_settle_full_balance,
 
         b.payment_method
           AS batch_payment_method,
@@ -4985,12 +5767,28 @@ export function getSupplierStatement(
 
       const allocations = rows.map((row) => ({
         purchase_id: Number(row.purchase_id),
-        amount: roundMoney(row.amount),
+
+        amount: roundFinancial(row.amount),
       }));
 
-      const totalAmount =
-        Number(first.batch_amount || 0) ||
-        allocations.reduce((sum, item) => sum + item.amount, 0);
+      const totalAmount = roundFinancial(
+        Number(
+          first.batch_amount ??
+            allocations.reduce(
+              (sum, item) => sum + item.amount,
+
+              0,
+            ),
+        ),
+      );
+
+      const cashAmount = roundFinancial(
+        Number(first.batch_cash_amount ?? totalAmount),
+      );
+
+      const roundingAdjustment = roundFinancial(
+        Number(first.batch_rounding_adjustment ?? cashAmount - totalAmount),
+      );
 
       const allocationsText = allocations
         .map((item) => `#${item.purchase_id}: ${item.amount} ج.م`)
@@ -5012,7 +5810,15 @@ export function getSupplierStatement(
         debit: 0,
 
         credit: cancelled ? 0 : totalAmount,
+        /*
+         * credit =
+         * مقدار الدين المحاسبي المسدد.
+         */
+        cash_amount: cashAmount,
 
+        rounding_adjustment: roundingAdjustment,
+
+        settle_full_balance: Boolean(first.batch_settle_full_balance),
         purchase_id: batchPurchaseId || null,
 
         batch_id: batchId,

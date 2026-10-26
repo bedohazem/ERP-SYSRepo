@@ -335,6 +335,12 @@ export function getReportsSummary(input?: ReportFilter) {
     'pr.business_date',
   );
 
+  const supplierPaymentBusinessDate = buildShiftBusinessDateExpression(
+    'spb.shift_id',
+    'spb.created_at',
+    'spb.business_date',
+  );
+
   const salesWhere = buildWhere(
     's',
     input,
@@ -994,6 +1000,25 @@ export function getReportsSummary(input?: ReportFilter) {
     purchaseReturnBusinessDate,
   );
 
+  const supplierPaymentBatchesWhere = buildWhere(
+    'spb',
+
+    input,
+
+    [
+      `spb.cancelled_at IS NULL`,
+
+      `IFNULL(
+        spb.replacement_batch_id,
+        0
+      ) = 0`,
+    ],
+
+    undefined,
+
+    supplierPaymentBusinessDate,
+  );
+
   const manualCashWhere = buildWhere(
     'cm',
     input,
@@ -1139,53 +1164,20 @@ export function getReportsSummary(input?: ReportFilter) {
 
     FROM (
       /*
-       * إنشاء فاتورة شراء:
-       * فرق التقريب يدخل كما هو.
+       * 1) تسوية تمت وقت إنشاء
+       * فاتورة الشراء نفسها.
+       *
+       * موجب = دفعنا زيادة.
+       * سالب = دفعنا أقل.
        */
       SELECT
-        CASE
-          /*
-          * الفواتير الجديدة:
-          * نستخدم الفرق المسجل.
-          */
-          WHEN ABS(
-            IFNULL(
-              pi.rounding_adjustment,
-              0
-            )
-          ) > 0.0001
-          THEN pi.rounding_adjustment
-
-          /*
-          * الفواتير التاريخية:
-          * لو الفرق لم يكن مسجلاً،
-          * نعيد اشتقاقه من الإجمالي
-          * الدقيق القديم.
-          */
-          ELSE ROUND(
-            ROUND(
-              COALESCE(
-                NULLIF(
-                  pi.exact_total_amount,
-                  0
-                ),
-                pi.total_amount,
-                0
-              ),
-              0
-            )
-            -
-            COALESCE(
-              NULLIF(
-                pi.exact_total_amount,
-                0
-              ),
-              pi.total_amount,
-              0
-            ),
-            4
-          )
-        END AS adjustment
+        ROUND(
+          IFNULL(
+            pi.rounding_adjustment,
+            0
+          ),
+          2
+        ) AS adjustment
 
       FROM purchase_invoices pi
 
@@ -1194,206 +1186,71 @@ export function getReportsSummary(input?: ReportFilter) {
       UNION ALL
 
       /*
-       * المرتجع يعكس جزءًا
-       * من فرق تقريب الشراء،
-       * لذلك العلامة هنا سالبة.
+       * 2) دفعات المورد اللاحقة،
+       * سواء على فاتورة واحدة
+       * أو دفعة عامة على المورد.
+       *
+       * amount = الدين المقفول.
+       * cash_amount = الخارج فعليًا.
        */
       SELECT
-        -(
-          CASE
-            /*
-            * المرتجعات الجديدة:
-            * نستخدم فرق التقريب
-            * المسجل بالفعل.
-            */
-            WHEN ABS(
-              IFNULL(
-                pr.rounding_adjustment,
-                0
-              )
-            ) > 0.0001
-            THEN pr.rounding_adjustment
+        ROUND(
+          IFNULL(
+            spb.rounding_adjustment,
+            0
+          ),
+          2
+        ) AS adjustment
 
-            /*
-            * المرتجعات التاريخية:
-            * نعيد بناء أثر التقريب
-            * حسب المتبقي قبل وبعد
-            * هذا المرتجع.
-            */
-            ELSE ROUND(
-              (
-                ROUND(
-                  MAX(
-                    0,
+      FROM supplier_payment_batches spb
 
-                    COALESCE(
-                      NULLIF(
-                        pi.exact_total_amount,
-                        0
-                      ),
-                      pi.total_amount,
-                      0
-                    )
-                    -
-                    IFNULL(
-                      (
-                        SELECT
-                          SUM(
-                            COALESCE(
-                              NULLIF(
-                                previous_return
-                                  .exact_total_amount,
-                                0
-                              ),
+      ${supplierPaymentBatchesWhere.whereSql}
 
-                              previous_return
-                                .total_amount,
+      UNION ALL
 
-                              0
-                            )
-                          )
-
-                        FROM purchase_returns
-                          previous_return
-
-                        WHERE
-                          previous_return
-                            .purchase_id =
-                            pr.purchase_id
-
-                          AND
-                          previous_return
-                            .cancelled_at
-                            IS NULL
-
-                          AND (
-                            previous_return
-                              .created_at <
-                              pr.created_at
-
-                            OR (
-                              previous_return
-                                .created_at =
-                                pr.created_at
-
-                              AND
-                              previous_return.id <
-                                pr.id
-                            )
-                          )
-                      ),
-                      0
-                    )
-                  ),
-                  0
-                )
-
-                -
-
-                ROUND(
-                  MAX(
-                    0,
-
-                    COALESCE(
-                      NULLIF(
-                        pi.exact_total_amount,
-                        0
-                      ),
-                      pi.total_amount,
-                      0
-                    )
-                    -
-                    IFNULL(
-                      (
-                        SELECT
-                          SUM(
-                            COALESCE(
-                              NULLIF(
-                                previous_return
-                                  .exact_total_amount,
-                                0
-                              ),
-
-                              previous_return
-                                .total_amount,
-
-                              0
-                            )
-                          )
-
-                        FROM purchase_returns
-                          previous_return
-
-                        WHERE
-                          previous_return
-                            .purchase_id =
-                            pr.purchase_id
-
-                          AND
-                          previous_return
-                            .cancelled_at
-                            IS NULL
-
-                          AND (
-                            previous_return
-                              .created_at <
-                              pr.created_at
-
-                            OR (
-                              previous_return
-                                .created_at =
-                                pr.created_at
-
-                              AND
-                              previous_return.id <
-                                pr.id
-                            )
-                          )
-                      ),
-                      0
-                    )
-
-                    -
-
-                    COALESCE(
-                      NULLIF(
-                        pr.exact_total_amount,
-                        0
-                      ),
-                      pr.total_amount,
-                      0
-                    )
-                  ),
-                  0
-                )
-              )
-
-              -
-
-              COALESCE(
-                NULLIF(
-                  pr.exact_total_amount,
-                  0
-                ),
-                pr.total_amount,
-                0
-              ),
-
-              4
-            )
-          END
+      /*
+       * 3) مرتجع الشراء.
+       *
+       * المرتجع عكس الشراء،
+       * لذلك نعكس علامة فرق
+       * تسويته عند حساب أثره
+       * على الربح.
+       *
+       * مثال:
+       * مستحق لنا 40.10
+       * استلمنا 40
+       *
+       * فرق المرتجع = -0.10
+       * الأثر على تكلفة التسوية
+       * = +0.10
+       * وبالتالي الربح ينقص 0.10.
+       */
+      SELECT
+        -ROUND(
+          IFNULL(
+            pr.rounding_adjustment,
+            0
+          ),
+          2
         ) AS adjustment
 
       FROM purchase_returns pr
 
       JOIN purchase_invoices pi
-        ON pi.id = pr.purchase_id
+        ON pi.id =
+           pr.purchase_id
 
       ${purchaseReturnsWhere.whereSql}
     ) x
     `,
     )
-    .get(...purchasesWhere.params, ...purchaseReturnsWhere.params) as {
+    .get(
+      ...purchasesWhere.params,
+
+      ...supplierPaymentBatchesWhere.params,
+
+      ...purchaseReturnsWhere.params,
+    ) as {
     purchase_rounding_increase: number;
 
     purchase_rounding_decrease: number;

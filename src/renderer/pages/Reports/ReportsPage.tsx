@@ -671,19 +671,19 @@ export default function ReportsPage() {
         />
 
         <StatCard
-          title="زيادات تقريب المشتريات"
+          title="زيادة تكلفة تسويات الموردين"
           value={preciseMoney(data.summary.purchase_rounding_increase)}
           danger={Number(data.summary.purchase_rounding_increase) > 0}
         />
 
         <StatCard
-          title="تخفيضات تقريب المشتريات"
+          title="وفر تسويات الموردين"
           value={preciseMoney(data.summary.purchase_rounding_decrease)}
           success={Number(data.summary.purchase_rounding_decrease) > 0}
         />
 
         <StatCard
-          title="صافي فرق تقريب المشتريات"
+          title="صافي فرق تسويات الموردين"
           value={signedPreciseMoney(data.summary.purchase_rounding_net)}
           danger={Number(data.summary.purchase_rounding_net) > 0}
           success={Number(data.summary.purchase_rounding_net) < 0}

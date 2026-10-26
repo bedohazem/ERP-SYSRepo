@@ -1,5 +1,5 @@
 import { getDb } from '../db';
-import { roundMoney } from '../../../shared/money';
+import { roundFinancial } from '../../../shared/money';
 
 export type SupplierInput = {
   name: string;
@@ -63,7 +63,7 @@ export function getSupplierAgingSummary(
         pi.remaining_amount,
         0
       ),
-      0
+      2
     ) > 0
     `,
   ];
@@ -176,7 +176,7 @@ export function getSupplierAgingSummary(
               pi.remaining_amount,
               0
             ),
-            0
+            2
           ) AS remaining_amount,
 
           MAX(
@@ -222,15 +222,15 @@ export function getSupplierAgingSummary(
     .get(...params) as any;
 
   return {
-    days_0_30: roundMoney(row?.days_0_30),
+    days_0_30: roundFinancial(row?.days_0_30),
 
-    days_31_60: roundMoney(row?.days_31_60),
+    days_31_60: roundFinancial(row?.days_31_60),
 
-    days_61_90: roundMoney(row?.days_61_90),
+    days_61_90: roundFinancial(row?.days_61_90),
 
-    days_90_plus: roundMoney(row?.days_90_plus),
+    days_90_plus: roundFinancial(row?.days_90_plus),
 
-    total: roundMoney(row?.total),
+    total: roundFinancial(row?.total),
   };
 }
 
@@ -263,7 +263,7 @@ export function getSupplierDueSummary(
         pi.remaining_amount,
         0
       ),
-      0
+      2
     ) > 0
     `,
   ];
@@ -384,7 +384,7 @@ export function getSupplierDueSummary(
               pi.remaining_amount,
               0
             ),
-            0
+            2
           ) AS remaining_amount,
 
           date(
@@ -413,15 +413,15 @@ export function getSupplierDueSummary(
     .get(...params) as any;
 
   return {
-    overdue: roundMoney(row?.overdue),
+    overdue: roundFinancial(row?.overdue),
 
-    due_today: roundMoney(row?.due_today),
+    due_today: roundFinancial(row?.due_today),
 
-    due_soon: roundMoney(row?.due_soon),
+    due_soon: roundFinancial(row?.due_soon),
 
-    without_due_date: roundMoney(row?.without_due_date),
+    without_due_date: roundFinancial(row?.without_due_date),
 
-    total_open: roundMoney(row?.total_open),
+    total_open: roundFinancial(row?.total_open),
   };
 }
 
@@ -743,7 +743,7 @@ export function deleteSupplier(id: number) {
       }
     | undefined;
 
-  const supplierBalance = roundMoney(supplier.balance);
+  const supplierBalance = roundFinancial(supplier.balance);
 
   if (supplierBalance < 0) {
     throw new Error(
@@ -751,8 +751,12 @@ export function deleteSupplier(id: number) {
     );
   }
 
-  const outstandingAmount = roundMoney(
-    Math.max(supplierBalance, Number(openDebtRow?.open_debt || 0)),
+  const outstandingAmount = roundFinancial(
+    Math.max(
+      supplierBalance,
+
+      Number(openDebtRow?.open_debt || 0),
+    ),
   );
 
   if (outstandingAmount > 0) {

@@ -3671,6 +3671,113 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 27,
+
+        name: 'supplier-payment-settlement-details',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'supplier_payment_batches',
+            'cash_amount',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(
+            db,
+            'supplier_payment_batches',
+            'rounding_adjustment',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(
+            db,
+            'supplier_payment_batches',
+            'settle_full_balance',
+            'INTEGER NOT NULL DEFAULT 0',
+          );
+
+          /*
+           * الدفعات القديمة:
+           * ما عندناش تاريخ يثبت وجود
+           * فرق تسوية، فنعتبر الكاش
+           * مساويًا للمبلغ المحاسبي.
+           */
+          db.exec(`
+            UPDATE supplier_payment_batches
+
+            SET
+              cash_amount =
+                IFNULL(amount, 0),
+
+              rounding_adjustment = 0,
+
+              settle_full_balance = 0;
+          `);
+        },
+      },
+
+      {
+        version: 28,
+
+        name: 'purchase-return-settlement-details',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'credit_amount',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'settle_cash_refund',
+            'INTEGER NOT NULL DEFAULT 0',
+          );
+
+          /*
+           * المرتجعات القديمة التي كانت
+           * "رصيد دائن عند المورد":
+           * أي جزء لم يخفض مديونية الفاتورة
+           * نعتبره رصيدًا دائنًا محفوظًا.
+           */
+          db.exec(`
+            UPDATE purchase_returns
+
+            SET credit_amount =
+              CASE
+                WHEN refund_mode = 'credit'
+                THEN MAX(
+                  0,
+
+                  COALESCE(
+                    NULLIF(
+                      exact_total_amount,
+                      0
+                    ),
+
+                    total_amount,
+
+                    0
+                  )
+                  -
+                  IFNULL(
+                    debt_reduction_amount,
+                    0
+                  )
+                )
+
+                ELSE 0
+              END,
+
+              settle_cash_refund = 0;
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

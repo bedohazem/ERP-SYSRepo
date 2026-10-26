@@ -5,7 +5,13 @@ import { hasUserPermission } from '../../utils/permissions';
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
-import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
+import {
+  allocateProportionalAmount,
+  formatMoney,
+  roundCost,
+  roundMoney,
+  roundFinancial,
+} from '../../../shared/money';
 import {
   getUserScopedDraftKey,
   readUserScopedDraft,
@@ -50,7 +56,26 @@ type QuickProductMode = 'newProduct' | 'newVariant';
 
 type PurchaseLine = VariantRow & {
   quantity: number;
+
+  /*
+   * سعر الوحدة للعرض.
+   *
+   * في تسعير المجموعة لا يعتبر
+   * مصدر الحقيقة المحاسبي.
+   */
   unit_cost: number;
+
+  /*
+   * null = تسعير عادي بالقطعة.
+   *
+   * وجود القيمتين معًا =
+   * تسعير مجموعة.
+   *
+   * مثال:
+   * 12 قطعة = 1870
+   */
+  pricing_base_quantity?: number | null;
+  pricing_base_amount?: number | null;
 };
 
 function generateBarcodeValue() {
@@ -103,6 +128,7 @@ export default function PurchasesPage() {
   const productSearchRef = useRef<HTMLInputElement | null>(null);
 
   const [paidAmount, setPaidAmount] = useState('');
+  const [settleFullInvoice, setSettleFullInvoice] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [notes, setNotes] = useState('');
 
@@ -138,12 +164,38 @@ export default function PurchasesPage() {
   const [quickCategoryId, setQuickCategoryId] = useState<number | ''>('');
   const [quickQuantity, setQuickQuantity] = useState('1');
 
+  function getPurchaseLineGrossTotal(line: PurchaseLine) {
+    const quantity = Number(line.quantity || 0);
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return 0;
+    }
+
+    const baseQuantity = Number(line.pricing_base_quantity || 0);
+
+    const baseAmount = roundCost(Number(line.pricing_base_amount || 0));
+
+    /*
+     * تسعير مجموعة:
+     *
+     * 12 = 1870
+     * 6 = 935
+     *
+     * ولا نعتمد على:
+     * 155.83 × 12
+     */
+    if (baseQuantity > 0 && baseAmount > 0) {
+      return allocateProportionalAmount(baseAmount, quantity, baseQuantity);
+    }
+
+    return roundCost(quantity * Number(line.unit_cost || 0));
+  }
+
   const subTotal = useMemo(
     () =>
       roundCost(
         lines.reduce(
-          (sum, line) =>
-            sum + Number(line.quantity || 0) * Number(line.unit_cost || 0),
+          (sum, line) => sum + getPurchaseLineGrossTotal(line),
 
           0,
         ),
@@ -168,30 +220,102 @@ export default function PurchasesPage() {
 
   const exactTotalAmount = roundCost(Math.max(0, subTotal - discountValue));
 
-  const totalAmount = roundMoney(exactTotalAmount);
+  /*
+   * إجمالي الفاتورة نفسه
+   * لا يتم تقريبه للجنيه.
+   */
+  const totalAmount = exactTotalAmount;
 
-  const roundingAdjustment = roundCost(totalAmount - exactTotalAmount);
+  const cashPaidAmount = roundMoney(Math.max(0, Number(paidAmount || 0)));
 
-  function getDiscountedUnitCost(line: PurchaseLine) {
-    const qty = Number(line.quantity || 0);
-    const originalUnitCost = Number(line.unit_cost || 0);
-    const lineTotal = qty * originalUnitCost;
+  const paid = settleFullInvoice
+    ? totalAmount
+    : roundFinancial(Math.min(cashPaidAmount, totalAmount));
 
-    if (qty <= 0 || subTotal <= 0 || discountValue <= 0) {
-      return originalUnitCost;
-    }
+  const remaining = settleFullInvoice
+    ? 0
+    : roundFinancial(Math.max(0, totalAmount - paid));
 
-    const lineDiscount = (lineTotal / subTotal) * discountValue;
-    const discountedLineTotal = Math.max(0, lineTotal - lineDiscount);
+  const roundingAdjustment = settleFullInvoice
+    ? roundFinancial(cashPaidAmount - totalAmount)
+    : 0;
 
-    return discountedLineTotal / qty;
+  const purchaseLineFinancials = useMemo(() => {
+    let remainingDiscount = roundCost(discountValue);
+
+    let remainingBase = roundCost(subTotal);
+
+    const result = new Map<
+      number,
+      {
+        grossTotal: number;
+        discount: number;
+        netTotal: number;
+        unitCost: number;
+      }
+    >();
+
+    lines.forEach((line, index) => {
+      const quantity = Number(line.quantity || 0);
+
+      const grossTotal = getPurchaseLineGrossTotal(line);
+
+      let lineDiscount = 0;
+
+      if (remainingDiscount > 0 && remainingBase > 0) {
+        const isLast = index === lines.length - 1;
+
+        lineDiscount = isLast
+          ? Math.min(grossTotal, remainingDiscount)
+          : Math.min(
+              grossTotal,
+
+              allocateProportionalAmount(
+                remainingDiscount,
+                grossTotal,
+                remainingBase,
+              ),
+            );
+
+        lineDiscount = roundCost(lineDiscount);
+      }
+
+      const netTotal = roundCost(Math.max(0, grossTotal - lineDiscount));
+
+      remainingDiscount = roundCost(
+        Math.max(0, remainingDiscount - lineDiscount),
+      );
+
+      remainingBase = roundCost(Math.max(0, remainingBase - grossTotal));
+
+      result.set(line.variant_id, {
+        grossTotal,
+
+        discount: lineDiscount,
+
+        netTotal,
+
+        /*
+         * ده متوسط للعرض فقط.
+         * netTotal هو مصدر الحقيقة.
+         */
+        unitCost: quantity > 0 ? roundCost(netTotal / quantity) : 0,
+      });
+    });
+
+    return result;
+  }, [lines, discountValue, subTotal]);
+
+  function getPurchaseLineFinancial(line: PurchaseLine) {
+    return (
+      purchaseLineFinancials.get(line.variant_id) ?? {
+        grossTotal: 0,
+        discount: 0,
+        netTotal: 0,
+        unitCost: 0,
+      }
+    );
   }
-
-  const paid = roundMoney(
-    Math.min(Math.max(Number(paidAmount || 0), 0), totalAmount),
-  );
-
-  const remaining = roundMoney(Math.max(0, totalAmount - paid));
 
   async function loadSuppliers(searchValue = supplierSearch) {
     const result = await window.api.listSuppliers({
@@ -408,8 +532,22 @@ export default function PurchasesPage() {
         const nextLines: PurchaseLine[] = (data.items ?? []).map((item) => {
           const storedUnitCost = Number(item.unit_cost || 0);
 
-          const originalUnitCost =
-            discountFactor > 0
+          const pricingBaseQuantity =
+            item.pricing_base_quantity == null
+              ? null
+              : Number(item.pricing_base_quantity);
+
+          const pricingBaseAmount =
+            item.pricing_base_amount == null
+              ? null
+              : Number(item.pricing_base_amount);
+
+          const hasGroupPricing =
+            Number(pricingBaseQuantity) > 0 && Number(pricingBaseAmount) > 0;
+
+          const originalUnitCost = hasGroupPricing
+            ? roundCost(Number(pricingBaseAmount) / Number(pricingBaseQuantity))
+            : discountFactor > 0
               ? Number((storedUnitCost / discountFactor).toFixed(4))
               : storedUnitCost;
 
@@ -433,6 +571,9 @@ export default function PurchasesPage() {
             quantity: Number(item.quantity || 0),
 
             unit_cost: originalUnitCost,
+            pricing_base_quantity: pricingBaseQuantity,
+
+            pricing_base_amount: pricingBaseAmount,
           };
         });
 
@@ -911,7 +1052,12 @@ export default function PurchasesPage() {
 
         discount_value: discountValue,
 
-        paid_amount: roundMoney(Number(paidAmount || 0)),
+        /*
+         * نرسل الكاش الفعلي،
+         * والـBackend يحدد الجزء
+         * المحاسبي المسدد.
+         */
+        paid_amount: cashPaidAmount,
 
         payment_method: paymentMethod,
 
@@ -923,6 +1069,10 @@ export default function PurchasesPage() {
           quantity: Number(line.quantity || 0),
 
           unit_cost: Number(line.unit_cost || 0),
+
+          pricing_base_quantity: line.pricing_base_quantity ?? null,
+
+          pricing_base_amount: line.pricing_base_amount ?? null,
         })),
       };
 
@@ -938,6 +1088,8 @@ export default function PurchasesPage() {
           })
         : await window.api.createPurchaseInvoice({
             ...purchaseInput,
+
+            settle_full_balance: settleFullInvoice,
           });
 
       if (isEditing) {
@@ -964,6 +1116,7 @@ export default function PurchasesPage() {
       setProductSearch('');
       setProductResults([]);
       setPaymentMethod('store_cash');
+      setSettleFullInvoice(false);
       setDiscountType('amount');
       setDiscountDraft('');
     } catch (error) {
@@ -1352,34 +1505,170 @@ export default function PurchasesPage() {
                     </td>
 
                     <td style={tdStyle}>
-                      <input
-                        type="number"
-                        min={0}
-                        value={line.unit_cost}
-                        onChange={(e) =>
-                          updateLine(line.variant_id, {
-                            unit_cost: Math.max(0, Number(e.target.value || 0)),
-                          })
-                        }
+                      <div
                         style={{
-                          ...inputStyle,
-                          width: '130px',
-                          textAlign: 'center',
+                          display: 'grid',
+                          gap: '6px',
+                          minWidth: '170px',
                         }}
-                      />
+                      >
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.unit_cost}
+                          readOnly={
+                            Number(line.pricing_base_quantity || 0) > 0 &&
+                            Number(line.pricing_base_amount || 0) > 0
+                          }
+                          onChange={(e) =>
+                            updateLine(line.variant_id, {
+                              unit_cost: Math.max(
+                                0,
+                                Number(e.target.value || 0),
+                              ),
+
+                              /*
+                               * تعديل سعر القطعة يدويًا
+                               * يرجع البند لتسعير القطعة.
+                               */
+                              pricing_base_quantity: null,
+
+                              pricing_base_amount: null,
+                            })
+                          }
+                          style={{
+                            ...inputStyle,
+                            width: '150px',
+                            textAlign: 'center',
+                          }}
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const hasGroupPricing =
+                              Number(line.pricing_base_quantity || 0) > 0 &&
+                              Number(line.pricing_base_amount || 0) > 0;
+
+                            if (hasGroupPricing) {
+                              updateLine(line.variant_id, {
+                                pricing_base_quantity: null,
+
+                                pricing_base_amount: null,
+                              });
+
+                              return;
+                            }
+
+                            const quantity = Math.max(
+                              1,
+                              Number(line.quantity || 1),
+                            );
+
+                            const baseAmount = roundCost(
+                              quantity * Number(line.unit_cost || 0),
+                            );
+
+                            updateLine(line.variant_id, {
+                              pricing_base_quantity: quantity,
+
+                              pricing_base_amount: baseAmount,
+                            });
+                          }}
+                          style={{
+                            ...smallButtonStyle,
+                            width: '150px',
+                          }}
+                        >
+                          {Number(line.pricing_base_quantity || 0) > 0 &&
+                          Number(line.pricing_base_amount || 0) > 0
+                            ? 'إلغاء تسعير المجموعة'
+                            : 'تسعير مجموعة'}
+                        </button>
+
+                        {Number(line.pricing_base_quantity || 0) > 0 &&
+                          Number(line.pricing_base_amount || 0) > 0 && (
+                            <div
+                              style={{
+                                display: 'grid',
+                                gap: '5px',
+                              }}
+                            >
+                              <input
+                                type="number"
+                                min={0.000001}
+                                value={line.pricing_base_quantity ?? ''}
+                                placeholder="عدد قطع المجموعة"
+                                onChange={(e) => {
+                                  const baseQuantity = Math.max(
+                                    0,
+                                    Number(e.target.value || 0),
+                                  );
+
+                                  const baseAmount = Number(
+                                    line.pricing_base_amount || 0,
+                                  );
+
+                                  updateLine(line.variant_id, {
+                                    pricing_base_quantity: baseQuantity,
+
+                                    unit_cost:
+                                      baseQuantity > 0
+                                        ? roundCost(baseAmount / baseQuantity)
+                                        : 0,
+                                  });
+                                }}
+                                style={{
+                                  ...inputStyle,
+                                  width: '150px',
+                                  textAlign: 'center',
+                                }}
+                              />
+
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                value={line.pricing_base_amount ?? ''}
+                                placeholder="إجمالي المجموعة"
+                                onChange={(e) => {
+                                  const baseAmount = Math.max(
+                                    0,
+                                    Number(e.target.value || 0),
+                                  );
+
+                                  const baseQuantity = Number(
+                                    line.pricing_base_quantity || 0,
+                                  );
+
+                                  updateLine(line.variant_id, {
+                                    pricing_base_amount: baseAmount,
+
+                                    unit_cost:
+                                      baseQuantity > 0
+                                        ? roundCost(baseAmount / baseQuantity)
+                                        : 0,
+                                  });
+                                }}
+                                style={{
+                                  ...inputStyle,
+                                  width: '150px',
+                                  textAlign: 'center',
+                                }}
+                              />
+                            </div>
+                          )}
+                      </div>
                     </td>
 
                     <td
                       style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}
                     >
-                      {costMoney(getDiscountedUnitCost(line))}
+                      {costMoney(getPurchaseLineFinancial(line).unitCost)}
                     </td>
 
                     <td style={{ ...tdStyle, fontWeight: 900 }}>
-                      {costMoney(
-                        Number(line.quantity || 0) *
-                          getDiscountedUnitCost(line),
-                      )}
+                      {costMoney(getPurchaseLineFinancial(line).netTotal)}
                     </td>
 
                     <td style={tdStyle}>
@@ -1494,10 +1783,10 @@ export default function PurchasesPage() {
             </div>
 
             <div style={fieldStyle}>
-              <label style={labelStyle}>المستحق للمورد بعد التقريب</label>
+              <label style={labelStyle}>إجمالي الفاتورة</label>
 
               <input
-                value={money(totalAmount)}
+                value={costMoney(totalAmount)}
                 readOnly
                 style={{
                   ...inputStyle,
@@ -1510,6 +1799,7 @@ export default function PurchasesPage() {
               <label style={labelStyle}>المدفوع الآن</label>
               <input
                 type="number"
+                readOnly={!isEditing && settleFullInvoice}
                 step={1}
                 min={0}
                 value={paidAmount}
@@ -1517,6 +1807,51 @@ export default function PurchasesPage() {
                 style={inputStyle}
               />
             </div>
+
+            {!isEditing && (
+              <label
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                }}
+              >
+                <input
+                  type="checkbox"
+
+                  checked={settleFullInvoice}
+
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+
+                    setSettleFullInvoice(checked);
+
+                    if (checked) {
+                      setPaidAmount(String(roundMoney(totalAmount)));
+                    }
+                  }}
+                />
+                تسوية كامل الفاتورة
+              </label>
+            )}
+
+            {!isEditing && settleFullInvoice && (
+              <div
+                style={{
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  lineHeight: 1.7,
+                }}
+              >
+                سيتم إقفال {formatMoney(totalAmount)} ج.م
+                {' — '}
+                الدفع الفعلي {formatMoney(cashPaidAmount)} ج.م
+                {' — '}
+                فرق التسوية {formatMoney(roundingAdjustment)} ج.م
+              </div>
+            )}
 
             <div style={fieldStyle}>
               <label style={labelStyle}>المتبقي للمورد</label>

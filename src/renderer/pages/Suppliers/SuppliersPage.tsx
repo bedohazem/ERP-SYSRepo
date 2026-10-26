@@ -5,10 +5,10 @@ import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
 import { hasUserPermission } from '../../utils/permissions';
-import { formatMoney, roundMoney } from '../../../shared/money';
+import { formatMoney, roundFinancial, roundMoney } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
-  return roundMoney(value) > 0;
+  return roundFinancial(value) > 0;
 }
 
 type Supplier = {
@@ -81,6 +81,8 @@ export default function SuppliersPage() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [settleFullSupplierBalance, setSettleFullSupplierBalance] =
+    useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentAction, setPaymentAction] = useState<{
     mode: 'edit' | 'cancel';
@@ -88,7 +90,8 @@ export default function SuppliersPage() {
   } | null>(null);
 
   const [paymentActionAmount, setPaymentActionAmount] = useState('');
-
+  const [paymentActionSettleFullBalance, setPaymentActionSettleFullBalance] =
+    useState(false);
   const [paymentActionMethod, setPaymentActionMethod] = useState('store_cash');
 
   const [paymentActionNotes, setPaymentActionNotes] = useState('');
@@ -719,8 +722,17 @@ export default function SuppliersPage() {
 
   function openSupplierPayment(supplier: Supplier) {
     setPaymentSupplier(supplier);
-    setPaymentAmount(String(roundMoney(supplier.balance)));
+
+    /*
+     * ما نفترضش إن المستخدم
+     * يريد تسوية كاملة.
+     */
+    setPaymentAmount('');
+
+    setSettleFullSupplierBalance(false);
+
     setPaymentMethod('store_cash');
+
     setPaymentNotes('');
   }
 
@@ -729,7 +741,10 @@ export default function SuppliersPage() {
 
     const amount = Number(paymentAmount || 0);
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (
+      !Number.isFinite(amount) ||
+      (amount <= 0 && !settleFullSupplierBalance)
+    ) {
       showMessage('اكتب مبلغ صحيح');
       return;
     }
@@ -740,14 +755,22 @@ export default function SuppliersPage() {
       const result = await window.api.recordSupplierPayment({
         supplier_id: paymentSupplier.id,
         amount,
+        settle_full_balance: settleFullSupplierBalance,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
       });
 
-      showMessage(`تم تسجيل دفعة ${money(result.paid_amount)}`);
+      showMessage(
+        result.rounding_adjustment
+          ? `تم سداد ${money(result.paid_amount)} من الرصيد بكاش ${money(
+              result.cash_amount,
+            )}`
+          : `تم تسجيل دفعة ${money(result.cash_amount)}`,
+      );
 
       setPaymentSupplier(null);
       setPaymentAmount('');
+      setSettleFullSupplierBalance(false);
       setPaymentNotes('');
 
       await loadSuppliers(supplierPage);
@@ -793,6 +816,26 @@ export default function SuppliersPage() {
     );
   }
 
+  function getEditablePaymentOutstanding(entry: any) {
+    const oldAccountingAmount = roundFinancial(Number(entry?.credit || 0));
+
+    const purchaseId = Number(entry?.purchase_id || 0);
+
+    if (purchaseId) {
+      const purchase = statementData?.purchases?.find(
+        (row: any) => Number(row.id) === purchaseId,
+      );
+
+      return roundFinancial(
+        Number(purchase?.remaining_amount || 0) + oldAccountingAmount,
+      );
+    }
+
+    return roundFinancial(
+      Number(statementData?.supplier?.balance || 0) + oldAccountingAmount,
+    );
+  }
+
   function openPaymentEdit(entry: any) {
     if (!canManageStatementPayment(entry)) {
       return;
@@ -803,7 +846,11 @@ export default function SuppliersPage() {
       entry,
     });
 
-    setPaymentActionAmount(String(Number(entry.credit || 0)));
+    setPaymentActionAmount(
+      String(Number(entry.cash_amount ?? entry.credit ?? 0)),
+    );
+
+    setPaymentActionSettleFullBalance(Boolean(entry.settle_full_balance));
 
     setPaymentActionMethod(String(entry.payment_method || 'store_cash'));
 
@@ -827,6 +874,7 @@ export default function SuppliersPage() {
 
     setPaymentActionAmount('');
     setPaymentActionMethod('store_cash');
+    setPaymentActionSettleFullBalance(false);
     setPaymentActionNotes('');
     setPaymentActionReason('');
     setPaymentActionPassword('');
@@ -840,6 +888,7 @@ export default function SuppliersPage() {
     setPaymentAction(null);
     setPaymentActionAmount('');
     setPaymentActionMethod('store_cash');
+    setPaymentActionSettleFullBalance(false);
     setPaymentActionNotes('');
     setPaymentActionReason('');
     setPaymentActionPassword('');
@@ -861,8 +910,12 @@ export default function SuppliersPage() {
     if (paymentAction.mode === 'edit') {
       const amount = Number(paymentActionAmount || 0);
 
-      if (!Number.isFinite(amount) || amount <= 0) {
+      if (
+        !Number.isFinite(amount) ||
+        (amount <= 0 && !paymentActionSettleFullBalance)
+      ) {
         showMessage('اكتب مبلغ دفعة صحيح');
+
         return;
       }
     } else if (!paymentActionReason.trim()) {
@@ -884,7 +937,7 @@ export default function SuppliersPage() {
               batch_id: batchId,
 
               amount: Number(paymentActionAmount),
-
+              settle_full_balance: paymentActionSettleFullBalance,
               payment_method: paymentActionMethod,
 
               notes: paymentActionNotes.trim() || null,
@@ -1309,7 +1362,7 @@ export default function SuppliersPage() {
                     style={{
                       ...tdStyle,
                       color:
-                        roundMoney(supplier.balance) > 0
+                        roundFinancial(supplier.balance) > 0
                           ? '#fca5a5'
                           : '#6ee7b7',
                       fontWeight: 900,
@@ -1360,7 +1413,7 @@ export default function SuppliersPage() {
                       )}
 
                       {canManagePurchases &&
-                        roundMoney(supplier.balance) > 0 && (
+                        roundFinancial(supplier.balance) > 0 && (
                           <button
                             type="button"
                             onClick={() => openSupplierPayment(supplier)}
@@ -1598,7 +1651,7 @@ export default function SuppliersPage() {
               </div>
             </div>
 
-            {roundMoney(statementData.summary.balance) > 0 && (
+            {roundFinancial(statementData.summary.balance) > 0 && (
               <div
                 style={{
                   display: 'flex',
@@ -1893,16 +1946,74 @@ export default function SuppliersPage() {
                 }}
               >
                 <div style={fieldStyle}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      fontWeight: 800,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={paymentActionSettleFullBalance}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+
+                        setPaymentActionSettleFullBalance(checked);
+
+                        if (checked) {
+                          const outstanding = getEditablePaymentOutstanding(
+                            paymentAction.entry,
+                          );
+
+                          setPaymentActionAmount(
+                            String(roundMoney(outstanding)),
+                          );
+                        }
+                      }}
+                    />
+                    تسوية كامل الرصيد بعد تعديل الدفعة
+                  </label>
                   <label style={labelStyle}>المبلغ الصحيح</label>
 
                   <input
                     type="number"
                     min={0}
+
                     value={paymentActionAmount}
+
+                    readOnly={paymentActionSettleFullBalance}
+
                     onChange={(e) => setPaymentActionAmount(e.target.value)}
+
                     style={inputStyle}
                     autoFocus
                   />
+                  {paymentActionSettleFullBalance && (
+                    <div
+                      style={{
+                        color: '#94a3b8',
+                        fontSize: '12px',
+                        lineHeight: 1.7,
+                      }}
+                    >
+                      المديونية التي سيتم إقفالها:{' '}
+                      {formatMoney(
+                        getEditablePaymentOutstanding(paymentAction.entry),
+                      )}{' '}
+                      ج.م
+                      {' — '}
+                      الكاش الفعلي:{' '}
+                      {formatMoney(
+                        roundMoney(
+                          getEditablePaymentOutstanding(paymentAction.entry),
+                        ),
+                      )}{' '}
+                      ج.م
+                    </div>
+                  )}
                 </div>
 
                 <div style={fieldStyle}>
@@ -2065,18 +2176,71 @@ export default function SuppliersPage() {
                   style={{ ...inputStyle, opacity: 0.7 }}
                 />
               </div>
+              <label
+                style={{
+                  display: 'flex',
+                  gap: '10px',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settleFullSupplierBalance}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+
+                    setSettleFullSupplierBalance(checked);
+
+                    if (checked) {
+                      setPaymentAmount(
+                        String(roundMoney(paymentSupplier.balance)),
+                      );
+                    } else {
+                      setPaymentAmount('');
+                    }
+                  }}
+                />
+                تسوية كامل رصيد المورد
+              </label>
 
               <div style={fieldStyle}>
                 <label style={labelStyle}>مبلغ الدفعة</label>
                 <input
                   type="number"
                   min={0}
-                  max={paymentSupplier.balance}
+
+                  max={
+                    settleFullSupplierBalance
+                      ? undefined
+                      : paymentSupplier.balance
+                  }
+
                   value={paymentAmount}
+
+                  readOnly={settleFullSupplierBalance}
+
                   onChange={(e) => setPaymentAmount(e.target.value)}
+
                   style={inputStyle}
                   autoFocus
                 />
+
+                {settleFullSupplierBalance && (
+                  <div
+                    style={{
+                      color: '#94a3b8',
+                      fontSize: '12px',
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    سيتم إقفال الرصيد المحاسبي بالكامل بقيمة{' '}
+                    {formatMoney(paymentSupplier.balance)} ج.م، والكاش الفعلي
+                    سيكون {formatMoney(roundMoney(paymentSupplier.balance))}{' '}
+                    ج.م.
+                  </div>
+                )}
               </div>
 
               <div style={fieldStyle}>

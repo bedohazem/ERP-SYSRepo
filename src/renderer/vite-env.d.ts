@@ -2419,6 +2419,7 @@ declare global {
         discount_input?: number;
         discount_value?: number;
         paid_amount?: number;
+        settle_full_balance?: boolean;
         payment_method?: string;
         notes?: string | null;
         items: Array<{
@@ -2630,11 +2631,14 @@ declare global {
           color?: string | null;
           quantity: number;
           unit_cost: number;
+          pricing_base_quantity?: number | null;
+          pricing_base_amount?: number | null;
           line_total: number;
           current_buy_price?: number;
           sell_price?: number;
           stock?: number;
           returned_quantity?: number;
+          returned_value?: number;
           returnable_quantity?: number;
         }>;
         payments: any[];
@@ -2661,6 +2665,9 @@ declare global {
         notes?: string | null;
         refund_payment_method?: string | null;
         refund_mode?: 'cash' | 'credit' | string;
+        cash_refund_amount?: number;
+
+        settle_cash_refund?: boolean;
         items: Array<{
           purchase_item_id?: number;
           variant_id?: number;
@@ -2678,6 +2685,11 @@ declare global {
         debt_reduction_amount?: number;
         cash_refund_amount?: number;
         refund_mode?: string;
+        credit_amount?: number;
+
+        settle_cash_refund?: boolean;
+
+        supplier_balance?: number;
         refund_payment_method?: string | null;
       }>;
 
@@ -2691,7 +2703,9 @@ declare global {
 
         refund_payment_method?: string | null;
         refund_mode?: 'cash' | 'credit' | string;
+        cash_refund_amount?: number;
 
+        settle_cash_refund?: boolean;
         items: Array<{
           purchase_item_id?: number;
           variant_id?: number;
@@ -2712,7 +2726,11 @@ declare global {
         rounding_adjustment: number;
         debt_reduction_amount?: number;
         cash_refund_amount?: number;
+        credit_amount?: number;
 
+        settle_cash_refund?: boolean;
+
+        supplier_balance?: number;
         items_count: number;
         shift_id?: number | null;
       }>;
@@ -2732,7 +2750,11 @@ declare global {
         restored_total: number;
         restored_debt: number;
         reversed_cash: number;
+        reversed_credit?: number;
 
+        reversed_rounding_adjustment?: number;
+
+        supplier_balance?: number;
         items_count: number;
 
         cancelled_shift_id?: number | null;
@@ -2760,6 +2782,7 @@ declare global {
         supplier_id: number;
         purchase_id?: number | null;
         amount: number;
+        settle_full_balance?: boolean;
         payment_method?: string;
         notes?: string | null;
       }) => Promise<{
@@ -2767,6 +2790,13 @@ declare global {
         supplier_id: number;
         payment_batch_id: number;
         paid_amount: number;
+        cash_amount: number;
+
+        rounding_adjustment: number;
+
+        settle_full_balance: boolean;
+
+        remaining_supplier_balance: number;
         shift_id?: number | null;
         allocations?: Array<{
           purchase_id: number | null;
@@ -2786,6 +2816,11 @@ declare global {
         supplier_id?: number;
 
         cancelled_amount?: number;
+        cancelled_cash_amount?: number;
+
+        cancelled_rounding_adjustment?: number;
+
+        remaining_supplier_balance?: number;
         cancelled_shift_id?: number | null;
         allocations?: Array<{
           purchase_id: number;
@@ -2796,6 +2831,7 @@ declare global {
       updateSupplierPayment: (input: {
         batch_id: number;
         amount: number;
+        settle_full_balance?: boolean;
         payment_method?: string;
         notes?: string | null;
         admin_password?: string;
@@ -2810,7 +2846,15 @@ declare global {
 
         old_amount?: number;
         new_amount?: number;
+        old_cash_amount?: number;
 
+        new_cash_amount?: number;
+
+        new_rounding_adjustment?: number;
+
+        settle_full_balance?: boolean;
+
+        remaining_supplier_balance?: number;
         payment_method?: string;
         shift_id?: number | null;
         allocations?: Array<{
@@ -2834,7 +2878,11 @@ declare global {
           batch_id?: number | null;
           due_date?: string | null;
           batch_created_by?: number | null;
+          cash_amount?: number;
 
+          rounding_adjustment?: number;
+
+          settle_full_balance?: boolean;
           requires_admin_password?: boolean;
 
           is_latest_mutable_batch?: boolean;

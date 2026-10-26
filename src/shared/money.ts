@@ -131,6 +131,68 @@ export function splitAmountAcrossUnits(
   );
 }
 
+export function resolveWholeMoneySettlement(
+  requestedCashValue: unknown,
+  outstandingValue: unknown,
+) {
+  const outstandingAmount = roundFinancial(
+    Math.max(0, Number(outstandingValue ?? 0)),
+  );
+
+  const cashAmount = roundMoney(requestedCashValue);
+
+  const fullSettlementCash = roundMoney(outstandingAmount);
+
+  /*
+   * لو المبلغ المدفوع هو أقرب جنيه
+   * لكامل المديونية، نعتبر الدين
+   * مسددًا بالكامل.
+   *
+   * مثال:
+   * 981.75 دين
+   * 982 كاش
+   *
+   * accounting allocation = 981.75
+   * cash = 982
+   * rounding = +0.25
+   */
+  const isFullSettlement =
+    outstandingAmount > 0 &&
+    cashAmount > 0 &&
+    cashAmount === fullSettlementCash;
+
+  const overpayment = cashAmount > outstandingAmount && !isFullSettlement;
+
+  const allocatedAmount =
+    cashAmount <= 0 || outstandingAmount <= 0
+      ? 0
+      : isFullSettlement
+        ? outstandingAmount
+        : roundFinancial(Math.min(cashAmount, outstandingAmount));
+
+  const remainingAmount = roundFinancial(
+    Math.max(0, outstandingAmount - allocatedAmount),
+  );
+
+  const roundingAdjustment = isFullSettlement
+    ? roundFinancial(cashAmount - allocatedAmount)
+    : 0;
+
+  return {
+    cashAmount,
+
+    allocatedAmount,
+
+    remainingAmount,
+
+    roundingAdjustment,
+
+    isFullSettlement,
+
+    overpayment,
+  };
+}
+
 export function formatMoney(value: unknown): string {
   return `${roundFinancial(value)} ج.م`;
 }

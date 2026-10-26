@@ -8,10 +8,15 @@ import { useNavigate } from 'react-router-dom';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
-import { formatMoney, roundCost, roundMoney } from '../../../shared/money';
+import {
+  formatMoney,
+  roundCost,
+  roundFinancial,
+  roundMoney,
+} from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
-  return roundMoney(value) > 0;
+  return roundFinancial(value) > 0;
 }
 
 type PurchaseRow = {
@@ -95,6 +100,8 @@ export default function PurchaseHistoryPage() {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [paymentNotes, setPaymentNotes] = useState('');
+  const [settleFullPurchaseBalance, setSettleFullPurchaseBalance] =
+    useState(false);
   const [savingPayment, setSavingPayment] = useState(false);
 
   const [returnPurchase, setReturnPurchase] = useState<any | null>(null);
@@ -106,11 +113,16 @@ export default function PurchaseHistoryPage() {
   const [returnRefundMode, setReturnRefundMode] = useState<'cash' | 'credit'>(
     'cash',
   );
+
+  const [returnSettleCashRefund, setReturnSettleCashRefund] = useState(false);
   const [savingReturn, setSavingReturn] = useState(false);
 
   const [editingReturnId, setEditingReturnId] = useState<number | null>(null);
 
   const [editingReturnOriginalQuantities, setEditingReturnOriginalQuantities] =
+    useState<Record<number, number>>({});
+
+  const [editingReturnOriginalValues, setEditingReturnOriginalValues] =
     useState<Record<number, number>>({});
 
   const [
@@ -273,7 +285,7 @@ export default function PurchaseHistoryPage() {
       const quantities: Record<number, string> = {};
 
       const originalQuantities: Record<number, number> = {};
-
+      const originalValues: Record<number, number> = {};
       for (const item of returnData.items ?? []) {
         const purchaseItemId = Number(item.purchase_item_id);
 
@@ -282,6 +294,9 @@ export default function PurchaseHistoryPage() {
         quantities[purchaseItemId] = String(quantity);
 
         originalQuantities[purchaseItemId] = quantity;
+        originalValues[purchaseItemId] = roundCost(
+          Number(item.line_total || 0),
+        );
       }
 
       setReturnPurchase(purchaseData);
@@ -289,7 +304,7 @@ export default function PurchaseHistoryPage() {
       setReturnQuantities(quantities);
 
       setEditingReturnOriginalQuantities(originalQuantities);
-
+      setEditingReturnOriginalValues(originalValues);
       setEditingReturnOriginalDebtReduction(
         Number(returnData.return?.debt_reduction_amount || 0),
       );
@@ -299,7 +314,7 @@ export default function PurchaseHistoryPage() {
       setReturnRefundMode(
         returnData.return?.refund_mode === 'credit' ? 'credit' : 'cash',
       );
-
+      setReturnSettleCashRefund(Boolean(returnData.return?.settle_cash_refund));
       setReturnRefundAccount(
         returnData.return?.refund_payment_method ||
           purchaseData.purchase?.payment_method ||
@@ -323,7 +338,7 @@ export default function PurchaseHistoryPage() {
       return;
     }
 
-    const remaining = roundMoney(row.remaining_amount);
+    const remaining = Number(row.remaining_amount || 0);
 
     if (remaining <= 0) {
       showMessage('الفاتورة مدفوعة بالكامل');
@@ -331,7 +346,9 @@ export default function PurchaseHistoryPage() {
     }
 
     setPaymentPurchase(row);
-    setPaymentAmount(String(remaining));
+    setPaymentAmount('');
+
+    setSettleFullPurchaseBalance(false);
     setPaymentMethod(row.payment_method || 'store_cash');
     setPaymentNotes('');
   }
@@ -341,7 +358,10 @@ export default function PurchaseHistoryPage() {
 
     const amount = Number(paymentAmount || 0);
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (
+      !Number.isFinite(amount) ||
+      (amount <= 0 && !settleFullPurchaseBalance)
+    ) {
       showMessage('اكتب مبلغ صحيح');
       return;
     }
@@ -353,6 +373,7 @@ export default function PurchaseHistoryPage() {
         supplier_id: paymentPurchase.supplier_id,
         purchase_id: paymentPurchase.id,
         amount,
+        settle_full_balance: settleFullPurchaseBalance,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
       });
@@ -361,6 +382,7 @@ export default function PurchaseHistoryPage() {
 
       setPaymentPurchase(null);
       setPaymentAmount('');
+      setSettleFullPurchaseBalance(false);
       setPaymentNotes('');
 
       await loadPurchases(purchasePage);
@@ -436,6 +458,8 @@ export default function PurchaseHistoryPage() {
     setEditingReturnId(null);
     setEditingReturnOriginalQuantities({});
     setEditingReturnOriginalDebtReduction(0);
+    setEditingReturnOriginalValues({});
+    setReturnSettleCashRefund(false);
     setReturnEditReason('');
     setReturnAdminPassword('');
     if (row.status === 'cancelled' || row.payment_status === 'cancelled') {
@@ -473,6 +497,9 @@ export default function PurchaseHistoryPage() {
     setReturnRefundAccount('store_cash');
 
     setReturnRefundMode('cash');
+    setEditingReturnOriginalValues({});
+
+    setReturnSettleCashRefund(false);
 
     setEditingReturnId(null);
 
@@ -547,7 +574,11 @@ export default function PurchaseHistoryPage() {
         refund_payment_method: returnRefundAccount,
 
         refund_mode: returnRefundMode,
+        cash_refund_amount:
+          returnRefundMode === 'cash' ? purchaseReturnCashRefund : 0,
 
+        settle_cash_refund:
+          returnRefundMode === 'cash' ? returnSettleCashRefund : false,
         items,
       };
 
@@ -564,7 +595,9 @@ export default function PurchaseHistoryPage() {
             refund_payment_method: returnInput.refund_payment_method,
 
             refund_mode: returnInput.refund_mode,
+            cash_refund_amount: returnInput.cash_refund_amount,
 
+            settle_cash_refund: returnInput.settle_cash_refund,
             items: returnInput.items,
           })
         : await window.api.createPurchaseReturn({
@@ -608,99 +641,89 @@ export default function PurchaseHistoryPage() {
     }
   }
 
+  function getPurchaseReturnLineTotal(item: any) {
+    const itemId = Number(item.id);
+
+    const requestedQuantity = Number(returnQuantities[itemId] || 0);
+
+    if (!Number.isFinite(requestedQuantity) || requestedQuantity <= 0) {
+      return 0;
+    }
+
+    const originalQuantity = Number(item.quantity || 0);
+
+    const originalLineTotal = roundCost(Number(item.line_total || 0));
+
+    if (originalQuantity <= 0 || originalLineTotal <= 0) {
+      return 0;
+    }
+
+    /*
+     * عند تعديل مرتجع:
+     * المرتجع القديم ما زال ظاهرًا
+     * في getPurchaseInvoice،
+     * لذلك نستبعد كميته وقيمته
+     * من "السابق".
+     */
+    const editingQuantity = Number(
+      editingReturnOriginalQuantities[itemId] || 0,
+    );
+
+    const editingValue = roundCost(
+      Number(editingReturnOriginalValues[itemId] || 0),
+    );
+
+    const alreadyReturnedQuantity = Math.max(
+      0,
+
+      Number(item.returned_quantity || 0) - editingQuantity,
+    );
+
+    const alreadyReturnedValue = roundCost(
+      Math.max(
+        0,
+
+        Number(item.returned_value || 0) - editingValue,
+      ),
+    );
+
+    const cumulativeQuantity = alreadyReturnedQuantity + requestedQuantity;
+
+    const cumulativeValue =
+      cumulativeQuantity >= originalQuantity - 0.000001
+        ? originalLineTotal
+        : roundCost(
+            (originalLineTotal * cumulativeQuantity) / originalQuantity,
+          );
+
+    return roundCost(
+      Math.max(
+        0,
+
+        cumulativeValue - alreadyReturnedValue,
+      ),
+    );
+  }
+
   const purchaseReturnExactTotal = returnPurchase
     ? roundCost(
         (returnPurchase.items ?? []).reduce(
-          (sum: number, item: any) => {
-            const quantity = Number(returnQuantities[item.id] || 0);
-
-            return sum + roundCost(quantity * Number(item.unit_cost || 0));
-          },
+          (sum: number, item: any) => sum + getPurchaseReturnLineTotal(item),
 
           0,
         ),
       )
     : 0;
 
-  const purchaseReturnOriginalExact = returnPurchase
-    ? roundCost(
-        Number(
-          returnPurchase.purchase?.exact_total_amount ??
-            returnPurchase.purchase?.total_amount ??
-            0,
-        ),
-      )
-    : 0;
-
-  const purchaseReturnPreviousExact = returnPurchase
-    ? roundCost(
-        (returnPurchase.returns ?? []).reduce(
-          (sum: number, purchaseReturn: any) => {
-            if (purchaseReturn.cancelled_at) {
-              return sum;
-            }
-
-            /*
-             * أثناء تعديل آخر مرتجع
-             * السيرفر بيلغيه الأول،
-             * لذلك لا نحسبه ضمن
-             * المرتجعات السابقة هنا.
-             */
-            if (
-              editingReturnId &&
-              Number(purchaseReturn.id) === Number(editingReturnId)
-            ) {
-              return sum;
-            }
-
-            return (
-              sum +
-              Number(
-                purchaseReturn.exact_total_amount ??
-                  purchaseReturn.total_amount ??
-                  0,
-              )
-            );
-          },
-
-          0,
-        ),
-      )
-    : 0;
-
-  const purchaseReturnExactBefore = roundCost(
-    Math.max(
-      0,
-
-      purchaseReturnOriginalExact - purchaseReturnPreviousExact,
-    ),
-  );
-
-  const purchaseReturnExactAfter = roundCost(
-    Math.max(
-      0,
-
-      purchaseReturnExactBefore - purchaseReturnExactTotal,
-    ),
-  );
-
-  const purchaseReturnTotal = returnPurchase
-    ? roundMoney(
-        Math.max(
-          0,
-
-          roundMoney(purchaseReturnExactBefore) -
-            roundMoney(purchaseReturnExactAfter),
-        ),
-      )
-    : 0;
-
-  const purchaseReturnRoundingAdjustment = roundCost(
-    purchaseReturnTotal - purchaseReturnExactTotal,
-  );
-
+  /*
+   * المديونية التي كانت متاحة
+   * قبل المرتجع الحالي.
+   *
+   * أثناء التعديل نضيف أثر
+   * المرتجع القديم مرة أخرى.
+   */
   const purchaseReturnDebtBase = returnPurchase
-    ? roundMoney(
+    ? roundFinancial(
         Math.min(
           Math.max(
             0,
@@ -709,29 +732,46 @@ export default function PurchaseHistoryPage() {
               Number(returnPurchase.purchase?.paid_amount || 0),
           ),
 
-          Number(returnPurchase.purchase?.remaining_amount || 0) +
-            (editingReturnId ? editingReturnOriginalDebtReduction : 0),
+          Math.max(
+            0,
+
+            Number(returnPurchase.purchase?.remaining_amount || 0) +
+              (editingReturnId ? editingReturnOriginalDebtReduction : 0),
+          ),
         ),
       )
     : 0;
 
-  const purchaseReturnDebtReduction = returnPurchase
-    ? roundMoney(
-        Math.min(
-          purchaseReturnTotal,
+  const purchaseReturnDebtReduction = roundFinancial(
+    Math.min(purchaseReturnExactTotal, purchaseReturnDebtBase),
+  );
 
-          purchaseReturnDebtBase,
-        ),
-      )
-    : 0;
-
-  const purchaseReturnCashRefund = roundMoney(
+  /*
+   * الجزء الذي أصبح حقًا لنا
+   * بعد تصفير/تقليل المديونية.
+   */
+  const purchaseReturnRefundable = roundFinancial(
     Math.max(
       0,
 
-      purchaseReturnTotal - purchaseReturnDebtReduction,
+      purchaseReturnExactTotal - purchaseReturnDebtReduction,
     ),
   );
+
+  const purchaseReturnCashRefund =
+    returnRefundMode === 'cash'
+      ? returnSettleCashRefund
+        ? roundMoney(purchaseReturnRefundable)
+        : purchaseReturnRefundable
+      : 0;
+
+  const purchaseReturnCreditAmount =
+    returnRefundMode === 'credit' ? purchaseReturnRefundable : 0;
+
+  const purchaseReturnRoundingAdjustment =
+    returnRefundMode === 'cash' && returnSettleCashRefund
+      ? roundFinancial(purchaseReturnCashRefund - purchaseReturnRefundable)
+      : 0;
 
   const hasPurchaseHistoryFilters =
     Boolean(search.trim()) ||
@@ -1509,7 +1549,7 @@ export default function PurchaseHistoryPage() {
               />
 
               <InfoCard
-                title="المستحق بعد التقريب"
+                title="إجمالي الفاتورة المستحق"
                 value={money(
                   selectedPurchase.purchase.settlement_total_amount ??
                     selectedPurchase.purchase.total_amount,
@@ -2128,27 +2168,42 @@ export default function PurchaseHistoryPage() {
                 }}
               >
                 <InfoCard
-                  title="قيمة المرتجع الفعلية"
+                  title="قيمة المرتجع"
                   value={costMoney(purchaseReturnExactTotal)}
                 />
 
                 <InfoCard
-                  title="فرق التقريب"
-                  value={signedCostMoney(purchaseReturnRoundingAdjustment)}
+                  title="يخصم من مديونية المورد"
+                  value={costMoney(purchaseReturnDebtReduction)}
                 />
 
                 <InfoCard
-                  title="تسوية المورد بعد التقريب"
-                  value={money(purchaseReturnTotal)}
+                  title="المستحق من المورد"
+                  value={costMoney(purchaseReturnRefundable)}
                 />
-                <InfoCard
-                  title="يخصم من مديونية المورد"
-                  value={money(purchaseReturnDebtReduction)}
-                />
-                <InfoCard
-                  title="فرق راجع من المورد"
-                  value={money(purchaseReturnCashRefund)}
-                />
+
+                {purchaseReturnRefundable > 0 &&
+                  returnRefundMode === 'cash' && (
+                    <InfoCard
+                      title="المبلغ المستلم فعليًا"
+                      value={costMoney(purchaseReturnCashRefund)}
+                    />
+                  )}
+
+                {purchaseReturnRefundable > 0 &&
+                  returnRefundMode === 'credit' && (
+                    <InfoCard
+                      title="رصيد دائن عند المورد"
+                      value={costMoney(purchaseReturnCreditAmount)}
+                    />
+                  )}
+
+                {purchaseReturnRoundingAdjustment !== 0 && (
+                  <InfoCard
+                    title="فرق التسوية"
+                    value={signedCostMoney(purchaseReturnRoundingAdjustment)}
+                  />
+                )}
               </div>
 
               {purchaseReturnCashRefund > 0 && (
@@ -2163,9 +2218,15 @@ export default function PurchaseHistoryPage() {
                     <label style={labelStyle}>طريقة فرق المرتجع</label>
                     <select
                       value={returnRefundMode}
-                      onChange={(e) =>
-                        setReturnRefundMode(e.target.value as 'cash' | 'credit')
-                      }
+                      onChange={(e) => {
+                        const mode = e.target.value as 'cash' | 'credit';
+
+                        setReturnRefundMode(mode);
+
+                        if (mode === 'credit') {
+                          setReturnSettleCashRefund(false);
+                        }
+                      }}
                       style={inputStyle}
                     >
                       <option value="cash">المورد رجع فلوس الآن</option>
@@ -2187,6 +2248,41 @@ export default function PurchaseHistoryPage() {
                           </option>
                         ))}
                       </select>
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '10px',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+
+                          checked={returnSettleCashRefund}
+
+                          onChange={(e) =>
+                            setReturnSettleCashRefund(e.target.checked)
+                          }
+                        />
+                        تسوية كامل رد المورد لأقرب جنيه
+                      </label>
+                      <div
+                        style={{
+                          color: '#94a3b8',
+                          fontSize: '12px',
+                          lineHeight: 1.7,
+                        }}
+                      >
+                        المستحق من المورد: {costMoney(purchaseReturnRefundable)}{' '}
+                        ج.م
+                        {' — '}
+                        سيُستلم فعليًا: {costMoney(
+                          purchaseReturnCashRefund,
+                        )}{' '}
+                        ج.م
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2209,6 +2305,7 @@ export default function PurchaseHistoryPage() {
                       <th style={thStyle}>المتاح للمرتجع</th>
                       <th style={thStyle}>كمية المرتجع</th>
                       <th style={thStyle}>سعر الشراء</th>
+                      <th style={thStyle}>قيمة المرتجع</th>
                     </tr>
                   </thead>
 
@@ -2269,6 +2366,9 @@ export default function PurchaseHistoryPage() {
                             />
                           </td>
                           <td style={tdStyle}>{costMoney(item.unit_cost)}</td>
+                          <td style={tdStyle}>
+                            {costMoney(getPurchaseReturnLineTotal(item))}
+                          </td>
                         </tr>
                       );
                     })}
@@ -2456,14 +2556,51 @@ export default function PurchaseHistoryPage() {
                 />
               </div>
 
+              <label
+                style={{
+                  display: 'flex',
+                  gap: '10px',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={settleFullPurchaseBalance}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+
+                    setSettleFullPurchaseBalance(checked);
+
+                    setPaymentAmount(
+                      checked
+                        ? String(roundMoney(paymentPurchase.remaining_amount))
+                        : '',
+                    );
+                  }}
+                />
+                تسوية كامل المتبقي على الفاتورة
+              </label>
+
               <div style={fieldStyle}>
                 <label style={labelStyle}>مبلغ الدفعة</label>
                 <input
                   type="number"
                   min={0}
-                  max={paymentPurchase.remaining_amount}
+
+                  max={
+                    settleFullPurchaseBalance
+                      ? undefined
+                      : paymentPurchase.remaining_amount
+                  }
+
                   value={paymentAmount}
+
+                  readOnly={settleFullPurchaseBalance}
+
                   onChange={(e) => setPaymentAmount(e.target.value)}
+
                   style={inputStyle}
                   autoFocus
                 />
