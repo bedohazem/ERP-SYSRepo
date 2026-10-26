@@ -226,7 +226,9 @@ export default function PurchasesPage() {
    */
   const totalAmount = exactTotalAmount;
 
-  const cashPaidAmount = roundMoney(Math.max(0, Number(paidAmount || 0)));
+  const cashPaidAmount = settleFullInvoice
+    ? roundMoney(totalAmount)
+    : roundMoney(Math.max(0, Number(paidAmount || 0)));
 
   const paid = settleFullInvoice
     ? totalAmount
@@ -588,7 +590,25 @@ export default function PurchasesPage() {
 
         setLines(nextLines);
 
-        setPaidAmount(String(Number(purchase.paid_amount || 0)));
+        const storedPaid = roundFinancial(Number(purchase.paid_amount || 0));
+
+        const storedAdjustment = roundFinancial(
+          Number(purchase.rounding_adjustment || 0),
+        );
+
+        const hadSettlement =
+          Number(purchase.remaining_amount || 0) <= 0 &&
+          Math.abs(storedAdjustment) > 0.0001;
+
+        setSettleFullInvoice(hadSettlement);
+
+        setPaidAmount(
+          String(
+            hadSettlement
+              ? roundFinancial(storedPaid + storedAdjustment)
+              : storedPaid,
+          ),
+        );
 
         setPaymentMethod(purchase.payment_method || 'store_cash');
 
@@ -1080,6 +1100,7 @@ export default function PurchasesPage() {
         ? await window.api.updatePurchaseInvoice({
             ...purchaseInput,
 
+            settle_full_balance: settleFullInvoice,
             purchase_id: editPurchaseId,
 
             reason: editReason.trim(),
@@ -1799,45 +1820,43 @@ export default function PurchasesPage() {
               <label style={labelStyle}>المدفوع الآن</label>
               <input
                 type="number"
-                readOnly={!isEditing && settleFullInvoice}
+                readOnly={settleFullInvoice}
                 step={1}
                 min={0}
-                value={paidAmount}
+                value={settleFullInvoice ? String(cashPaidAmount) : paidAmount}
                 onChange={(e) => setPaidAmount(e.target.value)}
                 style={inputStyle}
               />
             </div>
 
-            {!isEditing && (
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  cursor: 'pointer',
-                  fontWeight: 800,
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                cursor: 'pointer',
+                fontWeight: 800,
+              }}
+            >
+              <input
+                type="checkbox"
+
+                checked={settleFullInvoice}
+
+                onChange={(e) => {
+                  const checked = e.target.checked;
+
+                  setSettleFullInvoice(checked);
+
+                  if (checked) {
+                    setPaidAmount(String(roundMoney(totalAmount)));
+                  }
                 }}
-              >
-                <input
-                  type="checkbox"
+              />
+              تسوية كامل الفاتورة
+            </label>
 
-                  checked={settleFullInvoice}
-
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-
-                    setSettleFullInvoice(checked);
-
-                    if (checked) {
-                      setPaidAmount(String(roundMoney(totalAmount)));
-                    }
-                  }}
-                />
-                تسوية كامل الفاتورة
-              </label>
-            )}
-
-            {!isEditing && settleFullInvoice && (
+            {settleFullInvoice && (
               <div
                 style={{
                   color: '#94a3b8',

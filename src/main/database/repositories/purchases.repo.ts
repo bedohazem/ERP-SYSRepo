@@ -140,6 +140,7 @@ export type UpdatePurchaseInput = {
   supplier_id: number;
 
   paid_amount?: number;
+  settle_full_balance?: boolean;
   sub_total?: number;
 
   discount_type?: 'amount' | 'percent' | string;
@@ -1467,9 +1468,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       ),
     );
 
-    const totalAmount = roundMoney(exactTotalAmount);
-
-    const roundingAdjustment = roundCost(totalAmount - exactTotalAmount);
+    const totalAmount = roundFinancial(exactTotalAmount);
 
     const rawPaidAmount = Number(input.paid_amount || 0);
 
@@ -1477,9 +1476,55 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       throw new Error('المبلغ المدفوع غير صحيح');
     }
 
-    const paidAmount = roundMoney(Math.min(rawPaidAmount, totalAmount));
+    /*
+     * أي دفع فعلي عندنا
+     * بالجنيه الصحيح.
+     */
+    const cashPaidAmount = roundMoney(rawPaidAmount);
 
-    const remainingAmount = roundMoney(Math.max(0, totalAmount - paidAmount));
+    const settleFullBalance = Boolean(input.settle_full_balance);
+
+    let paidAmount = 0;
+
+    let remainingAmount = totalAmount;
+
+    let roundingAdjustment = 0;
+
+    if (settleFullBalance) {
+      const settlement = resolveWholeMoneySettlement(
+        cashPaidAmount,
+        totalAmount,
+      );
+
+      const zeroCashSettlement =
+        cashPaidAmount === 0 && roundMoney(totalAmount) === 0;
+
+      if (!settlement.isFullSettlement && !zeroCashSettlement) {
+        throw new Error(
+          `لتسوية كامل الفاتورة يجب أن يكون المبلغ المدفوع ${roundMoney(
+            totalAmount,
+          )} ج.م`,
+        );
+      }
+
+      paidAmount = totalAmount;
+
+      remainingAmount = 0;
+
+      roundingAdjustment = roundFinancial(cashPaidAmount - totalAmount);
+    } else {
+      if (cashPaidAmount > totalAmount + 0.0001) {
+        throw new Error(
+          'المبلغ المدفوع أكبر من المستحق؛ فعّل تسوية كامل الفاتورة إذا كنت تريد إقفال فرق القروش',
+        );
+      }
+
+      paidAmount = roundFinancial(Math.min(cashPaidAmount, totalAmount));
+
+      remainingAmount = roundFinancial(Math.max(0, totalAmount - paidAmount));
+
+      roundingAdjustment = 0;
+    }
 
     const paymentStatus = normalizePaymentStatus(
       totalAmount,
@@ -1495,11 +1540,24 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         : Math.max(0, roundCost(discountInputRaw))
       : 0;
 
-    const oldPaidAmount = roundMoney(Number(purchase.paid_amount || 0));
+    const oldPaidAmount = roundFinancial(Number(purchase.paid_amount || 0));
 
-    const oldRemainingAmount = roundMoney(
+    const oldRemainingAmount = roundFinancial(
       Number(purchase.remaining_amount || 0),
     );
+
+    const oldRoundingAdjustment = roundFinancial(
+      Number(purchase.rounding_adjustment || 0),
+    );
+
+    /*
+     * الكاش الحقيقي الذي خرج
+     * وقت الفاتورة القديمة.
+     */
+    const oldCashAmount =
+      oldPaidAmount > 0
+        ? roundFinancial(Math.max(0, oldPaidAmount + oldRoundingAdjustment))
+        : 0;
 
     const preserveDueDate =
       oldRemainingAmount > 0 && oldSupplierId === nextSupplierId;
@@ -1524,7 +1582,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       );
     }
 
-    const oldTotalAmount = roundMoney(Number(purchase.total_amount || 0));
+    const oldTotalAmount = roundFinancial(Number(purchase.total_amount || 0));
 
     const oldPaymentMethod = resolveCashAccount(
       purchase.payment_method || 'cash',
@@ -1535,7 +1593,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     );
 
     const oldFinancialShift =
-      oldPaidAmount > 0
+      oldCashAmount > 0
         ? resolveFinancialOperationShift(
             actorId,
             [oldPaymentMethod],
@@ -1544,7 +1602,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         : null;
 
     const newFinancialShift =
-      paidAmount > 0
+      cashPaidAmount > 0
         ? resolveFinancialOperationShift(
             actorId,
             [newPaymentMethod],
@@ -1627,13 +1685,13 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
      * عكس دفعة إنشاء الفاتورة القديمة.
      * الحركة الأصلية تظل محفوظة.
      */
-    if (oldPaidAmount > 0) {
+    if (oldCashAmount > 0) {
       createCashMovement({
         type: 'supplier_payment',
 
         direction: 'in',
 
-        amount: oldPaidAmount,
+        amount: oldCashAmount,
 
         payment_method: oldPaymentMethod,
 
@@ -1752,15 +1810,8 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
                 total_purchased,
                 0
               ) - ?,
-              0
+              2
             ),
-            0
-          ),
-
-        balance =
-          ROUND(
-            IFNULL(balance, 0)
-            - ?,
             0
           ),
 
@@ -1769,7 +1820,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       WHERE id = ?
       `,
-    ).run(oldTotalAmount, oldRemainingAmount, oldSupplierId);
+    ).run(oldTotalAmount, oldSupplierId);
 
     db.prepare(
       `
@@ -1923,14 +1974,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
               total_purchased,
               0
             ) + ?,
-            0
-          ),
-
-        balance =
-          ROUND(
-            IFNULL(balance, 0)
-            + ?,
-            0
+            2
           ),
 
         updated_at =
@@ -1938,7 +1982,13 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       WHERE id = ?
       `,
-    ).run(totalAmount, remainingAmount, nextSupplierId);
+    ).run(totalAmount, nextSupplierId);
+
+    if (oldSupplierId !== nextSupplierId) {
+      rebuildSupplierBalance(db, oldSupplierId);
+    }
+
+    const supplierBalance = rebuildSupplierBalance(db, nextSupplierId);
 
     if (paidAmount > 0) {
       db.prepare(
@@ -1976,7 +2026,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
         direction: 'out',
 
-        amount: paidAmount,
+        amount: cashPaidAmount,
 
         payment_method: newPaymentMethod,
 

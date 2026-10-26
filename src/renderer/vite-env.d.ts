@@ -2572,6 +2572,7 @@ declare global {
         discount_value?: number;
 
         paid_amount?: number;
+        settle_full_balance?: boolean;
         payment_method?: string;
 
         notes?: string | null;
