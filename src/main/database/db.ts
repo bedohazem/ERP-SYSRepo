@@ -3848,6 +3848,16 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 30,
+
+        name: 'purchase-item-entered-unit-cost',
+
+        up: () => {
+          safeAddColumn(db, 'purchase_items', 'entered_unit_cost', 'REAL');
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

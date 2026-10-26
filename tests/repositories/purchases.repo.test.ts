@@ -4447,7 +4447,7 @@ describe('purchases repository', () => {
 
           quantity: 12,
 
-          unit_cost: 155.8333333333,
+          unit_cost: 155.8333333333333,
         },
       ],
     });
@@ -4460,7 +4460,9 @@ describe('purchases repository', () => {
 
     expect(Number(invoice.purchase.total_amount)).toBe(1870);
 
-    expect(Number(invoice.items[0].unit_cost)).toBe(155.83);
+    expect(Number(invoice.items[0].entered_unit_cost)).toBe(155.8333333333333);
+
+    expect(Number(invoice.items[0].unit_cost)).toBe(155.8333333333333);
 
     expect(Number(invoice.items[0].line_total)).toBe(1870);
 
@@ -4469,7 +4471,106 @@ describe('purchases repository', () => {
     expect(Number(state.stock)).toBe(12);
 
     expect(Number(state.inventory_value)).toBe(1870);
-
+    expect(Number(state.buy_price)).toBe(155.8333333333333);
     expect(Number(state.average_cost)).toBe(155.83);
+  });
+
+  it('calculates purchase invoice total from full unit prices before line rounding', () => {
+    const supplierId = createTestSupplier();
+
+    const first = seedPurchaseProduct();
+
+    createProduct({
+      name: 'Second Precision Product',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'PURCHASE002',
+
+          size: 'L',
+
+          color: 'Blue',
+
+          buy_price: 10,
+
+          sell_price: 20,
+
+          min_stock: 5,
+
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const second = getVariantByBarcode('PURCHASE002') as
+      PurchaseVariantTestRow | undefined;
+
+    if (!second) {
+      throw new Error('Failed to seed second precision variant');
+    }
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: first.variant_id,
+
+          quantity: 3,
+
+          unit_cost: 10.005,
+        },
+
+        {
+          variant_id: second.variant_id,
+
+          quantity: 3,
+
+          unit_cost: 10.005,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    /*
+     * الحقيقة:
+     *
+     * 3 × 10.005 = 30.015
+     * 3 × 10.005 = 30.015
+     *
+     * المجموع الحقيقي = 60.03
+     *
+     * وليس:
+     *
+     * 30.02 + 30.02 = 60.04
+     */
+    expect(Number(invoice.purchase.sub_total)).toBe(60.03);
+
+    expect(Number(invoice.purchase.total_amount)).toBe(60.03);
+
+    expect(Number(invoice.items[0].entered_unit_cost)).toBe(10.005);
+
+    expect(Number(invoice.items[1].entered_unit_cost)).toBe(10.005);
+
+    const allocatedLines = invoice.items.reduce(
+      (sum: number, item: any) => sum + Number(item.line_total || 0),
+
+      0,
+    );
+
+    expect(Number(allocatedLines.toFixed(2))).toBe(60.03);
+
+    expect(getSupplierBalance(supplierId)).toBe(60.03);
   });
 });

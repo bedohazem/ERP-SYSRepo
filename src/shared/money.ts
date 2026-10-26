@@ -102,6 +102,50 @@ export function allocateProportionalAmount(
   return roundCost((total * quantity) / totalQuantity);
 }
 
+export function allocateRoundedTotalAcrossWeights(
+  totalValue: unknown,
+  weightInputs: unknown[],
+): number[] {
+  const total = roundCost(totalValue);
+
+  const weights = weightInputs.map((value) => {
+    const weight = Number(value ?? 0);
+
+    return Number.isFinite(weight) && weight > 0 ? weight : 0;
+  });
+
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+  if (total <= 0 || totalWeight <= 0 || weights.length === 0) {
+    return weights.map(() => 0);
+  }
+
+  let remainingTotal = total;
+  let remainingWeight = totalWeight;
+
+  return weights.map((weight, index) => {
+    if (weight <= 0) {
+      return 0;
+    }
+
+    const isLast = index === weights.length - 1;
+
+    const allocated = isLast
+      ? remainingTotal
+      : allocateProportionalAmount(remainingTotal, weight, remainingWeight);
+
+    const safeAllocated = roundCost(
+      Math.max(0, Math.min(remainingTotal, allocated)),
+    );
+
+    remainingTotal = roundCost(Math.max(0, remainingTotal - safeAllocated));
+
+    remainingWeight = Math.max(0, remainingWeight - weight);
+
+    return safeAllocated;
+  });
+}
+
 export function splitAmountAcrossUnits(
   totalValue: unknown,
   unitCountInput: unknown,

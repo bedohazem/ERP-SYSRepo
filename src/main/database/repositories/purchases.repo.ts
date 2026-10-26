@@ -6,6 +6,7 @@ import {
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
   allocateProportionalAmount,
+  allocateRoundedTotalAcrossWeights,
   formatMoney,
   resolveWholeMoneySettlement,
   roundCost,
@@ -393,8 +394,10 @@ function resolvePurchaseItemBasePricing(
     item.pricing_base_amount !== null && item.pricing_base_amount !== undefined;
 
   /*
-   * لازم الاتنين موجودين مع بعض
-   * أو الاتنين null.
+   * دعم Legacy فقط لفواتير
+   * تسعير المجموعة القديمة.
+   *
+   * الفواتير الجديدة لن تستخدمه.
    */
   if (hasBaseQuantity !== hasBaseAmount) {
     throw new Error(`بيانات تسعير المجموعة غير مكتملة للصنف ${productName}`);
@@ -419,38 +422,62 @@ function resolvePurchaseItemBasePricing(
       pricingBaseQuantity,
     );
 
-    if (rawLineTotal <= 0) {
-      throw new Error(`إجمالي شراء غير صحيح للصنف ${productName}`);
+    const baseUnitCost = pricingBaseAmount / pricingBaseQuantity;
+
+    if (
+      !Number.isFinite(baseUnitCost) ||
+      baseUnitCost <= 0 ||
+      rawLineTotal <= 0
+    ) {
+      throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
     }
 
     return {
       quantity,
 
+      /*
+       * Legacy compatibility only.
+       */
       pricingBaseQuantity,
       pricingBaseAmount,
 
       /*
-       * سعر الوحدة الظاهر فقط.
-       * مصدر الحقيقة هو rawLineTotal.
+       * السعر الكامل بدون تقريب
+       * لقرشين.
        */
-      baseUnitCost: roundCost(rawLineTotal / quantity),
+      baseUnitCost,
+
+      enteredUnitCost: baseUnitCost,
 
       rawLineTotal,
     };
   }
 
+  /*
+   * النظام الجديد:
+   *
+   * سعر الشراء كما كتبه
+   * المستخدم بالضبط.
+   */
   const rawUnitCost = Number(item.unit_cost);
 
   if (!Number.isFinite(rawUnitCost) || rawUnitCost <= 0) {
     throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
   }
 
-  const rawLineTotal = roundCost(quantity * rawUnitCost);
+  /*
+   * ممنوع roundCost هنا.
+   *
+   * مثال:
+   *
+   * 155.8333333333333 × 12
+   *
+   * يتم الحساب بالسعر الكامل.
+   */
+  const rawLineTotal = quantity * rawUnitCost;
 
-  const baseUnitCost = roundCost(rawLineTotal / quantity);
-
-  if (baseUnitCost <= 0 || rawLineTotal <= 0) {
-    throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
+  if (!Number.isFinite(rawLineTotal) || rawLineTotal <= 0) {
+    throw new Error(`إجمالي شراء غير صحيح للصنف ${productName}`);
   }
 
   return {
@@ -459,7 +486,9 @@ function resolvePurchaseItemBasePricing(
     pricingBaseQuantity: null,
     pricingBaseAmount: null,
 
-    baseUnitCost,
+    baseUnitCost: rawUnitCost,
+
+    enteredUnitCost: rawUnitCost,
 
     rawLineTotal,
   };
@@ -468,69 +497,107 @@ function resolvePurchaseItemBasePricing(
 function applyPurchaseInvoiceDiscount<
   T extends {
     quantity: number;
+
+    baseUnitCost: number;
+
+    enteredUnitCost: number;
+
     rawLineTotal: number;
   },
 >(items: T[], discountValueInput: number) {
-  let remainingDiscount = roundCost(
-    Math.max(0, Number(discountValueInput || 0)),
+  /*
+   * نجمع القيم الخام أولًا.
+   *
+   * ممنوع تقريب كل بند
+   * ثم جمعه.
+   */
+  const rawSubTotal = items.reduce(
+    (sum, item) => sum + Number(item.rawLineTotal || 0),
+
+    0,
   );
 
-  let remainingBase = roundCost(
-    items.reduce((sum, item) => sum + Number(item.rawLineTotal || 0), 0),
+  /*
+   * هنا فقط نتحول
+   * لقيمة مالية بالقروش.
+   */
+  const subTotal = roundCost(rawSubTotal);
+
+  const discountValue = roundCost(
+    Math.min(
+      subTotal,
+
+      Math.max(0, Number(discountValueInput || 0)),
+    ),
   );
 
-  const result = items.map((item, index) => {
-    let lineDiscount = 0;
+  /*
+   * نوزع إجمالي الفاتورة
+   * المقفول على القروش
+   * على البنود بدون ضياع.
+   */
+  const grossLineTotals = allocateRoundedTotalAcrossWeights(
+    subTotal,
 
-    if (remainingDiscount > 0 && remainingBase > 0) {
-      const isLast = index === items.length - 1;
+    items.map((item) => item.rawLineTotal),
+  );
 
-      lineDiscount = isLast
-        ? Math.min(item.rawLineTotal, remainingDiscount)
-        : Math.min(
-            item.rawLineTotal,
+  /*
+   * الخصم نفسه يتوزع
+   * بحيث مجموع خصم البنود
+   * = خصم الفاتورة بالضبط.
+   */
+  const lineDiscounts = allocateRoundedTotalAcrossWeights(
+    discountValue,
 
-            allocateProportionalAmount(
-              remainingDiscount,
-              item.rawLineTotal,
-              remainingBase,
-            ),
-          );
+    grossLineTotals,
+  );
 
-      lineDiscount = roundCost(lineDiscount);
-    }
+  return items.map((item, index) => {
+    const grossLineTotal = roundCost(grossLineTotals[index] || 0);
 
-    const lineTotal = roundCost(Math.max(0, item.rawLineTotal - lineDiscount));
+    const lineDiscount = roundCost(lineDiscounts[index] || 0);
 
-    remainingDiscount = roundCost(
-      Math.max(0, remainingDiscount - lineDiscount),
+    const lineTotal = roundCost(
+      Math.max(
+        0,
+
+        grossLineTotal - lineDiscount,
+      ),
     );
 
-    remainingBase = roundCost(Math.max(0, remainingBase - item.rawLineTotal));
+    /*
+     * بدون خصم:
+     *
+     * unitCost يظل السعر
+     * الأصلي الكامل الذي
+     * أدخله المستخدم.
+     *
+     * مع الخصم:
+     *
+     * تكلفة الوحدة الفعلية
+     * = قيمة البند بعد الخصم
+     * ÷ الكمية.
+     *
+     * ولا نقربها لقرشين.
+     */
+    const unitCost =
+      discountValue > 0 && item.quantity > 0
+        ? lineTotal / item.quantity
+        : item.baseUnitCost;
 
     return {
       ...item,
+
+      grossLineTotal,
 
       lineDiscount,
 
       lineTotal,
 
-      /*
-       * ده متوسط تكلفة القطعة
-       * بعد الخصم للعرض فقط.
-       *
-       * lineTotal يفضل هو
-       * مصدر الحقيقة.
-       */
-      unitCost: item.quantity > 0 ? roundCost(lineTotal / item.quantity) : 0,
+      unitCost,
     };
   });
-
-  if (remainingDiscount > 0.001) {
-    throw new Error('تعذر توزيع خصم فاتورة الشراء على الأصناف');
-  }
-
-  return result;
 }
 
 export function createPurchaseInvoice(input: CreatePurchaseInput) {
@@ -828,6 +895,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         color,
         quantity,
         unit_cost,
+        entered_unit_cost,
 
         pricing_base_quantity,
         pricing_base_amount,
@@ -837,7 +905,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       )
       VALUES (
         ?, ?, ?, ?, ?, ?,
-        ?, ?,
+        ?, ?, ?,
         ?, ?,
         ?, ?
       )
@@ -859,6 +927,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         item.variant.color ?? null,
         item.quantity,
         item.unitCost,
+        item.enteredUnitCost,
         item.pricingBaseQuantity,
         item.pricingBaseAmount,
         Number(item.variant.buy_price || 0),
@@ -1000,7 +1069,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     const oldValue = Number(oldPreviousBuyPrice);
 
     if (Number.isFinite(oldValue) && oldValue >= 0) {
-      return roundCost(oldValue);
+      return oldValue;
     }
   }
 
@@ -1038,7 +1107,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     | undefined;
 
   if (previousActivePurchase) {
-    return roundCost(Number(previousActivePurchase.unit_cost));
+    return Number(previousActivePurchase.unit_cost);
   }
 
   /*
@@ -1077,7 +1146,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     const value = Number(nextPurchaseSnapshot.previous_buy_price);
 
     if (Number.isFinite(value) && value >= 0) {
-      return roundCost(value);
+      return value;
     }
   }
 
@@ -1105,7 +1174,7 @@ function getPreviousBuyPriceForPurchaseEdit(
     throw new Error('تعذر تحديد سعر الشراء السابق للصنف');
   }
 
-  return roundCost(value);
+  return value;
 }
 
 function recalculateVariantBuyPrice(
@@ -1208,7 +1277,7 @@ function recalculateVariantBuyPrice(
 
     WHERE id = ?
     `,
-  ).run(roundCost(Number(nextBuyPrice)), variantId);
+  ).run(Number(nextBuyPrice), variantId);
 }
 
 export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
@@ -1984,6 +2053,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
           quantity,
           unit_cost,
+          entered_unit_cost,
           pricing_base_quantity,
           pricing_base_amount,
           previous_buy_price,
@@ -1992,7 +2062,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         )
 
         VALUES (
-          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?
         )
         `,
@@ -2011,6 +2081,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
         item.quantity,
         item.unitCost,
+        item.enteredUnitCost,
         item.pricingBaseQuantity,
         item.pricingBaseAmount,
         item.previousBuyPrice,

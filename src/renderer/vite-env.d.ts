@@ -2636,6 +2636,7 @@ declare global {
           color?: string | null;
           quantity: number;
           unit_cost: number;
+          entered_unit_cost?: number | null;
           pricing_base_quantity?: number | null;
           pricing_base_amount?: number | null;
           line_total: number;

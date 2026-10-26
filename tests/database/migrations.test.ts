@@ -395,6 +395,12 @@ describe('database migrations', () => {
 
         name: 'purchase-invoice-settlement-intent',
       },
+
+      {
+        version: 30,
+
+        name: 'purchase-item-entered-unit-cost',
+      },
     ]);
 
     const performanceIndexes = database
@@ -486,6 +492,18 @@ describe('database migrations', () => {
       name: string;
     }>;
 
+    const purchaseItemColumns = database
+      .prepare(
+        `
+      PRAGMA table_info(
+        purchase_items
+      )
+      `,
+      )
+      .all() as Array<{
+      name: string;
+    }>;
+
     const supplierPaymentBatchColumns = database
       .prepare(
         `
@@ -523,6 +541,10 @@ describe('database migrations', () => {
         'rounding_adjustment',
         'settle_full_balance',
       ]),
+    );
+
+    expect(purchaseItemColumns.map((column) => column.name)).toContain(
+      'entered_unit_cost',
     );
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toContain(

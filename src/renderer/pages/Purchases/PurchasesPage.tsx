@@ -6,7 +6,7 @@ import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
 import {
-  allocateProportionalAmount,
+  allocateRoundedTotalAcrossWeights,
   formatMoney,
   roundCost,
   roundMoney,
@@ -56,26 +56,7 @@ type QuickProductMode = 'newProduct' | 'newVariant';
 
 type PurchaseLine = VariantRow & {
   quantity: number;
-
-  /*
-   * سعر الوحدة للعرض.
-   *
-   * في تسعير المجموعة لا يعتبر
-   * مصدر الحقيقة المحاسبي.
-   */
   unit_cost: number;
-
-  /*
-   * null = تسعير عادي بالقطعة.
-   *
-   * وجود القيمتين معًا =
-   * تسعير مجموعة.
-   *
-   * مثال:
-   * 12 قطعة = 1870
-   */
-  pricing_base_quantity?: number | null;
-  pricing_base_amount?: number | null;
 };
 
 function generateBarcodeValue() {
@@ -164,46 +145,39 @@ export default function PurchasesPage() {
   const [quickCategoryId, setQuickCategoryId] = useState<number | ''>('');
   const [quickQuantity, setQuickQuantity] = useState('1');
 
-  function getPurchaseLineGrossTotal(line: PurchaseLine) {
+  function getPurchaseLineRawTotal(line: PurchaseLine) {
     const quantity = Number(line.quantity || 0);
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
+    const unitCost = Number(line.unit_cost || 0);
+
+    if (
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(unitCost) ||
+      unitCost <= 0
+    ) {
       return 0;
     }
 
-    const baseQuantity = Number(line.pricing_base_quantity || 0);
-
-    const baseAmount = roundCost(Number(line.pricing_base_amount || 0));
-
     /*
-     * تسعير مجموعة:
-     *
-     * 12 = 1870
-     * 6 = 935
-     *
-     * ولا نعتمد على:
-     * 155.83 × 12
+     * ممنوع تقريب سعر الوحدة
+     * قبل الضرب.
      */
-    if (baseQuantity > 0 && baseAmount > 0) {
-      return allocateProportionalAmount(baseAmount, quantity, baseQuantity);
-    }
-
-    return roundCost(quantity * Number(line.unit_cost || 0));
+    return quantity * unitCost;
   }
 
-  const subTotal = useMemo(
+  const rawSubTotal = useMemo(
     () =>
-      roundCost(
-        lines.reduce(
-          (sum, line) => sum + getPurchaseLineGrossTotal(line),
+      lines.reduce(
+        (sum, line) => sum + getPurchaseLineRawTotal(line),
 
-          0,
-        ),
+        0,
       ),
 
     [lines],
   );
 
+  const subTotal = roundCost(rawSubTotal);
   const discountValue = useMemo(() => {
     const raw = Number(discountDraft || 0);
 
@@ -243,16 +217,24 @@ export default function PurchasesPage() {
     : 0;
 
   const purchaseLineFinancials = useMemo(() => {
-    let remainingDiscount = roundCost(discountValue);
+    const rawTotals = lines.map(getPurchaseLineRawTotal);
 
-    let remainingBase = roundCost(subTotal);
+    const grossTotals = allocateRoundedTotalAcrossWeights(subTotal, rawTotals);
+
+    const lineDiscounts = allocateRoundedTotalAcrossWeights(
+      discountValue,
+      grossTotals,
+    );
 
     const result = new Map<
       number,
       {
         grossTotal: number;
+
         discount: number;
+
         netTotal: number;
+
         unitCost: number;
       }
     >();
@@ -260,35 +242,17 @@ export default function PurchasesPage() {
     lines.forEach((line, index) => {
       const quantity = Number(line.quantity || 0);
 
-      const grossTotal = getPurchaseLineGrossTotal(line);
+      const grossTotal = roundCost(grossTotals[index] || 0);
 
-      let lineDiscount = 0;
+      const lineDiscount = roundCost(lineDiscounts[index] || 0);
 
-      if (remainingDiscount > 0 && remainingBase > 0) {
-        const isLast = index === lines.length - 1;
+      const netTotal = roundCost(
+        Math.max(
+          0,
 
-        lineDiscount = isLast
-          ? Math.min(grossTotal, remainingDiscount)
-          : Math.min(
-              grossTotal,
-
-              allocateProportionalAmount(
-                remainingDiscount,
-                grossTotal,
-                remainingBase,
-              ),
-            );
-
-        lineDiscount = roundCost(lineDiscount);
-      }
-
-      const netTotal = roundCost(Math.max(0, grossTotal - lineDiscount));
-
-      remainingDiscount = roundCost(
-        Math.max(0, remainingDiscount - lineDiscount),
+          grossTotal - lineDiscount,
+        ),
       );
-
-      remainingBase = roundCost(Math.max(0, remainingBase - grossTotal));
 
       result.set(line.variant_id, {
         grossTotal,
@@ -298,8 +262,7 @@ export default function PurchasesPage() {
         netTotal,
 
         /*
-         * ده متوسط للعرض فقط.
-         * netTotal هو مصدر الحقيقة.
+         * ده عرض فقط.
          */
         unitCost: quantity > 0 ? roundCost(netTotal / quantity) : 0,
       });
@@ -534,6 +497,7 @@ export default function PurchasesPage() {
         const nextLines: PurchaseLine[] = (data.items ?? []).map((item) => {
           const storedUnitCost = Number(item.unit_cost || 0);
 
+          const enteredUnitCost = Number(item.entered_unit_cost ?? 0);
           const pricingBaseQuantity =
             item.pricing_base_quantity == null
               ? null
@@ -547,11 +511,14 @@ export default function PurchasesPage() {
           const hasGroupPricing =
             Number(pricingBaseQuantity) > 0 && Number(pricingBaseAmount) > 0;
 
-          const originalUnitCost = hasGroupPricing
-            ? roundCost(Number(pricingBaseAmount) / Number(pricingBaseQuantity))
-            : discountFactor > 0
-              ? Number((storedUnitCost / discountFactor).toFixed(4))
-              : storedUnitCost;
+          const originalUnitCost =
+            enteredUnitCost > 0
+              ? enteredUnitCost
+              : hasGroupPricing
+                ? Number(pricingBaseAmount) / Number(pricingBaseQuantity)
+                : discountFactor > 0
+                  ? storedUnitCost / discountFactor
+                  : storedUnitCost;
 
           return {
             variant_id: Number(item.variant_id),
@@ -573,9 +540,6 @@ export default function PurchasesPage() {
             quantity: Number(item.quantity || 0),
 
             unit_cost: originalUnitCost,
-            pricing_base_quantity: pricingBaseQuantity,
-
-            pricing_base_amount: pricingBaseAmount,
           };
         });
 
@@ -1089,10 +1053,6 @@ export default function PurchasesPage() {
           quantity: Number(line.quantity || 0),
 
           unit_cost: Number(line.unit_cost || 0),
-
-          pricing_base_quantity: line.pricing_base_quantity ?? null,
-
-          pricing_base_amount: line.pricing_base_amount ?? null,
         })),
       };
 
@@ -1523,163 +1483,6 @@ export default function PurchasesPage() {
                           textAlign: 'center',
                         }}
                       />
-                    </td>
-
-                    <td style={tdStyle}>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gap: '6px',
-                          minWidth: '170px',
-                        }}
-                      >
-                        <input
-                          type="number"
-                          min={0}
-                          value={line.unit_cost}
-                          readOnly={
-                            Number(line.pricing_base_quantity || 0) > 0 &&
-                            Number(line.pricing_base_amount || 0) > 0
-                          }
-                          onChange={(e) =>
-                            updateLine(line.variant_id, {
-                              unit_cost: Math.max(
-                                0,
-                                Number(e.target.value || 0),
-                              ),
-
-                              /*
-                               * تعديل سعر القطعة يدويًا
-                               * يرجع البند لتسعير القطعة.
-                               */
-                              pricing_base_quantity: null,
-
-                              pricing_base_amount: null,
-                            })
-                          }
-                          style={{
-                            ...inputStyle,
-                            width: '150px',
-                            textAlign: 'center',
-                          }}
-                        />
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const hasGroupPricing =
-                              Number(line.pricing_base_quantity || 0) > 0 &&
-                              Number(line.pricing_base_amount || 0) > 0;
-
-                            if (hasGroupPricing) {
-                              updateLine(line.variant_id, {
-                                pricing_base_quantity: null,
-
-                                pricing_base_amount: null,
-                              });
-
-                              return;
-                            }
-
-                            const quantity = Math.max(
-                              1,
-                              Number(line.quantity || 1),
-                            );
-
-                            const baseAmount = roundCost(
-                              quantity * Number(line.unit_cost || 0),
-                            );
-
-                            updateLine(line.variant_id, {
-                              pricing_base_quantity: quantity,
-
-                              pricing_base_amount: baseAmount,
-                            });
-                          }}
-                          style={{
-                            ...smallButtonStyle,
-                            width: '150px',
-                          }}
-                        >
-                          {Number(line.pricing_base_quantity || 0) > 0 &&
-                          Number(line.pricing_base_amount || 0) > 0
-                            ? 'إلغاء تسعير المجموعة'
-                            : 'تسعير مجموعة'}
-                        </button>
-
-                        {Number(line.pricing_base_quantity || 0) > 0 &&
-                          Number(line.pricing_base_amount || 0) > 0 && (
-                            <div
-                              style={{
-                                display: 'grid',
-                                gap: '5px',
-                              }}
-                            >
-                              <input
-                                type="number"
-                                min={0.000001}
-                                value={line.pricing_base_quantity ?? ''}
-                                placeholder="عدد قطع المجموعة"
-                                onChange={(e) => {
-                                  const baseQuantity = Math.max(
-                                    0,
-                                    Number(e.target.value || 0),
-                                  );
-
-                                  const baseAmount = Number(
-                                    line.pricing_base_amount || 0,
-                                  );
-
-                                  updateLine(line.variant_id, {
-                                    pricing_base_quantity: baseQuantity,
-
-                                    unit_cost:
-                                      baseQuantity > 0
-                                        ? roundCost(baseAmount / baseQuantity)
-                                        : 0,
-                                  });
-                                }}
-                                style={{
-                                  ...inputStyle,
-                                  width: '150px',
-                                  textAlign: 'center',
-                                }}
-                              />
-
-                              <input
-                                type="number"
-                                min={0}
-                                step={0.01}
-                                value={line.pricing_base_amount ?? ''}
-                                placeholder="إجمالي المجموعة"
-                                onChange={(e) => {
-                                  const baseAmount = Math.max(
-                                    0,
-                                    Number(e.target.value || 0),
-                                  );
-
-                                  const baseQuantity = Number(
-                                    line.pricing_base_quantity || 0,
-                                  );
-
-                                  updateLine(line.variant_id, {
-                                    pricing_base_amount: baseAmount,
-
-                                    unit_cost:
-                                      baseQuantity > 0
-                                        ? roundCost(baseAmount / baseQuantity)
-                                        : 0,
-                                  });
-                                }}
-                                style={{
-                                  ...inputStyle,
-                                  width: '150px',
-                                  textAlign: 'center',
-                                }}
-                              />
-                            </div>
-                          )}
-                      </div>
                     </td>
 
                     <td
@@ -2274,7 +2077,7 @@ function money(value: unknown) {
 }
 
 function costMoney(value: unknown) {
-  return `${roundCost(value)} ج.م`;
+  return `${roundCost(value).toFixed(2)} ج.م`;
 }
 
 function signedCostMoney(value: unknown) {
