@@ -377,6 +377,18 @@ describe('database migrations', () => {
 
         name: 'sales-cost-value-snapshots',
       },
+
+      {
+        version: 27,
+
+        name: 'supplier-payment-settlement-details',
+      },
+
+      {
+        version: 28,
+
+        name: 'purchase-return-settlement-details',
+      },
     ]);
 
     const performanceIndexes = database
@@ -468,8 +480,35 @@ describe('database migrations', () => {
       name: string;
     }>;
 
+    const supplierPaymentBatchColumns = database
+      .prepare(
+        `
+    PRAGMA table_info(
+      supplier_payment_batches
+    )
+    `,
+      )
+      .all() as Array<{
+      name: string;
+    }>;
+
+    expect(supplierPaymentBatchColumns.map((column) => column.name)).toEqual(
+      expect.arrayContaining([
+        'amount',
+        'cash_amount',
+        'rounding_adjustment',
+        'settle_full_balance',
+        'business_date',
+      ]),
+    );
+
     expect(purchaseReturnColumns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(['exact_total_amount', 'rounding_adjustment']),
+      expect.arrayContaining([
+        'exact_total_amount',
+        'rounding_adjustment',
+        'credit_amount',
+        'settle_cash_refund',
+      ]),
     );
 
     expect(purchaseInvoiceColumns.map((column) => column.name)).toEqual(

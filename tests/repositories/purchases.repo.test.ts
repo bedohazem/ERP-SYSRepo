@@ -248,80 +248,64 @@ describe('purchases repository', () => {
     seedStoreCashBalance();
   }, 30_000);
 
-  it('rounds only the final purchase payable while preserving exact inventory cost', () => {
+  it('preserves purchase payable cents without settlement', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
-
       actor_id: 1,
-
       paid_amount: 0,
 
       items: [
         {
           variant_id: variant.variant_id,
-
           quantity: 1,
-
           unit_cost: 45.5,
         },
       ],
     });
 
     expect(purchase.exact_total_amount).toBe(45.5);
+    expect(purchase.total_amount).toBe(45.5);
+    expect(purchase.rounding_adjustment).toBe(0);
+    expect(purchase.remaining_amount).toBe(45.5);
 
-    expect(purchase.total_amount).toBe(46);
-
-    expect(purchase.rounding_adjustment).toBe(0.5);
-
-    expect(purchase.remaining_amount).toBe(46);
-
-    expect(getSupplierBalance(supplierId)).toBe(46);
+    expect(getSupplierBalance(supplierId)).toBe(45.5);
 
     const state = getVariantCostState('PURCHASE001');
 
     expect(Number(state.buy_price)).toBe(45.5);
-
     expect(Number(state.average_cost)).toBe(45.5);
-
     expect(Number(state.inventory_value)).toBe(45.5);
   });
 
-  it('rounds purchase payable down below half a pound', () => {
+  it('preserves purchase payable below half a pound', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
-
       actor_id: 1,
-
       paid_amount: 0,
 
       items: [
         {
           variant_id: variant.variant_id,
-
           quantity: 1,
-
           unit_cost: 45.49,
         },
       ],
     });
 
     expect(purchase.exact_total_amount).toBe(45.49);
+    expect(purchase.total_amount).toBe(45.49);
+    expect(purchase.rounding_adjustment).toBe(0);
+    expect(purchase.remaining_amount).toBe(45.49);
 
-    expect(purchase.total_amount).toBe(45);
-
-    expect(purchase.rounding_adjustment).toBe(-0.49);
-
-    expect(purchase.remaining_amount).toBe(45);
-
-    expect(getSupplierBalance(supplierId)).toBe(45);
+    expect(getSupplierBalance(supplierId)).toBe(45.49);
 
     const state = getVariantCostState('PURCHASE001');
 
@@ -497,26 +481,24 @@ describe('purchases repository', () => {
     expect(invoice.payments[0].amount).toBe(500);
   });
 
-  it('preserves exact purchase cost while settling supplier money in whole pounds', () => {
+  it('records whole-pound cash separately from exact purchase settlement', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
 
     const result = createPurchaseInvoice({
       supplier_id: supplierId,
-
       actor_id: 1,
 
-      paid_amount: 2100.69,
+      paid_amount: 2101,
+      settle_full_balance: true,
 
       payment_method: 'cash',
 
       items: [
         {
           variant_id: variant.variant_id,
-
           quantity: 1,
-
           unit_cost: 2100.69,
         },
       ],
@@ -524,59 +506,61 @@ describe('purchases repository', () => {
 
     expect(result.exact_total_amount).toBe(2100.69);
 
-    expect(result.total_amount).toBe(2101);
+    /*
+     * أصل الفاتورة لا يتقرب.
+     */
+    expect(result.total_amount).toBe(2100.69);
 
+    /*
+     * الكاش 2101
+     * المحاسبي 2100.69
+     */
     expect(result.rounding_adjustment).toBe(0.31);
 
-    expect(result.paid_amount).toBe(2101);
-
+    expect(result.paid_amount).toBe(2100.69);
     expect(result.remaining_amount).toBe(0);
 
     const invoice = getPurchaseInvoice(result.purchaseId) as any;
 
     expect(invoice.items[0].unit_cost).toBe(2100.69);
-
     expect(invoice.items[0].line_total).toBe(2100.69);
 
+    expect(Number(invoice.purchase.total_amount)).toBe(2100.69);
     expect(Number(invoice.purchase.exact_total_amount)).toBe(2100.69);
-
     expect(Number(invoice.purchase.rounding_adjustment)).toBe(0.31);
 
-    expect(getSupplierTotalPurchased(supplierId)).toBe(2101);
+    expect(getSupplierTotalPurchased(supplierId)).toBe(2100.69);
 
+    /*
+     * الخارج الحقيقي من الحساب.
+     */
     expect(getCashMovementTotal('out')).toBe(2101);
   });
 
-  it('recalculates rounded supplier settlement from remaining exact value across partial purchase returns', () => {
+  it('preserves exact supplier debt across partial purchase returns', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
-
       actor_id: 1,
-
       paid_amount: 0,
 
       items: [
         {
           variant_id: variant.variant_id,
-
           quantity: 2,
-
           unit_cost: 22.75,
         },
       ],
     });
 
     expect(purchase.exact_total_amount).toBe(45.5);
+    expect(purchase.total_amount).toBe(45.5);
+    expect(purchase.rounding_adjustment).toBe(0);
 
-    expect(purchase.total_amount).toBe(46);
-
-    expect(purchase.rounding_adjustment).toBe(0.5);
-
-    expect(getSupplierBalance(supplierId)).toBe(46);
+    expect(getSupplierBalance(supplierId)).toBe(45.5);
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
@@ -584,55 +568,44 @@ describe('purchases repository', () => {
 
     const firstReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
-
       actor_id: 1,
-
       refund_mode: 'credit',
 
       items: [
         {
           purchase_item_id: purchaseItemId,
-
           quantity: 1,
         },
       ],
     });
 
     expect(firstReturn.exact_total_amount).toBe(22.75);
+    expect(firstReturn.total_amount).toBe(22.75);
+    expect(firstReturn.rounding_adjustment).toBe(0);
+    expect(firstReturn.debt_reduction_amount).toBe(22.75);
 
-    expect(firstReturn.total_amount).toBe(23);
-
-    expect(firstReturn.rounding_adjustment).toBe(0.25);
-
-    expect(firstReturn.debt_reduction_amount).toBe(23);
-
-    expect(getSupplierBalance(supplierId)).toBe(23);
+    expect(getSupplierBalance(supplierId)).toBe(22.75);
 
     let currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(currentInvoice.purchase.remaining_amount)).toBe(23);
+    expect(Number(currentInvoice.purchase.remaining_amount)).toBe(22.75);
 
     const secondReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
-
       actor_id: 1,
-
       refund_mode: 'credit',
 
       items: [
         {
           purchase_item_id: purchaseItemId,
-
           quantity: 1,
         },
       ],
     });
 
     expect(secondReturn.exact_total_amount).toBe(22.75);
-
-    expect(secondReturn.total_amount).toBe(23);
-
-    expect(secondReturn.rounding_adjustment).toBe(0.25);
+    expect(secondReturn.total_amount).toBe(22.75);
+    expect(secondReturn.rounding_adjustment).toBe(0);
 
     expect(getSupplierBalance(supplierId)).toBe(0);
 
@@ -643,61 +616,87 @@ describe('purchases repository', () => {
     const state = getVariantCostState('PURCHASE001');
 
     expect(Number(state.stock)).toBe(0);
-
     expect(Number(state.inventory_value)).toBe(0);
   });
 
-  it('rounds supplier payment to whole pounds against rounded purchase balance', () => {
+  it('keeps supplier cents open until full settlement is explicit', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
 
     const purchase = createPurchaseInvoice({
       supplier_id: supplierId,
-
       actor_id: 1,
-
       paid_amount: 0,
 
       items: [
         {
           variant_id: variant.variant_id,
-
           quantity: 1,
-
           unit_cost: 45.5,
         },
       ],
     });
 
-    expect(purchase.total_amount).toBe(46);
+    expect(purchase.total_amount).toBe(45.5);
+    expect(getSupplierBalance(supplierId)).toBe(45.5);
 
-    expect(getSupplierBalance(supplierId)).toBe(46);
-
-    const payment = recordSupplierPayment({
+    /*
+     * دفع 45 فقط:
+     * الـ50 قرش تظل مديونية.
+     */
+    const partialPayment = recordSupplierPayment({
       supplier_id: supplierId,
-
       purchase_id: purchase.purchaseId,
 
-      amount: 45.5,
+      amount: 45,
 
       payment_method: 'store_cash',
-
       actor_id: 1,
     });
 
-    expect(payment.paid_amount).toBe(46);
+    expect(partialPayment.paid_amount).toBe(45);
+    expect(partialPayment.cash_amount).toBe(45);
+    expect(partialPayment.rounding_adjustment).toBe(0);
 
-    expect(payment.allocations[0].amount).toBe(46);
+    expect(partialPayment.allocations[0].amount).toBe(45);
+
+    expect(getSupplierBalance(supplierId)).toBe(0.5);
+
+    let invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.paid_amount)).toBe(45);
+    expect(Number(invoice.purchase.remaining_amount)).toBe(0.5);
+    expect(invoice.purchase.payment_status).toBe('partial');
+
+    /*
+     * الآن نختار صراحة تسوية
+     * آخر 50 قرش بجنيه كامل.
+     */
+    const finalSettlement = recordSupplierPayment({
+      supplier_id: supplierId,
+      purchase_id: purchase.purchaseId,
+
+      amount: 1,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+      actor_id: 1,
+    });
+
+    expect(finalSettlement.paid_amount).toBe(0.5);
+    expect(finalSettlement.cash_amount).toBe(1);
+    expect(finalSettlement.rounding_adjustment).toBe(0.5);
+
+    expect(finalSettlement.allocations[0].amount).toBe(0.5);
 
     expect(getSupplierBalance(supplierId)).toBe(0);
 
-    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+    invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.paid_amount)).toBe(46);
-
+    expect(Number(invoice.purchase.paid_amount)).toBe(45.5);
     expect(Number(invoice.purchase.remaining_amount)).toBe(0);
-
     expect(invoice.purchase.payment_status).toBe('paid');
   });
 
@@ -725,7 +724,7 @@ describe('purchases repository', () => {
     });
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
-
+    const restoredInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
     const purchaseReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
 
@@ -744,9 +743,11 @@ describe('purchases repository', () => {
 
     expect(purchaseReturn.exact_total_amount).toBe(22.75);
 
-    expect(purchaseReturn.total_amount).toBe(23);
+    expect(purchaseReturn.total_amount).toBe(22.75);
 
-    expect(getSupplierBalance(supplierId)).toBe(23);
+    expect(purchaseReturn.rounding_adjustment).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBe(22.75);
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -756,13 +757,11 @@ describe('purchases repository', () => {
       actor_id: 1,
     });
 
-    expect(getSupplierBalance(supplierId)).toBe(46);
+    expect(getSupplierBalance(supplierId)).toBe(45.5);
 
-    expect(getSupplierTotalPurchased(supplierId)).toBe(46);
+    expect(getSupplierTotalPurchased(supplierId)).toBe(45.5);
 
-    const restoredInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
-
-    expect(Number(restoredInvoice.purchase.remaining_amount)).toBe(46);
+    expect(Number(restoredInvoice.purchase.remaining_amount)).toBe(45.5);
 
     expect(Number(restoredInvoice.items[0].returned_quantity)).toBe(0);
 
@@ -798,9 +797,9 @@ describe('purchases repository', () => {
 
     /*
      * 3 × 15.5 = 46.5
-     * المستحق = 47
+     * والمستحق يظل 46.5
      */
-    expect(purchase.total_amount).toBe(47);
+    expect(purchase.total_amount).toBe(46.5);
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
@@ -831,7 +830,9 @@ describe('purchases repository', () => {
      */
     expect(firstReturn.exact_total_amount).toBe(15.5);
 
-    expect(firstReturn.total_amount).toBe(16);
+    expect(firstReturn.total_amount).toBe(15.5);
+
+    expect(firstReturn.rounding_adjustment).toBe(0);
 
     const updated = updatePurchaseReturn({
       return_id: firstReturn.return_id,
@@ -866,11 +867,10 @@ describe('purchases repository', () => {
 
     expect(updated.total_amount).toBe(31);
 
-    expect(getSupplierBalance(supplierId)).toBe(16);
+    expect(getSupplierBalance(supplierId)).toBe(15.5);
 
     const currentInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
-
-    expect(Number(currentInvoice.purchase.remaining_amount)).toBe(16);
+    expect(Number(currentInvoice.purchase.remaining_amount)).toBe(15.5);
 
     expect(Number(currentInvoice.items[0].returned_quantity)).toBe(2);
 
@@ -999,7 +999,7 @@ describe('purchases repository', () => {
     ).toBe(20.5);
   });
 
-  it('derives settlement and rounding for legacy fractional purchase details', () => {
+  it('does not infer settlement rounding from legacy fractional purchase details', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
@@ -1044,9 +1044,9 @@ describe('purchases repository', () => {
 
     expect(Number(invoice.purchase.effective_exact_total_amount)).toBe(443.75);
 
-    expect(Number(invoice.purchase.effective_rounding_adjustment)).toBe(0.25);
+    expect(Number(invoice.purchase.effective_rounding_adjustment)).toBe(0);
 
-    expect(Number(invoice.purchase.settlement_total_amount)).toBe(444);
+    expect(Number(invoice.purchase.settlement_total_amount)).toBe(443.75);
   });
 
   it('creates a partial purchase and increases supplier balance', () => {
@@ -1105,29 +1105,42 @@ describe('purchases repository', () => {
     expect(getCashMovementTotal('out')).toBe(0);
   });
 
-  it('caps paid amount to total amount', () => {
+  it('rejects purchase overpayment without explicit settlement', () => {
     const supplierId = createTestSupplier();
+
     const variant = seedPurchaseProduct();
 
-    const result = createPurchaseInvoice({
-      supplier_id: supplierId,
-      actor_id: 1,
-      paid_amount: 700,
-      payment_method: 'cash',
-      items: [
-        {
-          variant_id: variant.variant_id,
-          quantity: 5,
-          unit_cost: 100,
-        },
-      ],
-    });
+    expect(() =>
+      createPurchaseInvoice({
+        supplier_id: supplierId,
 
-    expect(result.total_amount).toBe(500);
-    expect(result.paid_amount).toBe(500);
-    expect(result.remaining_amount).toBe(0);
-    expect(result.payment_status).toBe('paid');
-    expect(getCashMovementTotal('out')).toBe(500);
+        actor_id: 1,
+
+        paid_amount: 700,
+
+        payment_method: 'cash',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 5,
+
+            unit_cost: 100,
+          },
+        ],
+      }),
+    ).toThrow('المبلغ المدفوع أكبر من المستحق');
+
+    /*
+     * العملية كلها Transaction:
+     * لا فاتورة ولا مخزون ولا كاش.
+     */
+    expect(getStockByBarcode('PURCHASE001')).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    expect(getCashMovementTotal('out')).toBe(0);
   });
 
   it('keeps last purchase price separately and calculates moving weighted average cost', () => {
@@ -1857,7 +1870,7 @@ describe('purchases repository', () => {
         payment_method: 'cash',
         actor_id: 1,
       }),
-    ).toThrow('قيمة الدفع أكبر من رصيد المورد');
+    ).toThrow('قيمة الدفع أكبر من المديونية المحددة');
 
     expect(getSupplierBalance(supplierId)).toBe(500);
     expect(getCashMovementTotal('out')).toBe(0);
@@ -3358,9 +3371,9 @@ describe('purchases repository', () => {
 
     expect(Number(invoice.purchase.exact_total_amount)).toBe(981.75);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(982);
+    expect(Number(invoice.purchase.total_amount)).toBe(981.75);
 
-    expect(Number(invoice.purchase.rounding_adjustment)).toBe(0.25);
+    expect(Number(invoice.purchase.rounding_adjustment)).toBe(0);
 
     expect(Number(invoice.items[0].pricing_base_quantity)).toBe(12);
 
@@ -3389,9 +3402,9 @@ describe('purchases repository', () => {
 
     /*
      * الرصيد على المورد
-     * هو قيمة التسوية الفعلية.
+     * يظل بالقيمة المحاسبية الدقيقة.
      */
-    expect(getSupplierBalance(supplierId)).toBe(982);
+    expect(getSupplierBalance(supplierId)).toBe(981.75);
   });
 
   it('allocates group-priced purchase returns cumulatively without losing cents', () => {
@@ -3455,9 +3468,9 @@ describe('purchases repository', () => {
 
     expect(firstReturn.exact_total_amount).toBe(1090.83);
 
-    expect(firstReturn.total_amount).toBe(1091);
+    expect(firstReturn.total_amount).toBe(1090.83);
 
-    expect(firstReturn.rounding_adjustment).toBe(0.17);
+    expect(firstReturn.rounding_adjustment).toBe(0);
 
     state = getVariantCostState('PURCHASE001');
 
@@ -3483,9 +3496,9 @@ describe('purchases repository', () => {
 
     expect(secondReturn.exact_total_amount).toBe(623.34);
 
-    expect(secondReturn.total_amount).toBe(623);
+    expect(secondReturn.total_amount).toBe(623.34);
 
-    expect(secondReturn.rounding_adjustment).toBe(-0.34);
+    expect(secondReturn.rounding_adjustment).toBe(0);
 
     state = getVariantCostState('PURCHASE001');
 
@@ -3511,9 +3524,9 @@ describe('purchases repository', () => {
 
     expect(finalReturn.exact_total_amount).toBe(155.83);
 
-    expect(finalReturn.total_amount).toBe(156);
+    expect(finalReturn.total_amount).toBe(155.83);
 
-    expect(finalReturn.rounding_adjustment).toBe(0.17);
+    expect(finalReturn.rounding_adjustment).toBe(0);
 
     expect(
       Number(
@@ -3591,7 +3604,9 @@ describe('purchases repository', () => {
       refund_mode: 'cash',
 
       refund_payment_method: 'store_cash',
+      cash_refund_amount: 156,
 
+      settle_cash_refund: true,
       items: [
         {
           purchase_item_id: purchaseItemId,
@@ -3608,7 +3623,10 @@ describe('purchases repository', () => {
      */
     expect(purchaseReturn.exact_total_amount).toBe(155.83);
 
-    expect(purchaseReturn.total_amount).toBe(156);
+    /*
+     * قيمة المرتجع المحاسبية لا تتغير.
+     */
+    expect(purchaseReturn.total_amount).toBe(155.83);
 
     expect(purchaseReturn.rounding_adjustment).toBe(0.17);
 
