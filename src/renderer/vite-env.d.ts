@@ -2656,7 +2656,9 @@ declare global {
         supplier_id: number;
         reversed_total: number;
         reversed_paid: number;
+        reversed_cash?: number;
         reversed_remaining: number;
+        supplier_balance?: number;
         items_count: number;
         cancelled_shift_id?: number | null;
       }>;

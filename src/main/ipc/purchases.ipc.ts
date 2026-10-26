@@ -531,7 +531,9 @@ export function registerPurchasesIpc(): void {
           reversed_total: result.reversed_total,
 
           reversed_paid: result.reversed_paid,
+          reversed_cash: result.reversed_cash,
 
+          supplier_balance: result.supplier_balance,
           reversed_remaining: result.reversed_remaining,
 
           items_count: result.items_count,

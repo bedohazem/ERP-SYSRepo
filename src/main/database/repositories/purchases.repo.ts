@@ -2221,13 +2221,31 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       });
     }
 
-    const totalAmount = Number(purchase.total_amount || 0);
-    const paidAmount = Number(purchase.paid_amount || 0);
+    const totalAmount = roundFinancial(Number(purchase.total_amount || 0));
+
+    const paidAmount = roundFinancial(Number(purchase.paid_amount || 0));
+
+    const roundingAdjustment = roundFinancial(
+      Number(purchase.rounding_adjustment || 0),
+    );
+
+    /*
+     * المبلغ الحقيقي الذي خرج وقت الدفع.
+     *
+     * مثال:
+     * المدفوع محاسبيًا = 981.75
+     * فرق التسوية = +0.25
+     * الكاش الحقيقي = 982
+     */
+    const cashPaidAmount =
+      paidAmount > 0
+        ? roundFinancial(Math.max(0, paidAmount + roundingAdjustment))
+        : 0;
 
     const paymentMethod = resolveCashAccount(purchase.payment_method || 'cash');
 
     const openShift =
-      paidAmount > 0
+      cashPaidAmount > 0
         ? resolveFinancialOperationShift(
             actorId,
             [paymentMethod],
@@ -2239,7 +2257,9 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       openShift?.id ?? null,
     );
 
-    const remainingAmount = Number(purchase.remaining_amount || 0);
+    const remainingAmount = roundFinancial(
+      Number(purchase.remaining_amount || 0),
+    );
 
     db.prepare(
       `
@@ -2268,23 +2288,42 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
     for (const variantId of affectedVariantIds) {
       recalculateVariantBuyPrice(db, variantId);
     }
+
     db.prepare(
       `
       UPDATE suppliers
-      SET
-        total_purchased = MAX(total_purchased - ?, 0),
-        balance = MAX(balance - ?, 0),
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `,
-    ).run(totalAmount, remainingAmount, Number(purchase.supplier_id));
 
-    if (paidAmount > 0) {
+      SET
+        total_purchased =
+          MAX(
+            ROUND(
+              IFNULL(
+                total_purchased,
+                0
+              ) - ?,
+              2
+            ),
+            0
+          ),
+
+        updated_at =
+          CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+    ).run(totalAmount, Number(purchase.supplier_id));
+
+    const supplierBalance = rebuildSupplierBalance(
+      db,
+      Number(purchase.supplier_id),
+    );
+
+    if (cashPaidAmount > 0) {
       createCashMovement({
         type: 'supplier_payment',
         direction: 'in',
 
-        amount: paidAmount,
+        amount: cashPaidAmount,
 
         payment_method: paymentMethod,
 
@@ -2308,6 +2347,8 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       supplier_id: Number(purchase.supplier_id),
       reversed_total: totalAmount,
       reversed_paid: paidAmount,
+      reversed_cash: cashPaidAmount,
+      supplier_balance: supplierBalance,
       reversed_remaining: remainingAmount,
       items_count: items.length,
       cancelled_shift_id: openShift?.id ?? null,

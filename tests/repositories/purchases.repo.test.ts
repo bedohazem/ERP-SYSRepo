@@ -999,6 +999,145 @@ describe('purchases repository', () => {
     ).toBe(20.5);
   });
 
+  it('preserves supplier credit and reverses actual settled cash when cancelling a purchase', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * فاتورة أولى مدفوعة بالكامل.
+     */
+    const firstPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+
+      paid_amount: 100,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const firstInvoice = getPurchaseInvoice(firstPurchase.purchaseId) as any;
+
+    /*
+     * رجعنا البضاعة كرَصيد عند المورد.
+     * بما إن الفاتورة مدفوعة:
+     * المورد بقى مديون لينا 100.
+     */
+    createPurchaseReturn({
+      purchase_id: firstPurchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(firstInvoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(-100);
+
+    /*
+     * فاتورة جديدة:
+     * القيمة المحاسبية = 981.75
+     * الكاش الحقيقي = 982
+     */
+    const settledPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 982,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 981.75,
+        },
+      ],
+    });
+
+    expect(settledPurchase.total_amount).toBe(981.75);
+
+    expect(settledPurchase.paid_amount).toBe(981.75);
+
+    expect(settledPurchase.rounding_adjustment).toBe(0.25);
+
+    /*
+     * الفاتورة مدفوعة،
+     * لذلك رصيد المورد الدائن القديم
+     * يظل كما هو.
+     */
+    expect(getSupplierBalance(supplierId)).toBe(-100);
+
+    const cancelled = cancelPurchaseInvoice({
+      purchase_id: settledPurchase.purchaseId,
+
+      reason: 'Test settled purchase cancellation',
+
+      actor_id: 1,
+    });
+
+    /*
+     * المحاسبي = 981.75
+     * الكاش المرتجع فعليًا = 982
+     */
+    expect(cancelled.reversed_paid).toBe(981.75);
+
+    expect(cancelled.reversed_cash).toBe(982);
+
+    /*
+     * ممنوع إلغاء رصيد المورد السالب.
+     */
+    expect(cancelled.supplier_balance).toBe(-100);
+
+    expect(getSupplierBalance(supplierId)).toBe(-100);
+
+    const reverseMovement = getDb()
+      .prepare(
+        `
+      SELECT *
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'purchase_cancel'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+      )
+      .get(settledPurchase.purchaseId) as any;
+
+    expect(reverseMovement.direction).toBe('in');
+
+    expect(Number(reverseMovement.amount)).toBe(982);
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(0);
+  });
+
   it('does not infer settlement rounding from legacy fractional purchase details', () => {
     const supplierId = createTestSupplier();
 
