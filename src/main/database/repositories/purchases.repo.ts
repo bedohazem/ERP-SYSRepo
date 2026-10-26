@@ -929,17 +929,26 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     ).run(totalAmount, remainingAmount, supplierId);
 
     if (paidAmount > 0) {
+      /*
+       * حتى لو الكاش الفعلي = صفر،
+       * نحتاج تسجيل التسوية المحاسبية
+       * على الفاتورة.
+       *
+       * مثال:
+       * إجمالي الفاتورة = 0.40
+       * تسوية كاملة لأقرب جنيه = 0
+       */
       db.prepare(
         `
-        INSERT INTO supplier_payments (
-          supplier_id,
-          purchase_id,
-          amount,
-          payment_method,
-          notes
-        )
-        VALUES (?, ?, ?, ?, ?)
-      `,
+    INSERT INTO supplier_payments (
+      supplier_id,
+      purchase_id,
+      amount,
+      payment_method,
+      notes
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `,
       ).run(
         supplierId,
         purchaseId,
@@ -948,23 +957,29 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`,
       );
 
-      createCashMovement({
-        type: 'supplier_payment',
-        direction: 'out',
+      /*
+       * حركة مالية فعلية تسجل فقط
+       * لو خرج كاش حقيقي.
+       */
+      if (cashPaidAmount > 0) {
+        createCashMovement({
+          type: 'supplier_payment',
+          direction: 'out',
 
-        amount: cashPaidAmount,
+          amount: cashPaidAmount,
 
-        payment_method: paymentMethod,
+          payment_method: paymentMethod,
 
-        reference_id: purchaseId,
-        reference_type: 'purchase_invoice',
+          reference_id: purchaseId,
+          reference_type: 'purchase_invoice',
 
-        notes: `دفع فاتورة شراء رقم ${purchaseId}`,
+          notes: `دفع فاتورة شراء رقم ${purchaseId}`,
 
-        created_by: actorId,
-        business_date: businessDate,
-        shift_id: openShift?.id ?? null,
-      });
+          created_by: actorId,
+          business_date: businessDate,
+          shift_id: openShift?.id ?? null,
+        });
+      }
     }
 
     return {
@@ -2076,28 +2091,29 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
         oldInitialPayment?.created_at ?? purchase.created_at ?? null,
       );
+      if (cashPaidAmount > 0) {
+        createCashMovement({
+          type: 'supplier_payment',
 
-      createCashMovement({
-        type: 'supplier_payment',
+          direction: 'out',
 
-        direction: 'out',
+          amount: cashPaidAmount,
 
-        amount: cashPaidAmount,
+          payment_method: newPaymentMethod,
 
-        payment_method: newPaymentMethod,
+          reference_id: purchaseId,
 
-        reference_id: purchaseId,
+          reference_type: 'purchase_invoice',
 
-        reference_type: 'purchase_invoice',
+          notes: `دفع فاتورة شراء رقم ${purchaseId} بعد التعديل`,
 
-        notes: `دفع فاتورة شراء رقم ${purchaseId} بعد التعديل`,
+          created_by: actorId,
 
-        created_by: actorId,
+          business_date: businessDate,
 
-        business_date: businessDate,
-
-        shift_id: newFinancialShift?.id ?? null,
-      });
+          shift_id: newFinancialShift?.id ?? null,
+        });
+      }
     }
 
     /*

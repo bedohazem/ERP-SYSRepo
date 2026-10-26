@@ -1295,6 +1295,204 @@ describe('purchases repository', () => {
     expect(invoice.purchase.payment_status).toBe('paid');
   });
 
+  it('settles a sub-half-pound purchase with zero cash and no zero-value cash movement', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * 0.40 لأقرب جنيه = 0.
+     *
+     * المستخدم اختار التسوية صراحة،
+     * لذلك:
+     *
+     * محاسبيًا نقفل 0.40
+     * كاش فعلي = 0
+     * فرق التسوية = -0.40
+     */
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 0.4,
+        },
+      ],
+    });
+
+    expect(purchase.total_amount).toBe(0.4);
+
+    expect(purchase.paid_amount).toBe(0.4);
+
+    expect(purchase.remaining_amount).toBe(0);
+
+    expect(purchase.rounding_adjustment).toBe(-0.4);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    /*
+     * فيه قيد محاسبي على المورد.
+     */
+    expect(getSupplierPaymentsCount(supplierId)).toBe(1);
+
+    /*
+     * لكن مفيش كاش خرج فعليًا.
+     */
+    const cashMovementCount = getDb()
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'purchase_invoice'
+
+        AND reference_id = ?
+      `,
+      )
+      .get(purchase.purchaseId) as {
+      count: number;
+    };
+
+    expect(Number(cashMovementCount.count)).toBe(0);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.settle_full_balance)).toBe(1);
+
+    expect(Number(invoice.purchase.remaining_amount)).toBe(0);
+  });
+
+  it('supports zero-cash full settlement when editing a sub-half-pound purchase', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * نبدأ الفاتورة غير مدفوعة.
+     */
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 0.4,
+        },
+      ],
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(0.4);
+
+    expect(getSupplierPaymentsCount(supplierId)).toBe(0);
+
+    /*
+     * أثناء التعديل نختار
+     * تسوية كامل الفاتورة.
+     *
+     * أقرب جنيه لـ0.40 = صفر.
+     */
+    const edited = updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Settle small purchase',
+
+      supplier_id: supplierId,
+
+      sub_total: 0.4,
+
+      discount_type: 'amount',
+
+      discount_input: 0,
+
+      discount_value: 0,
+
+      paid_amount: 0,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 0.4,
+        },
+      ],
+    });
+
+    expect(edited.total_amount).toBe(0.4);
+
+    expect(edited.paid_amount).toBe(0.4);
+
+    expect(edited.remaining_amount).toBe(0);
+
+    expect(edited.rounding_adjustment).toBe(-0.4);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    expect(getSupplierPaymentsCount(supplierId)).toBe(1);
+
+    const cashMovementCount = getDb()
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM cash_movements
+
+      WHERE
+        reference_type =
+          'purchase_invoice'
+
+        AND reference_id = ?
+      `,
+      )
+      .get(purchase.purchaseId) as {
+      count: number;
+    };
+
+    /*
+     * ممنوع إنشاء حركة كاش بقيمة صفر.
+     */
+    expect(Number(cashMovementCount.count)).toBe(0);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.settle_full_balance)).toBe(1);
+
+    expect(Number(invoice.purchase.rounding_adjustment)).toBe(-0.4);
+
+    expect(invoice.purchase.payment_status).toBe('paid');
+  });
+
   it('does not infer settlement rounding from legacy fractional purchase details', () => {
     const supplierId = createTestSupplier();
 
