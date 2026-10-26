@@ -506,22 +506,26 @@ function applyPurchaseInvoiceDiscount<
   },
 >(items: T[], discountValueInput: number) {
   /*
-   * نجمع القيم الخام أولًا.
+   * كل بند يتحسب أولًا
+   * من سعر الشراء الكامل.
    *
-   * ممنوع تقريب كل بند
-   * ثم جمعه.
+   * بعدها إجمالي البند فقط
+   * يقفل على منزلتين.
    */
-  const rawSubTotal = items.reduce(
-    (sum, item) => sum + Number(item.rawLineTotal || 0),
-
-    0,
-  );
+  const grossLineTotals = items.map((item) => roundCost(item.rawLineTotal));
 
   /*
-   * هنا فقط نتحول
-   * لقيمة مالية بالقروش.
+   * إجمالي الفاتورة =
+   * مجموع إجماليات البنود،
+   * تمامًا مثل فاتورة المورد.
    */
-  const subTotal = roundCost(rawSubTotal);
+  const subTotal = roundCost(
+    grossLineTotals.reduce(
+      (sum, value) => sum + value,
+
+      0,
+    ),
+  );
 
   const discountValue = roundCost(
     Math.min(
@@ -529,17 +533,6 @@ function applyPurchaseInvoiceDiscount<
 
       Math.max(0, Number(discountValueInput || 0)),
     ),
-  );
-
-  /*
-   * نوزع إجمالي الفاتورة
-   * المقفول على القروش
-   * على البنود بدون ضياع.
-   */
-  const grossLineTotals = allocateRoundedTotalAcrossWeights(
-    subTotal,
-
-    items.map((item) => item.rawLineTotal),
   );
 
   /*
@@ -690,7 +683,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
     const subTotal = roundCost(
       basePreparedItems.reduce(
-        (sum, item) => sum + Number(item.rawLineTotal || 0),
+        (sum, item) => sum + roundCost(item.rawLineTotal),
 
         0,
       ),
@@ -1579,7 +1572,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
     const subTotal = roundCost(
       basePreparedItems.reduce(
-        (sum, item) => sum + Number(item.rawLineTotal || 0),
+        (sum, item) => sum + roundCost(item.rawLineTotal),
 
         0,
       ),

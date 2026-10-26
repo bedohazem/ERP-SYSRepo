@@ -4555,9 +4555,9 @@ describe('purchases repository', () => {
      *
      * 30.02 + 30.02 = 60.04
      */
-    expect(Number(invoice.purchase.sub_total)).toBe(60.03);
+    expect(Number(invoice.purchase.sub_total)).toBe(60.04);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(60.03);
+    expect(Number(invoice.purchase.total_amount)).toBe(60.04);
 
     expect(Number(invoice.items[0].entered_unit_cost)).toBe(10.005);
 
@@ -4569,8 +4569,8 @@ describe('purchases repository', () => {
       0,
     );
 
-    expect(Number(allocatedLines.toFixed(2))).toBe(60.03);
+    expect(Number(allocatedLines.toFixed(2))).toBe(60.04);
 
-    expect(getSupplierBalance(supplierId)).toBe(60.03);
+    expect(getSupplierBalance(supplierId)).toBe(60.04);
   });
 });

@@ -166,18 +166,29 @@ export default function PurchasesPage() {
     return quantity * unitCost;
   }
 
-  const rawSubTotal = useMemo(
-    () =>
-      lines.reduce(
-        (sum, line) => sum + getPurchaseLineRawTotal(line),
+  function getPurchaseLineTotal(line: PurchaseLine) {
+    /*
+     * سعر الوحدة نفسه يظل كامل الدقة.
+     *
+     * لكن إجمالي البند قيمة مالية
+     * فيقفل على منزلتين مثل فاتورة المورد.
+     */
+    return roundCost(getPurchaseLineRawTotal(line));
+  }
 
-        0,
+  const subTotal = useMemo(
+    () =>
+      roundCost(
+        lines.reduce(
+          (sum, line) => sum + getPurchaseLineTotal(line),
+
+          0,
+        ),
       ),
 
     [lines],
   );
 
-  const subTotal = roundCost(rawSubTotal);
   const discountValue = useMemo(() => {
     const raw = Number(discountDraft || 0);
 
@@ -217,9 +228,7 @@ export default function PurchasesPage() {
     : 0;
 
   const purchaseLineFinancials = useMemo(() => {
-    const rawTotals = lines.map(getPurchaseLineRawTotal);
-
-    const grossTotals = allocateRoundedTotalAcrossWeights(subTotal, rawTotals);
+    const grossTotals = lines.map(getPurchaseLineTotal);
 
     const lineDiscounts = allocateRoundedTotalAcrossWeights(
       discountValue,
