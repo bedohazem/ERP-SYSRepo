@@ -3108,4 +3108,63 @@ describe('reports repository', () => {
 
     expect(report.summary.final_net_profit).toBe(0);
   });
+
+  it('rounds whole-pound sale discount and calculates profit from cent-accurate inventory cost', () => {
+    const variant = seedReportProduct({
+      name: 'Whole Pound Profit Product',
+
+      barcode: 'WHOLE-POUND-PROFIT',
+
+      openingQty: 1,
+
+      buyPrice: 150,
+      sellPrice: 200,
+    });
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 1.5,
+
+      grand_total: 198,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 198,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 200,
+        },
+      ],
+    });
+
+    expect(sale.grand_total).toBe(198);
+
+    const report = getReportsSummary() as ReportsSummaryTestResult;
+
+    expect(report.summary.normal_discounts).toBe(2);
+
+    expect(report.summary.gross_profit_before_discounts).toBe(50);
+
+    expect(report.summary.net_profit_after_discounts).toBe(48);
+  });
 });

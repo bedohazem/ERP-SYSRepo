@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  allocateMoneyValueByQuantity,
+  truncateMoney,
   allocateProportionalAmount,
   formatMoney,
   roundCost,
@@ -145,5 +147,19 @@ describe('whole-pound money policy', () => {
     expect(formatSignedPreciseMoney(0.0000000002)).toBe('0 ج.م');
 
     expect(formatSignedPreciseMoney(-0.0000000002)).toBe('0 ج.م');
+  });
+
+  it('truncates purchase money to cents and allocates every cent without loss', () => {
+    expect(truncateMoney(200.004)).toBe(200);
+
+    expect(truncateMoney(590.625)).toBe(590.62);
+
+    expect(truncateMoney(30.015)).toBe(30.01);
+
+    expect(allocateMoneyValueByQuantity(200, 1, 12)).toBe(16.67);
+
+    expect(allocateMoneyValueByQuantity(200, 7, 12)).toBe(116.67);
+
+    expect(allocateMoneyValueByQuantity(83.33, 5, 5)).toBe(83.33);
   });
 });

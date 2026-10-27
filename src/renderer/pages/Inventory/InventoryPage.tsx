@@ -938,7 +938,9 @@ export default function InventoryPage() {
                   <div
                     style={{ display: 'grid', gap: '4px', minWidth: '120px' }}
                   >
-                    {canViewCosts && <span>شراء: {money(item.buy_price)}</span>}
+                    {canViewCosts && (
+                      <span>شراء: {purchasePrice(item.buy_price)}</span>
+                    )}
 
                     <span
                       style={{
@@ -1637,6 +1639,15 @@ function movementTypeName(movement: MovementRow) {
 function money(value: unknown) {
   return formatPreciseMoney(value);
 }
+
+function purchasePrice(value: unknown) {
+  const amount = Number(value ?? 0);
+
+  const text = Number.isFinite(amount) ? String(amount) : '0';
+
+  return `${text} ج.م`;
+}
+
 function formatDate(value?: string) {
   if (!value) return '—';
 

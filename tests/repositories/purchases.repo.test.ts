@@ -1654,15 +1654,15 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(purchaseReturn.total_amount).toBe(84.375);
+    expect(purchaseReturn.total_amount).toBe(84.38);
 
     expect(purchaseReturn.cash_refund_amount).toBe(84);
 
-    expect(purchaseReturn.credit_amount).toBe(0.375);
+    expect(purchaseReturn.credit_amount).toBe(0.38);
 
     expect(purchaseReturn.rounding_adjustment).toBe(0);
 
-    expect(getSupplierBalance(supplierId)).toBe(-0.375);
+    expect(getSupplierBalance(supplierId)).toBe(-0.38);
 
     const movement = getDb()
       .prepare(
@@ -1694,7 +1694,7 @@ describe('purchases repository', () => {
       (entry: any) => Number(entry.return_id) === purchaseReturn.return_id,
     );
 
-    expect(Number(returnEntry.credit)).toBe(0.375);
+    expect(Number(returnEntry.credit)).toBe(0.38);
 
     expect(Number(returnEntry.cash_amount)).toBe(84);
 
@@ -3112,7 +3112,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.inventory_value)).toBe(2600);
 
-    expect(Number(state.average_cost)).toBeCloseTo(2600 / 18, 12);
+    expect(Number(state.average_cost)).toBe(144.44);
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -4142,9 +4142,13 @@ describe('purchases repository', () => {
 
     expect(Number(state.inventory_value)).toBe(506.25);
 
-    expect(Number(state.average_cost)).toBe(63.28125);
+    expect(Number(state.average_cost)).toBe(63.28);
 
-    expect(Number(state.buy_price)).toBe(63.28125);
+    /*
+     * سعر الشراء المعروض يظل
+     * السعر الذي أدخله المستخدم.
+     */
+    expect(Number(state.buy_price)).toBe(84.375);
 
     expect(getSupplierBalance(supplierId)).toBe(506.25);
   });
@@ -4204,9 +4208,9 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(firstReturn.exact_total_amount).toBe(590.625);
+    expect(firstReturn.exact_total_amount).toBe(590.63);
 
-    expect(firstReturn.total_amount).toBe(590.625);
+    expect(firstReturn.total_amount).toBe(590.63);
 
     expect(firstReturn.rounding_adjustment).toBe(0);
 
@@ -4214,7 +4218,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.stock)).toBe(5);
 
-    expect(Number(state.inventory_value)).toBe(421.875);
+    expect(Number(state.inventory_value)).toBe(421.87);
 
     const secondReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -4242,7 +4246,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.stock)).toBe(1);
 
-    expect(Number(state.inventory_value)).toBe(84.375);
+    expect(Number(state.inventory_value)).toBe(84.37);
 
     const finalReturn = createPurchaseReturn({
       purchase_id: purchase.purchaseId,
@@ -4260,9 +4264,9 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(finalReturn.exact_total_amount).toBe(84.375);
+    expect(finalReturn.exact_total_amount).toBe(84.37);
 
-    expect(finalReturn.total_amount).toBe(84.375);
+    expect(finalReturn.total_amount).toBe(84.37);
 
     expect(finalReturn.rounding_adjustment).toBe(0);
 
@@ -4348,11 +4352,11 @@ describe('purchases repository', () => {
       ],
     });
 
-    expect(purchaseReturn.exact_total_amount).toBe(84.375);
+    expect(purchaseReturn.exact_total_amount).toBe(84.38);
 
-    expect(purchaseReturn.total_amount).toBe(84.375);
+    expect(purchaseReturn.total_amount).toBe(84.38);
 
-    expect(purchaseReturn.rounding_adjustment).toBe(-0.375);
+    expect(purchaseReturn.rounding_adjustment).toBe(-0.38);
 
     expect(purchaseReturn.cash_refund_amount).toBe(84);
 
@@ -4362,7 +4366,7 @@ describe('purchases repository', () => {
 
     expect(Number(state.stock)).toBe(11);
 
-    expect(Number(state.inventory_value)).toBe(928.125);
+    expect(Number(state.inventory_value)).toBe(928.12);
 
     cancelPurchaseReturn({
       return_id: purchaseReturn.return_id,
@@ -4387,7 +4391,7 @@ describe('purchases repository', () => {
     expect(Number(restoredInvoice.purchase.remaining_amount)).toBe(0);
   });
 
-  it('preserves the exact purchase total when raw unit cost has more than two decimals', () => {
+  it('truncates purchase line totals to cents while preserving the entered unit cost', () => {
     const supplierId = createTestSupplier();
 
     const variant = seedPurchaseProduct();
@@ -4412,25 +4416,28 @@ describe('purchases repository', () => {
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.sub_total)).toBe(590.625);
+    expect(Number(invoice.purchase.sub_total)).toBe(590.62);
 
-    expect(Number(invoice.purchase.exact_total_amount)).toBe(590.625);
+    expect(Number(invoice.purchase.exact_total_amount)).toBe(590.62);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(590.625);
+    expect(Number(invoice.purchase.total_amount)).toBe(590.62);
 
     expect(Number(invoice.items[0].unit_cost)).toBe(84.375);
 
-    expect(Number(invoice.items[0].line_total)).toBe(590.625);
+    expect(Number(invoice.items[0].line_total)).toBe(590.62);
 
     const state = getVariantCostState('PURCHASE001');
 
     expect(Number(state.stock)).toBe(7);
 
-    expect(Number(state.inventory_value)).toBe(590.625);
+    expect(Number(state.inventory_value)).toBe(590.62);
 
+    /*
+     * سعر المورد كما أدخله المستخدم.
+     */
     expect(Number(state.buy_price)).toBe(84.375);
 
-    expect(Number(state.average_cost)).toBe(84.375);
+    expect(Number(state.average_cost)).toBe(84.37);
   });
 
   it('calculates purchase invoice totals from full precision line amounts', () => {
@@ -4501,9 +4508,9 @@ describe('purchases repository', () => {
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.sub_total)).toBe(60.03);
+    expect(Number(invoice.purchase.sub_total)).toBe(60.02);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(60.03);
+    expect(Number(invoice.purchase.total_amount)).toBe(60.02);
 
     expect(Number(invoice.items[0].unit_cost)).toBe(10.005);
 
@@ -4515,8 +4522,8 @@ describe('purchases repository', () => {
       0,
     );
 
-    expect(allocatedLines).toBeCloseTo(60.03, 12);
+    expect(allocatedLines).toBe(60.02);
 
-    expect(getSupplierBalance(supplierId)).toBeCloseTo(60.03, 12);
+    expect(getSupplierBalance(supplierId)).toBe(60.02);
   });
 });

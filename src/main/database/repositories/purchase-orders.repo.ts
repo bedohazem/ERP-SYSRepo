@@ -2,8 +2,8 @@ import { getDb } from '../db';
 
 import { createPurchaseInvoice } from './purchases.repo';
 import {
+  truncateMoney,
   preservePrecision,
-  preciseDivide,
   preciseMultiply,
   preciseSum,
 } from '../../../shared/money';
@@ -447,7 +447,7 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
 
     const unitCost = preservePrecision(inputCost);
 
-    const lineTotal = preciseMultiply(quantity, unitCost);
+    const lineTotal = truncateMoney(preciseMultiply(quantity, unitCost));
 
     return {
       variant_id: variantId,
@@ -830,62 +830,7 @@ export function updatePurchaseOrder(input: {
     throw new Error('المورد غير موجود أو متعطل');
   }
 
-  const existingByVariant = new Map(
-    (currentSnapshot.items as any[]).map((item) => [
-      Number(item.variant_id),
-      item,
-    ]),
-  );
-
-  const normalizedItems = input.items.map((item) => {
-    const existing = existingByVariant.get(Number(item.variant_id));
-
-    if (!existing) {
-      return item;
-    }
-
-    const incomingQuantity = Number(item.quantity);
-
-    const incomingUnitCost = Number(item.unit_cost ?? existing.unit_cost ?? 0);
-
-    const sameQuantity =
-      Math.abs(incomingQuantity - Number(existing.quantity || 0)) <= 0.000001;
-
-    const sameUnitCost =
-      preservePrecision(incomingUnitCost) ===
-      preservePrecision(Number(existing.unit_cost || 0));
-
-    /*
-     * لو المستخدم لم يغير الكمية
-     * أو سعر الوحدة، نعيد بناء السعر الخام
-     * من إجمالي البند التاريخي.
-     *
-     * مثال:
-     * line_total = 1870
-     * quantity = 12
-     * raw unit cost = 155.833333...
-     *
-     * وبذلك حفظ المسودة لا يحولها
-     * إلى 1869.96.
-     */
-    if (sameQuantity && sameUnitCost) {
-      const historicalLineTotal = preservePrecision(
-        Number(existing.line_total || 0),
-      );
-
-      if (incomingQuantity > 0 && historicalLineTotal > 0) {
-        return {
-          ...item,
-
-          unit_cost: historicalLineTotal / incomingQuantity,
-        };
-      }
-    }
-
-    return item;
-  });
-
-  const items = preparePurchaseOrderItems(normalizedItems);
+  const items = preparePurchaseOrderItems(input.items);
 
   const tx = db.transaction(() => {
     db.prepare(
@@ -1115,21 +1060,24 @@ export function receivePurchaseOrder(input: {
       throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`);
     }
 
-    /*
-     * نعيد بناء السعر الخام من إجمالي أمر الشراء
-     * حتى لا نفقد القروش عند تحويله لفاتورة.
-     *
-     * مثال:
-     * 1870 / 12 = 155.833333...
-     */
-    const rawUnitCost = preciseDivide(lineTotal, quantity);
+    const unitCost = preservePrecision(Number(item.unit_cost || 0));
+
+    if (
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isFinite(unitCost) ||
+      unitCost <= 0 ||
+      lineTotal <= 0
+    ) {
+      throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`);
+    }
 
     return {
       variant_id: Number(item.variant_id),
 
       quantity,
 
-      unit_cost: rawUnitCost,
+      unit_cost: unitCost,
     };
   });
 

@@ -378,18 +378,14 @@ describe('purchase orders repository', () => {
       ],
     });
 
-    expect(order.total_amount).toBe(590.625);
+    expect(order.total_amount).toBe(590.62);
 
     const snapshot = getPurchaseOrder(order.purchase_order_id) as any;
 
     expect(Number(snapshot.items[0].unit_cost)).toBe(84.375);
 
-    expect(Number(snapshot.items[0].line_total)).toBe(590.625);
+    expect(Number(snapshot.items[0].line_total)).toBe(590.62);
 
-    /*
-     * فتح المسودة وحفظها بدون تغيير
-     * لازم لا يحول 1870 إلى 1869.96.
-     */
     const updated = updatePurchaseOrder({
       purchase_order_id: order.purchase_order_id,
 
@@ -408,7 +404,7 @@ describe('purchase orders repository', () => {
 
     expect(Number(updated.items[0].unit_cost)).toBe(84.375);
 
-    expect(Number(updated.items[0].line_total)).toBe(590.625);
+    expect(Number(updated.items[0].line_total)).toBe(590.62);
 
     const received = receivePurchaseOrder({
       purchase_order_id: order.purchase_order_id,
@@ -418,9 +414,9 @@ describe('purchase orders repository', () => {
       paid_amount: 0,
     });
 
-    expect(received.exact_total_amount).toBe(590.625);
+    expect(received.exact_total_amount).toBe(590.62);
 
-    expect(received.total_amount).toBe(590.625);
+    expect(received.total_amount).toBe(590.62);
 
     expect(getVariantStock(variant.variant_id)).toBe(7);
   });

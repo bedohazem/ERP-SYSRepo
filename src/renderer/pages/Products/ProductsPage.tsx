@@ -121,6 +121,13 @@ function escapeHtml(value: string) {
 function money(value: unknown) {
   return truncateForDisplay(value);
 }
+
+function purchasePrice(value: unknown) {
+  const amount = Number(value ?? 0);
+
+  return Number.isFinite(amount) ? String(amount) : '0';
+}
+
 type ProductsTab = 'list' | 'create' | 'edit';
 type ProductEditMode = 'edit' | 'addVariant';
 
@@ -2057,7 +2064,9 @@ export default function ProductsPage() {
                                       <div>{variant.barcode || '—'}</div>
                                       <div>{variant.size || '—'}</div>
                                       <div>{variant.color || '—'}</div>
-                                      <div>{money(variant.buy_price)} ج</div>
+                                      <div>
+                                        {purchasePrice(variant.buy_price)} ج
+                                      </div>
                                       <div
                                         style={{
                                           display: 'grid',

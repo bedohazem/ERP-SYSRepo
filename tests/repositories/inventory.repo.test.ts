@@ -846,45 +846,39 @@ describe('inventory repository', () => {
     expect(analytics.top_mover?.variant_id).toBe(variant.variant_id);
   });
 
-  it('allocates inventory value at full precision without losing the supplier total', () => {
+  it('allocates inventory value in cents without losing any money', () => {
     createProduct({
-      name: 'Proportional Cost Product',
-
+      name: 'Cent Allocated Product',
       category_id: null,
-
       image_path: null,
-
       description: null,
 
       variants: [
         {
-          barcode: 'INV-PROPORTIONAL-COST',
+          barcode: 'INV-CENT-ALLOCATED',
 
           size: 'M',
-
           color: 'Black',
 
-          buy_price: 155.83,
-
+          buy_price: 16.667,
           sell_price: 200,
 
           min_stock: 1,
-
           opening_qty: 0,
         },
       ],
     });
 
-    const variant = getVariantByBarcode('INV-PROPORTIONAL-COST') as any;
+    const variant = getVariantByBarcode('INV-CENT-ALLOCATED') as any;
 
     receiveStockAtCost(getDb(), {
       variant_id: variant.variant_id,
 
       quantity: 12,
 
-      unit_cost: 155.83,
+      unit_cost: 16.667,
 
-      cost_value: 1870,
+      cost_value: 200,
 
       reference_type: 'test_purchase',
 
@@ -895,9 +889,7 @@ describe('inventory repository', () => {
 
     expect(before.stock).toBe(12);
 
-    expect(before.inventory_value).toBe(1870);
-
-    expect(before.average_cost).toBeCloseTo(1870 / 12, 12);
+    expect(before.inventory_value).toBe(200);
 
     const issued = issueStockAtAverageCost(getDb(), {
       variant_id: variant.variant_id,
@@ -909,67 +901,58 @@ describe('inventory repository', () => {
       created_by: 1,
     });
 
-    expect(issued.cost_value).toBeCloseTo((1870 * 7) / 12, 12);
+    expect(issued.cost_value).toBe(116.67);
 
-    expect(issued.unit_cost).toBeCloseTo(1870 / 12, 12);
+    expect(issued.inventory_value).toBe(83.33);
 
     expect(issued.stock).toBe(5);
 
-    expect(issued.inventory_value).toBeCloseTo((1870 * 5) / 12, 12);
-
     const after = getInventoryCostState(getDb(), variant.variant_id);
 
-    expect(after.stock).toBe(5);
-
-    expect(after.inventory_value).toBeCloseTo((1870 * 5) / 12, 12);
-
-    expect(after.average_cost).toBeCloseTo(1870 / 12, 12);
+    expect(after.inventory_value).toBe(83.33);
   });
 
-  it('preserves the full inventory value when pieces are sold one by one', () => {
+  it('distributes cents across sequential sales without losing a cent', () => {
     createProduct({
-      name: 'Sequential Cost Product',
+      name: 'Sequential Cent Product',
 
       category_id: null,
-
       image_path: null,
-
       description: null,
 
       variants: [
         {
-          barcode: 'INV-SEQUENTIAL-COST',
+          barcode: 'INV-SEQUENTIAL-CENTS',
 
           size: 'L',
-
           color: 'Blue',
 
-          buy_price: 155.83,
-
+          buy_price: 16.667,
           sell_price: 200,
 
           min_stock: 1,
-
           opening_qty: 0,
         },
       ],
     });
 
-    const variant = getVariantByBarcode('INV-SEQUENTIAL-COST') as any;
+    const variant = getVariantByBarcode('INV-SEQUENTIAL-CENTS') as any;
 
     receiveStockAtCost(getDb(), {
       variant_id: variant.variant_id,
 
       quantity: 12,
 
-      unit_cost: 155.83,
+      unit_cost: 16.667,
 
-      cost_value: 1870,
+      cost_value: 200,
 
       reference_type: 'test_purchase',
 
       created_by: 1,
     });
+
+    const issuedValues: number[] = [];
 
     let totalIssued = 0;
 
@@ -984,10 +967,16 @@ describe('inventory repository', () => {
         created_by: 1,
       });
 
+      issuedValues.push(issued.cost_value);
+
       totalIssued = preciseAdd(totalIssued, issued.cost_value);
     }
 
-    expect(totalIssued).toBeCloseTo(1870, 10);
+    expect(totalIssued).toBe(200);
+
+    expect(issuedValues.filter((value) => value === 16.67)).toHaveLength(8);
+
+    expect(issuedValues.filter((value) => value === 16.66)).toHaveLength(4);
 
     const finalState = getInventoryCostState(getDb(), variant.variant_id);
 

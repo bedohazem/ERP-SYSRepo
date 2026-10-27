@@ -156,22 +156,124 @@ export function preciseSum(values: unknown[]): number {
   return preciseAdd(...values);
 }
 
-/*
- * للعرض فقط.
- *
- * لا تستخدم ناتج هذه الدالة
- * في الحساب أو التخزين.
- *
- * 100       -> 100
- * 100.5     -> 100.5
- * 84.375    -> 84.37
- * 100.3587  -> 100.35
- *
- * يوجد فقط Noise Guard صغير جدًا
- * لمنع أرقام Floating Point الوهمية
- * مثل 399.9999999999999 من الظهور
- * 399.99 للمستخدم.
- */
+export function truncateMoney(value: unknown, maxDecimals = 2): number {
+  const decimals =
+    Number.isInteger(maxDecimals) && maxDecimals >= 0 ? maxDecimals : 2;
+
+  const scale = new Decimal(10).pow(decimals);
+
+  let scaled = toDecimal(value).times(scale);
+
+  /*
+   * إزالة Floating Point noise فقط
+   * لو الرقم قريب جدًا من حد صحيح.
+   *
+   * لا نستخدم ده كتقريب مالي.
+   */
+  const nearestInteger = scaled.toNearest(1, Decimal.ROUND_HALF_UP);
+
+  if (scaled.minus(nearestInteger).abs().lte('0.0000000001')) {
+    scaled = nearestInteger;
+  }
+
+  const truncated = scaled.trunc().div(scale).toNumber();
+
+  return Object.is(truncated, -0) ? 0 : truncated;
+}
+
+export function allocateMoneyValueByQuantity(
+  totalValue: unknown,
+  quantityInput: unknown,
+  totalQuantityInput: unknown,
+): number {
+  const total = toDecimal(truncateMoney(totalValue));
+
+  const quantity = toDecimal(quantityInput);
+
+  const totalQuantity = toDecimal(totalQuantityInput);
+
+  if (total.lte(0) || quantity.lte(0) || totalQuantity.lte(0)) {
+    return 0;
+  }
+
+  /*
+   * آخر كمية تخرج تأخذ كل القيمة
+   * المتبقية حتى لا يعلق قرش واحد.
+   */
+  if (quantity.gte(totalQuantity)) {
+    return truncateMoney(total.toString());
+  }
+
+  const totalCents = total.times(100).trunc();
+
+  let allocatedCents = totalCents
+    .times(quantity)
+    .div(totalQuantity)
+    .toNearest(1, Decimal.ROUND_HALF_UP);
+
+  if (allocatedCents.lt(0)) {
+    allocatedCents = new Decimal(0);
+  }
+
+  if (allocatedCents.gt(totalCents)) {
+    allocatedCents = totalCents;
+  }
+
+  return preservePrecision(allocatedCents.div(100).toString());
+}
+
+export function allocateTruncatedMoneyAcrossWeights(
+  totalValue: unknown,
+  weightInputs: unknown[],
+): number[] {
+  const total = toDecimal(truncateMoney(totalValue));
+
+  const weights = weightInputs.map((value) => {
+    const weight = toDecimal(value);
+
+    return weight.gt(0) ? weight : new Decimal(0);
+  });
+
+  const totalWeight = weights.reduce(
+    (sum, weight) => sum.plus(weight),
+    new Decimal(0),
+  );
+
+  if (total.lte(0) || totalWeight.lte(0) || weights.length === 0) {
+    return weights.map(() => 0);
+  }
+
+  let lastPositiveIndex = -1;
+
+  for (let index = weights.length - 1; index >= 0; index -= 1) {
+    if (weights[index].gt(0)) {
+      lastPositiveIndex = index;
+      break;
+    }
+  }
+
+  let remainingCents = total.times(100).trunc();
+
+  let remainingWeight = new Decimal(totalWeight);
+
+  return weights.map((weight, index) => {
+    if (weight.lte(0)) {
+      return 0;
+    }
+
+    const allocatedCents =
+      index === lastPositiveIndex
+        ? remainingCents
+        : remainingCents.times(weight).div(remainingWeight).trunc();
+
+    remainingCents = remainingCents.minus(allocatedCents);
+
+    remainingWeight = remainingWeight.minus(weight);
+
+    return preservePrecision(allocatedCents.div(100).toString());
+  });
+}
+
 export function truncateForDisplay(value: unknown, maxDecimals = 2): string {
   const decimals =
     Number.isInteger(maxDecimals) && maxDecimals >= 0 ? maxDecimals : 2;

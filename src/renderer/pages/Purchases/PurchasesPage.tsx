@@ -6,7 +6,8 @@ import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
 import {
-  allocatePreciseTotalAcrossWeights,
+  allocateTruncatedMoneyAcrossWeights,
+  truncateMoney,
   formatPreciseMoney,
   preservePrecision,
   roundMoney,
@@ -164,7 +165,7 @@ export default function PurchasesPage() {
       return 0;
     }
 
-    return preciseMultiply(quantity, unitCost);
+    return truncateMoney(preciseMultiply(quantity, unitCost));
   }
 
   const subTotal = useMemo(
@@ -180,18 +181,19 @@ export default function PurchasesPage() {
     if (discountType === 'percent') {
       const percentage = Math.min(value, 100);
 
-      return Math.min(
-        subTotal,
-        preciseDivide(preciseMultiply(subTotal, percentage), 100),
+      return truncateMoney(
+        Math.min(
+          subTotal,
+          preciseDivide(preciseMultiply(subTotal, percentage), 100),
+        ),
       );
     }
 
-    return Math.min(subTotal, value);
+    return truncateMoney(Math.min(subTotal, value));
   }, [discountDraft, discountType, subTotal]);
 
-  const exactTotalAmount = Math.max(
-    0,
-    preciseSubtract(subTotal, discountValue),
+  const exactTotalAmount = truncateMoney(
+    Math.max(0, preciseSubtract(subTotal, discountValue)),
   );
 
   const totalAmount = exactTotalAmount;
@@ -215,7 +217,7 @@ export default function PurchasesPage() {
   const purchaseLineFinancials = useMemo(() => {
     const grossTotals = lines.map(getPurchaseLineTotal);
 
-    const lineDiscounts = allocatePreciseTotalAcrossWeights(
+    const lineDiscounts = allocateTruncatedMoneyAcrossWeights(
       discountValue,
       grossTotals,
     );
@@ -236,11 +238,13 @@ export default function PurchasesPage() {
     lines.forEach((line, index) => {
       const quantity = Number(line.quantity || 0);
 
-      const grossTotal = preservePrecision(grossTotals[index] || 0);
+      const grossTotal = truncateMoney(grossTotals[index] || 0);
 
-      const lineDiscount = preservePrecision(lineDiscounts[index] || 0);
+      const lineDiscount = truncateMoney(lineDiscounts[index] || 0);
 
-      const netTotal = Math.max(0, preciseSubtract(grossTotal, lineDiscount));
+      const netTotal = truncateMoney(
+        Math.max(0, preciseSubtract(grossTotal, lineDiscount)),
+      );
 
       result.set(line.variant_id, {
         grossTotal,

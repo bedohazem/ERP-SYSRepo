@@ -5,6 +5,8 @@ import {
 } from './suppliers.repo';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
+  allocateMoneyValueByQuantity,
+  roundFinancial,
   allocatePreciseTotalAcrossWeights,
   hasPositivePreciseAmount,
   normalizePreciseZero,
@@ -19,6 +21,8 @@ import {
   preciseSubtract,
   preciseSum,
   isEffectivelyZero,
+  allocateTruncatedMoneyAcrossWeights,
+  truncateMoney,
 } from '../../../shared/money';
 import {
   getOpenCashShift,
@@ -398,7 +402,7 @@ function preparePurchaseItemInput(
     throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
   }
 
-  const rawLineTotal = preciseMultiply(quantity, unitCost);
+  const rawLineTotal = truncateMoney(preciseMultiply(quantity, unitCost));
 
   if (!Number.isFinite(rawLineTotal) || rawLineTotal <= 0) {
     throw new Error(`إجمالي شراء غير صحيح للصنف ${productName}`);
@@ -459,35 +463,14 @@ function getEffectivePurchaseUnitCost(item: {
   return unitCost;
 }
 
-function getPurchaseBuyPriceFromSnapshot(item: {
-  quantity?: number | null;
-  unit_cost?: number | null;
-  line_total?: number | null;
-  discount_value?: number | null;
-}) {
+function getPurchaseBuyPriceFromSnapshot(item: { unit_cost?: number | null }) {
   const unitCost = Number(item.unit_cost ?? 0);
 
   if (!Number.isFinite(unitCost) || unitCost < 0) {
     throw new Error('سعر شراء الصنف غير صحيح');
   }
 
-  const discountValue = Number(item.discount_value ?? 0);
-
-  /*
-   * بدون خصم:
-   * آخر سعر شراء هو نفس السعر
-   * الذي أدخله المستخدم.
-   */
-  if (!Number.isFinite(discountValue) || discountValue <= 0) {
-    return unitCost;
-  }
-
-  /*
-   * مع خصم فاتورة:
-   * buy_price يعبر عن التكلفة
-   * الفعلية بعد الخصم.
-   */
-  return getEffectivePurchaseUnitCost(item);
+  return preservePrecision(unitCost);
 }
 
 function applyPurchaseInvoiceDiscount<
@@ -497,36 +480,27 @@ function applyPurchaseInvoiceDiscount<
     rawLineTotal: number;
   },
 >(items: T[], discountValueInput: number) {
-  const grossLineTotals = items.map((item) =>
-    preservePrecision(item.rawLineTotal),
-  );
+  const grossLineTotals = items.map((item) => truncateMoney(item.rawLineTotal));
 
   const subTotal = preciseSum(grossLineTotals);
 
-  const discountValue = preservePrecision(
-    Math.min(
-      subTotal,
-
-      Math.max(0, Number(discountValueInput || 0)),
-    ),
+  const discountValue = truncateMoney(
+    Math.min(subTotal, Math.max(0, Number(discountValueInput || 0))),
   );
 
-  const lineDiscounts = allocatePreciseTotalAcrossWeights(
+  const lineDiscounts = allocateTruncatedMoneyAcrossWeights(
     discountValue,
-
     grossLineTotals,
   );
 
   return items.map((item, index) => {
-    const grossLineTotal = preservePrecision(grossLineTotals[index] || 0);
+    const grossLineTotal = truncateMoney(grossLineTotals[index] || 0);
 
-    const lineDiscount = preservePrecision(lineDiscounts[index] || 0);
+    const lineDiscount = truncateMoney(lineDiscounts[index] || 0);
 
-    const lineTotal = Math.max(
-      0,
-      preciseSubtract(grossLineTotal, lineDiscount),
+    const lineTotal = truncateMoney(
+      Math.max(0, preciseSubtract(grossLineTotal, lineDiscount)),
     );
-
     const effectiveUnitCost =
       discountValue > 0 && item.quantity > 0
         ? preciseDivide(lineTotal, item.quantity)
@@ -641,7 +615,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     const discountValueInput = Number(input.discount_value || 0);
 
     const discountValue = Number.isFinite(discountValueInput)
-      ? preservePrecision(Math.min(subTotal, Math.max(0, discountValueInput)))
+      ? truncateMoney(Math.min(subTotal, Math.max(0, discountValueInput)))
       : 0;
 
     const preparedItems = applyPurchaseInvoiceDiscount(
@@ -653,13 +627,6 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       preparedItems.map((item) => item.lineTotal),
     );
 
-    /*
-     * قيمة الفاتورة المحاسبية
-     * تظل بالقروش.
-     *
-     * لا نغير أصل الفاتورة
-     * لمجرد أن الكاش بالجنيه الصحيح.
-     */
     const totalAmount = exactTotalAmount;
 
     const settleFullBalance = Boolean(input.settle_full_balance);
@@ -879,7 +846,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         notes: `دخول مخزون من فاتورة شراء رقم ${purchaseId}`,
       });
 
-      updateVariantCost.run(item.effectiveUnitCost, item.variant.id);
+      updateVariantCost.run(item.unitCost, item.variant.id);
     }
 
     db.prepare(
@@ -1522,7 +1489,7 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     const discountValueInput = Number(input.discount_value || 0);
 
     const discountValue = Number.isFinite(discountValueInput)
-      ? preservePrecision(Math.min(subTotal, Math.max(0, discountValueInput)))
+      ? truncateMoney(Math.min(subTotal, Math.max(0, discountValueInput)))
       : 0;
 
     const preparedItems = applyPurchaseInvoiceDiscount(
@@ -2509,17 +2476,13 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
       const originalLineTotal =
         purchaseItem.line_total == null
-          ? preciseMultiply(
-              originalQuantity,
-              Number(purchaseItem.unit_cost || 0),
+          ? truncateMoney(
+              preciseMultiply(
+                originalQuantity,
+                Number(purchaseItem.unit_cost || 0),
+              ),
             )
-          : preservePrecision(purchaseItem.line_total);
-
-      const unitCost = getEffectivePurchaseUnitCost({
-        quantity: originalQuantity,
-        unit_cost: Number(purchaseItem.unit_cost || 0),
-        line_total: originalLineTotal,
-      });
+          : truncateMoney(purchaseItem.line_total);
 
       const previousReturnedValueRow = db
         .prepare(
@@ -2543,8 +2506,8 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           }
         | undefined;
 
-      const alreadyReturnedValue = preservePrecision(
-        Number(previousReturnedValueRow?.returned_value || 0),
+      const alreadyReturnedValue = truncateMoney(
+        previousReturnedValueRow?.returned_value || 0,
       );
 
       const cumulativeReturnedQuantity = alreadyReturned + quantity;
@@ -2552,15 +2515,20 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       const cumulativeReturnedValue =
         cumulativeReturnedQuantity >= originalQuantity - 0.000001
           ? originalLineTotal
-          : preciseDivide(
-              preciseMultiply(originalLineTotal, cumulativeReturnedQuantity),
+          : allocateMoneyValueByQuantity(
+              originalLineTotal,
+              cumulativeReturnedQuantity,
               originalQuantity,
             );
 
-      const lineTotal = Math.max(
-        0,
-        preciseSubtract(cumulativeReturnedValue, alreadyReturnedValue),
+      const lineTotal = truncateMoney(
+        Math.max(
+          0,
+          preciseSubtract(cumulativeReturnedValue, alreadyReturnedValue),
+        ),
       );
+
+      const unitCost = roundFinancial(preciseDivide(lineTotal, quantity));
 
       return {
         purchaseItem,

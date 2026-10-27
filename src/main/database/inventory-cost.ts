@@ -1,6 +1,8 @@
 import type Database from 'better-sqlite3';
 import {
-  allocateProportionalAmountPrecise,
+  allocateMoneyValueByQuantity,
+  roundFinancial,
+  truncateMoney,
   preservePrecision,
   preciseAdd,
   preciseDivide,
@@ -168,7 +170,7 @@ function updateCostState(
     .run(
       preservePrecision(averageCost),
 
-      preservePrecision(inventoryValue),
+      truncateMoney(inventoryValue),
 
       variantId,
     );
@@ -229,7 +231,7 @@ function insertCostedMovement(
 
       preservePrecision(input.unit_cost),
 
-      preservePrecision(input.cost_value),
+      truncateMoney(input.cost_value),
 
       input.reference_id ?? null,
 
@@ -274,23 +276,26 @@ export function receiveStockAtCost(
     );
   }
 
-  const movementValue =
+  const movementValue = truncateMoney(
     rawCostValue !== undefined
-      ? preservePrecision(rawCostValue)
-      : preciseMultiply(quantity, rawUnitCost);
+      ? rawCostValue
+      : preciseMultiply(quantity, rawUnitCost),
+  );
 
   const movementUnitCost =
     quantity > 0
-      ? preciseDivide(movementValue, quantity)
-      : preservePrecision(rawUnitCost);
+      ? roundFinancial(preciseDivide(movementValue, quantity))
+      : roundFinancial(rawUnitCost);
 
   const nextStock = state.stock + quantity;
 
-  const nextInventoryValue = preciseAdd(state.inventory_value, movementValue);
+  const nextInventoryValue = truncateMoney(
+    preciseAdd(state.inventory_value, movementValue),
+  );
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? preservePrecision(preciseDivide(nextInventoryValue, nextStock))
+      ? roundFinancial(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {
@@ -346,19 +351,22 @@ export function issueStockAtAverageCost(
     throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`);
   }
 
-  const movementValue = allocateProportionalAmountPrecise(
-    state.inventory_value,
+  const currentInventoryValue = truncateMoney(state.inventory_value);
+
+  const movementValue = allocateMoneyValueByQuantity(
+    currentInventoryValue,
     quantity,
     state.stock,
   );
 
-  const movementUnitCost = preciseDivide(movementValue, quantity);
+  const movementUnitCost = roundFinancial(
+    preciseDivide(movementValue, quantity),
+  );
 
   const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = preciseSubtract(
-    state.inventory_value,
-    movementValue,
+  let nextInventoryValue = truncateMoney(
+    preciseSubtract(currentInventoryValue, movementValue),
   );
 
   if (Math.abs(nextInventoryValue) <= PRECISE_MONEY_EPSILON) {
@@ -379,7 +387,7 @@ export function issueStockAtAverageCost(
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? preservePrecision(preciseDivide(nextInventoryValue, nextStock))
+      ? roundFinancial(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {
@@ -450,18 +458,22 @@ export function issueStockAtCost(
     throw new Error(`المخزون غير كافي. المتاح: ${state.stock}`);
   }
 
-  const movementValue =
+  const movementValue = truncateMoney(
     rawCostValue !== undefined
-      ? preservePrecision(rawCostValue)
-      : preciseMultiply(quantity, rawUnitCost);
+      ? rawCostValue
+      : preciseMultiply(quantity, rawUnitCost),
+  );
 
-  const movementUnitCost = preciseDivide(movementValue, quantity);
+  const movementUnitCost = roundFinancial(
+    preciseDivide(movementValue, quantity),
+  );
 
   const nextStock = state.stock - quantity;
 
-  let nextInventoryValue = preciseSubtract(
-    state.inventory_value,
-    movementValue,
+  const currentInventoryValue = truncateMoney(state.inventory_value);
+
+  let nextInventoryValue = truncateMoney(
+    preciseSubtract(currentInventoryValue, movementValue),
   );
 
   if (Math.abs(nextInventoryValue) <= PRECISE_MONEY_EPSILON) {
@@ -483,7 +495,7 @@ export function issueStockAtCost(
 
   const nextAverageCost =
     nextStock > STOCK_EPSILON
-      ? preservePrecision(preciseDivide(nextInventoryValue, nextStock))
+      ? roundFinancial(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
   insertCostedMovement(database, {

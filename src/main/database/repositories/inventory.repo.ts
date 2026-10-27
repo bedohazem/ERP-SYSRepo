@@ -5,7 +5,7 @@ import {
   issueStockAtAverageCost,
   receiveStockAtCost,
 } from '../inventory-cost';
-import { roundMoney } from '../../../shared/money';
+import { preservePrecision, roundMoney } from '../../../shared/money';
 
 const STOCK_SUM_SQL = `
   IFNULL(SUM(
@@ -529,7 +529,7 @@ export function listInventoryPage(input?: InventoryPageInput) {
 
       inactive: Number(summaryRow.summary_inactive || 0),
 
-      totalBuyValue: roundMoney(summaryRow.summary_total_buy_value),
+      totalBuyValue: preservePrecision(summaryRow.summary_total_buy_value),
 
       totalSellValue: roundMoney(summaryRow.summary_total_sell_value),
     },

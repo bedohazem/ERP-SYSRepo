@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import {
+  truncateMoney,
   formatPreciseMoney,
   preservePrecision,
   preciseMultiply,
@@ -635,7 +636,7 @@ export default function PurchaseOrdersPanel({
 
           line_total: matchesOriginal
             ? preservePrecision(Number(originalItem.line_total || 0))
-            : preciseMultiply(quantity, unitCost),
+            : truncateMoney(preciseMultiply(quantity, unitCost)),
         };
       }),
     );
