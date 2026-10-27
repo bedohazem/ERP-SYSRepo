@@ -620,7 +620,7 @@ export default function PurchasesPage() {
       try {
         const result = await window.api.getInventoryPage({
           search: q,
-          status: 'all',
+          statuses: ['available', 'low', 'out'],
           categoryId: categoryFilter,
           limit: 20,
           offset: 0,
