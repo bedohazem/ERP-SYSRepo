@@ -1214,7 +1214,8 @@ export default function PurchasesPage() {
                 <option value="">اختار مورد</option>
                 {suppliers.map((supplier) => (
                   <option key={supplier.id} value={supplier.id}>
-                    {supplier.name} - رصيد: {roundMoney(supplier.balance)}
+                    {supplier.name} - رصيد:{' '}
+                    {formatPreciseMoney(supplier.balance)}
                   </option>
                 ))}
               </select>

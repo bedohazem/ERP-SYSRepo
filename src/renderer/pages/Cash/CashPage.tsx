@@ -1688,6 +1688,8 @@ export default function CashPage() {
                 <input
                   type="number"
                   min={0}
+                  step="0.01"
+                  inputMode="decimal"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   placeholder="0.00"
@@ -1791,6 +1793,8 @@ export default function CashPage() {
                 <input
                   type="number"
                   min={0}
+                  step="0.01"
+                  inputMode="decimal"
                   value={transferAmount}
                   onChange={(e) => setTransferAmount(e.target.value)}
                   placeholder="0.00"
@@ -1924,6 +1928,8 @@ export default function CashPage() {
             <input
               type="number"
               min={0}
+              step="0.01"
+              inputMode="decimal"
               value={editMovementAmount}
               onChange={(e) => setEditMovementAmount(e.target.value)}
               style={inputStyle}

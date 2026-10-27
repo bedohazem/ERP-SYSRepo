@@ -3906,10 +3906,21 @@ export function getPurchaseInvoice(purchaseId: number) {
   const payments = db
     .prepare(
       `
-      SELECT *
-      FROM supplier_payments
-      WHERE purchase_id = ?
-      ORDER BY id ASC
+      SELECT
+        sp.*,
+
+        b.cancelled_at AS batch_cancelled_at,
+        b.cancel_reason AS batch_cancel_reason,
+        b.replacement_batch_id
+
+      FROM supplier_payments sp
+
+      LEFT JOIN supplier_payment_batches b
+        ON b.id = sp.batch_id
+
+      WHERE sp.purchase_id = ?
+
+      ORDER BY sp.id ASC
     `,
     )
     .all(Number(purchaseId));

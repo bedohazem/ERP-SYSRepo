@@ -1617,7 +1617,7 @@ export default function SuppliersPage() {
                   title="صافي المستحق"
                   value={money(statementData.summary?.aging?.net_total || 0)}
                 />
-                
+
                 <InfoCard
                   title="0 - 30 يوم"
                   value={money(statementData.summary?.aging?.days_0_30 || 0)}

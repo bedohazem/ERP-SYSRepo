@@ -760,6 +760,8 @@ export default function ExpensesPage() {
             <input
               type="number"
               min={0}
+              step="0.01"
+              inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
@@ -1226,6 +1228,8 @@ export default function ExpensesPage() {
               <input
                 type="number"
                 min={0}
+                step="0.01"
+                inputMode="decimal"
                 value={editExpenseAmount}
                 onChange={(e) => setEditExpenseAmount(e.target.value)}
                 style={inputStyle}

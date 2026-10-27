@@ -1,4 +1,4 @@
-import { roundMoney } from '../../shared/money';
+import { roundFinancial, roundMoney } from '../../shared/money';
 
 export type InputObject = Record<string, unknown>;
 
@@ -151,6 +151,22 @@ export function requirePositiveMoney(value: unknown, label: string) {
   }
 
   const amount = roundMoney(number);
+
+  if (amount <= 0) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  return amount;
+}
+
+export function requirePositiveFinancialMoney(value: unknown, label: string) {
+  const number = requireFiniteNumber(value, label);
+
+  if (number <= 0) {
+    throw new Error(`${label} غير صحيح`);
+  }
+
+  const amount = roundFinancial(number);
 
   if (amount <= 0) {
     throw new Error(`${label} غير صحيح`);

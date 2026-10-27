@@ -21,7 +21,7 @@ import {
   requireEnumValue,
   requireObjectInput,
   requirePositiveInteger,
-  requirePositiveMoney,
+  requirePositiveFinancialMoney,
   requireTrimmedString,
 } from './input-validation';
 
@@ -66,7 +66,7 @@ export function registerExpenseIpc(): void {
 
       category: optionalTrimmedString(payload.category, 'تصنيف المصروف', 500),
 
-      amount: requirePositiveMoney(payload.amount, 'قيمة المصروف'),
+      amount: requirePositiveFinancialMoney(payload.amount, 'قيمة المصروف'),
 
       payment_method: paymentMethod,
 
@@ -159,7 +159,7 @@ export function registerExpenseIpc(): void {
 
         category: optionalTrimmedString(payload.category, 'تصنيف المصروف', 500),
 
-        amount: requirePositiveMoney(payload.amount, 'قيمة المصروف'),
+        amount: requirePositiveFinancialMoney(payload.amount, 'قيمة المصروف'),
 
         payment_method: paymentMethod,
 

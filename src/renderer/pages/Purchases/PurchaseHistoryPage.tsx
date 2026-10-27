@@ -992,7 +992,7 @@ export default function PurchaseHistoryPage() {
           <table
             style={{
               width: '100%',
-              minWidth: '900px',
+              minWidth: '1020px',
               borderCollapse: 'collapse',
               direction: 'rtl',
             }}
@@ -1000,6 +1000,7 @@ export default function PurchaseHistoryPage() {
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
                 <th style={thStyle}>رقم</th>
+                <th style={thStyle}>التاريخ</th>
                 <th style={thStyle}>المورد</th>
                 <th style={thStyle}>الأصناف</th>
                 <th style={thStyle}>المبلغ</th>
@@ -1012,7 +1013,7 @@ export default function PurchaseHistoryPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={7} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={8} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -1031,7 +1032,7 @@ export default function PurchaseHistoryPage() {
                       style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                     >
                       <td style={tdStyle}>#{row.id}</td>
-
+                      <td style={tdStyle}>{formatDate(row.created_at)}</td>
                       <td style={tdStyle}>
                         <div
                           style={{
@@ -1247,7 +1248,7 @@ export default function PurchaseHistoryPage() {
               {!loading && rows.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -1503,6 +1504,11 @@ export default function PurchaseHistoryPage() {
               }}
             >
               <InfoCard
+                title="تاريخ الفاتورة"
+                value={formatDate(selectedPurchase.purchase.created_at)}
+              />
+
+              <InfoCard
                 title="قبل الخصم"
                 value={money(
                   Number(selectedPurchase.purchase.sub_total || 0) > 0
@@ -1672,29 +1678,77 @@ export default function PurchaseHistoryPage() {
                     <th style={thStyle}>التاريخ</th>
                     <th style={thStyle}>المبلغ</th>
                     <th style={thStyle}>الحساب المالي</th>
+                    <th style={thStyle}>الحالة</th>
                     <th style={thStyle}>ملاحظات</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {(selectedPurchase.payments ?? []).map((payment: any) => (
-                    <tr
-                      key={payment.id}
-                      style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-                    >
-                      <td style={tdStyle}>{formatDate(payment.created_at)}</td>
-                      <td style={tdStyle}>{money(payment.amount)}</td>
-                      <td style={tdStyle}>
-                        {getPaymentMethodLabel(payment.payment_method)}
-                      </td>
-                      <td style={tdStyle}>{payment.notes || '—'}</td>
-                    </tr>
-                  ))}
+                  {(selectedPurchase.payments ?? []).map((payment: any) => {
+                    const isReplaced = Boolean(payment.replacement_batch_id);
+
+                    const isCancelled = Boolean(payment.batch_cancelled_at);
+
+                    const isInactive = isReplaced || isCancelled;
+
+                    return (
+                      <tr
+                        key={payment.id}
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.06)',
+                          opacity: isInactive ? 0.65 : 1,
+                        }}
+                      >
+                        <td style={tdStyle}>
+                          {formatDate(payment.created_at)}
+                        </td>
+
+                        <td
+                          style={{
+                            ...tdStyle,
+                            textDecoration: isInactive
+                              ? 'line-through'
+                              : 'none',
+                          }}
+                        >
+                          {money(payment.amount)}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {getPaymentMethodLabel(payment.payment_method)}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {isReplaced ? (
+                            <span style={{ color: '#fbbf24', fontWeight: 900 }}>
+                              تم تعديلها
+                            </span>
+                          ) : isCancelled ? (
+                            <span style={{ color: '#fca5a5', fontWeight: 900 }}>
+                              ملغاة
+                            </span>
+                          ) : (
+                            <span style={{ color: '#6ee7b7', fontWeight: 900 }}>
+                              فعالة
+                            </span>
+                          )}
+                        </td>
+
+                        <td style={tdStyle}>
+                          {isCancelled
+                            ? payment.batch_cancel_reason ||
+                              payment.notes ||
+                              'دفعة ملغاة'
+                            : payment.notes || '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
 
                   {(selectedPurchase.payments ?? []).length === 0 && (
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={5}
                         style={{
                           ...tdStyle,
                           textAlign: 'center',

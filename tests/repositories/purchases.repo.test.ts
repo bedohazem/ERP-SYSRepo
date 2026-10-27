@@ -2163,6 +2163,11 @@ describe('purchases repository', () => {
     expect(cancelledEntries[0].credit).toBe(0);
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+    expect(invoice.payments).toHaveLength(1);
+
+    expect(invoice.payments[0].batch_cancelled_at).toBeTruthy();
+
+    expect(invoice.payments[0].batch_cancel_reason).toBe('Wrong amount');
 
     expect(invoice.purchase.paid_amount).toBe(0);
 

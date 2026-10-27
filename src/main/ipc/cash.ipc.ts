@@ -42,7 +42,7 @@ import {
   requireTrimmedString,
   optionalNonNegativeMoney,
   requireNonNegativeMoney,
-  requirePositiveMoney,
+  requirePositiveFinancialMoney,
   optionalDateOnly,
   optionalNonNegativeInteger,
   optionalPositiveInteger,
@@ -260,7 +260,10 @@ export function registerCashIpc(): void {
       'حساب التحويل المستلم',
     );
 
-    const amount = requirePositiveMoney(payload.amount, 'مبلغ التحويل');
+    const amount = requirePositiveFinancialMoney(
+      payload.amount,
+      'مبلغ التحويل',
+    );
 
     const notes = optionalTrimmedString(payload.notes, 'ملاحظات التحويل');
 
@@ -323,7 +326,10 @@ export function registerCashIpc(): void {
       'حساب حركة الخزنة',
     );
 
-    const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة');
+    const amount = requirePositiveFinancialMoney(
+      payload.amount,
+      'مبلغ حركة الخزنة',
+    );
 
     const notes = optionalTrimmedString(payload.notes, 'ملاحظات حركة الخزنة');
 
@@ -365,7 +371,10 @@ export function registerCashIpc(): void {
 
       const movementId = requirePositiveInteger(payload.id, 'رقم حركة الخزنة');
 
-      const amount = requirePositiveMoney(payload.amount, 'مبلغ حركة الخزنة');
+      const amount = requirePositiveFinancialMoney(
+        payload.amount,
+        'مبلغ حركة الخزنة',
+      );
 
       const type = optionalEnumValue(
         payload.type,

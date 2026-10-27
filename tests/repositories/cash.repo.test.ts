@@ -1210,4 +1210,30 @@ describe('cash repository', () => {
 
     expect(summary.balance).toBe(80.02);
   });
+
+  it('preserves fractional manual cash movements to two decimals', () => {
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 100.55,
+      payment_method: 'cash',
+      notes: 'Fractional deposit',
+      created_by: 1,
+    });
+
+    createCashMovement({
+      type: 'withdraw',
+      direction: 'out',
+      amount: 20.25,
+      payment_method: 'cash',
+      notes: 'Fractional withdrawal',
+      created_by: 1,
+    });
+
+    const summary = getCashSummary();
+
+    expect(summary.total_in).toBe(100.55);
+    expect(summary.total_out).toBe(20.25);
+    expect(summary.balance).toBe(80.3);
+  });
 });
