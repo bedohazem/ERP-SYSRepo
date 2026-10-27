@@ -3,6 +3,7 @@ import {
   normalizePreciseZero,
   PRECISE_MONEY_EPSILON,
   preservePrecision,
+  preciseSubtract,
 } from '../../../shared/money';
 
 export type SupplierInput = {
@@ -113,6 +114,47 @@ export function getSupplierAgingSummary(
     }
   }
 
+  const creditWhere: string[] = [
+    `
+  pr.cancelled_at IS NULL
+  `,
+
+    `
+  IFNULL(
+    pr.credit_amount,
+    0
+  ) > ${PRECISE_MONEY_EPSILON}
+  `,
+  ];
+
+  const creditParams: any[] = [];
+
+  if (id > 0) {
+    creditWhere.push('pr.supplier_id = ?');
+
+    creditParams.push(id);
+  } else {
+    creditWhere.push('s.is_active = 1');
+
+    if (searchValue) {
+      creditWhere.push(`
+      (
+        s.name LIKE ?
+
+        OR IFNULL(s.phone, '') LIKE ?
+
+        OR IFNULL(s.email, '') LIKE ?
+
+        OR IFNULL(s.address, '') LIKE ?
+      )
+    `);
+
+      const q = `%${searchValue}%`;
+
+      creditParams.push(q, q, q, q);
+    }
+  }
+
   const row = db
     .prepare(
       `
@@ -219,6 +261,46 @@ export function getSupplierAgingSummary(
     )
     .get(...params) as any;
 
+  const creditRow = db
+    .prepare(
+      `
+    SELECT
+      IFNULL(
+        SUM(
+          MAX(
+            0,
+            IFNULL(
+              pr.credit_amount,
+              0
+            )
+          )
+        ),
+        0
+      ) AS supplier_credit
+
+    FROM purchase_returns pr
+
+    JOIN suppliers s
+      ON s.id = pr.supplier_id
+
+    WHERE
+      ${creditWhere.join('\nAND ')}
+    `,
+    )
+    .get(...creditParams) as
+    | {
+        supplier_credit: number;
+      }
+    | undefined;
+
+  const grossTotal = preservePrecision(row?.total);
+
+  const supplierCredit = preservePrecision(creditRow?.supplier_credit);
+
+  const netTotal = normalizePreciseZero(
+    preciseSubtract(grossTotal, supplierCredit),
+  );
+
   return {
     days_0_30: preservePrecision(row?.days_0_30),
 
@@ -228,7 +310,23 @@ export function getSupplierAgingSummary(
 
     days_90_plus: preservePrecision(row?.days_90_plus),
 
-    total: preservePrecision(row?.total),
+    /*
+     * إجمالي الفواتير المفتوحة
+     * قبل خصم أي رصيد دائن.
+     */
+    total: grossTotal,
+
+    /*
+     * رصيد دائن قائم للمورد
+     * ناتج عن المرتجعات.
+     */
+    supplier_credit: supplierCredit,
+
+    /*
+     * الصافي الحقيقي المستحق:
+     * الفواتير المفتوحة - الرصيد الدائن.
+     */
+    net_total: netTotal,
   };
 }
 

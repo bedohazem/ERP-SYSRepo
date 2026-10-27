@@ -56,6 +56,9 @@ export default function SuppliersPage() {
     days_90_plus: 0,
 
     total: 0,
+    supplier_credit: 0,
+
+    net_total: 0,
   });
 
   const [supplierDue, setSupplierDue] = useState({
@@ -173,6 +176,9 @@ export default function SuppliersPage() {
         days_90_plus: Number(result.summary?.aging?.days_90_plus || 0),
 
         total: Number(result.summary?.aging?.total || 0),
+        supplier_credit: Number(result.summary?.aging?.supplier_credit || 0),
+
+        net_total: Number(result.summary?.aging?.net_total || 0),
       });
 
       setSupplierDue({
@@ -203,6 +209,9 @@ export default function SuppliersPage() {
         days_90_plus: 0,
 
         total: 0,
+        supplier_credit: 0,
+
+        net_total: 0,
       });
 
       setSupplierDue({
@@ -1156,8 +1165,18 @@ export default function SuppliersPage() {
           }}
         >
           <InfoCard
-            title="إجمالي مستحقات الموردين"
+            title="إجمالي الفواتير المفتوحة"
             value={money(supplierAging.total)}
+          />
+
+          <InfoCard
+            title="أرصدة دائنة للموردين"
+            value={money(supplierAging.supplier_credit)}
+          />
+
+          <InfoCard
+            title="صافي المستحق للموردين"
+            value={money(supplierAging.net_total)}
           />
 
           <InfoCard title="0 - 30 يوم" value={money(supplierAging.days_0_30)} />
@@ -1570,7 +1589,7 @@ export default function SuppliersPage() {
                   textAlign: 'right',
                 }}
               >
-                أعمار مستحقات المورد
+                أعمار الفواتير المفتوحة قبل خصم الرصيد الدائن
               </strong>
 
               <div
@@ -1582,6 +1601,23 @@ export default function SuppliersPage() {
                   gap: '10px',
                 }}
               >
+                <InfoCard
+                  title="إجمالي الفواتير المفتوحة"
+                  value={money(statementData.summary?.aging?.total || 0)}
+                />
+
+                <InfoCard
+                  title="رصيد دائن من المرتجعات"
+                  value={money(
+                    statementData.summary?.aging?.supplier_credit || 0,
+                  )}
+                />
+
+                <InfoCard
+                  title="صافي المستحق"
+                  value={money(statementData.summary?.aging?.net_total || 0)}
+                />
+                
                 <InfoCard
                   title="0 - 30 يوم"
                   value={money(statementData.summary?.aging?.days_0_30 || 0)}

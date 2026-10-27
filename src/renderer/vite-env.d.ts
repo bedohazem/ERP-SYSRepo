@@ -2370,6 +2370,10 @@ declare global {
             days_90_plus: number;
 
             total: number;
+
+            supplier_credit: number;
+
+            net_total: number;
           } | null;
 
           due: {
@@ -2932,6 +2936,9 @@ declare global {
             days_90_plus: number;
 
             total: number;
+            supplier_credit: number;
+
+            net_total: number;
           };
           due: {
             overdue: number;

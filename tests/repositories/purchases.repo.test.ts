@@ -1690,6 +1690,14 @@ describe('purchases repository', () => {
 
     const statement = getSupplierStatement(supplierId, 1) as any;
 
+    expect(statement.summary.aging.total).toBe(0);
+
+    expect(statement.summary.aging.supplier_credit).toBe(0.38);
+
+    expect(statement.summary.aging.net_total).toBe(-0.38);
+
+    expect(statement.summary.balance).toBe(-0.38);
+
     const returnEntry = statement.entries.find(
       (entry: any) => Number(entry.return_id) === purchaseReturn.return_id,
     );
@@ -3896,6 +3904,9 @@ describe('purchases repository', () => {
       days_90_plus: 450,
 
       total: 1200,
+      supplier_credit: 0,
+
+      net_total: 1200,
     });
 
     expect(statement.summary.balance).toBe(1200);

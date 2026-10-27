@@ -789,6 +789,12 @@ export default function PurchaseOrdersPanel({
       return;
     }
 
+    if (detail.order.status !== 'ordered') {
+      showMessage('اعتمد أمر الشراء أولًا قبل الاستلام');
+
+      return;
+    }
+
     if (detailItems.some((item) => Number(item.unit_cost || 0) <= 0)) {
       showMessage('حدد سعر شراء صحيح لكل الأصناف قبل الاستلام');
 
@@ -803,19 +809,6 @@ export default function PurchaseOrdersPanel({
       showMessage('قيمة المدفوع غير صحيحة');
 
       return;
-    }
-
-    /*
-     * لو ما زلنا في المسودة
-     * نحفظ أي تعديل على
-     * الكميات والأسعار أولًا.
-     */
-    if (detail.order.status === 'draft') {
-      const saved = await saveDraftOrder();
-
-      if (!saved) {
-        return;
-      }
     }
 
     setActionLoading(true);
@@ -1625,8 +1618,7 @@ export default function PurchaseOrdersPanel({
               </div>
             )}
 
-            {(detail.order.status === 'draft' ||
-              detail.order.status === 'ordered') && (
+            {detail.order.status === 'ordered' && (
               <div
                 style={{
                   border: '1px solid rgba(16,185,129,0.30)',

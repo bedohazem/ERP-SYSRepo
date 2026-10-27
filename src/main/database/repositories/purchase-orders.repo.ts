@@ -1051,6 +1051,10 @@ export function receivePurchaseOrder(input: {
     throw new Error('لا يمكن استلام أمر شراء ملغى');
   }
 
+  if (snapshot.order.status !== 'ordered') {
+    throw new Error('يجب اعتماد أمر الشراء قبل استلامه');
+  }
+
   const items = snapshot.items.map((item: any) => {
     const quantity = Number(item.quantity || 0);
 

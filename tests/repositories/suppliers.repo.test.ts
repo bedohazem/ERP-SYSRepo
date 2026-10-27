@@ -392,6 +392,9 @@ describe('suppliers repository', () => {
       days_90_plus: 400,
 
       total: 1000,
+      supplier_credit: 0,
+
+      net_total: 1000,
     });
 
     const page = listSuppliers({
@@ -412,6 +415,9 @@ describe('suppliers repository', () => {
       days_90_plus: 400,
 
       total: 1000,
+      supplier_credit: 0,
+
+      net_total: 1000,
     });
 
     const otherSupplier = createSupplier({
@@ -444,6 +450,9 @@ describe('suppliers repository', () => {
       days_90_plus: 400,
 
       total: 1000,
+      supplier_credit: 0,
+
+      net_total: 1000,
     });
 
     const allSuppliersPage = listSuppliers({

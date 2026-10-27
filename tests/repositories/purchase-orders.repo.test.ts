@@ -22,6 +22,7 @@ import {
   receivePurchaseOrder,
   listPurchaseOrders,
   updatePurchaseOrder,
+  markPurchaseOrderOrdered,
 } from '../../src/main/database/repositories/purchase-orders.repo';
 
 function seedVariant(input: {
@@ -204,6 +205,26 @@ describe('purchase orders repository', () => {
     expect(order.status).toBe('draft');
 
     expect(getVariantStock(variant.variant_id)).toBe(0);
+
+    expect(() =>
+      receivePurchaseOrder({
+        purchase_order_id: order.purchase_order_id,
+
+        actor_id: 1,
+
+        paid_amount: 0,
+      }),
+    ).toThrow('يجب اعتماد أمر الشراء قبل استلامه');
+
+    expect(getVariantStock(variant.variant_id)).toBe(0);
+
+    const ordered = markPurchaseOrderOrdered({
+      purchase_order_id: order.purchase_order_id,
+
+      actor_id: 1,
+    });
+
+    expect(ordered.order.status).toBe('ordered');
 
     const received = receivePurchaseOrder({
       purchase_order_id: order.purchase_order_id,
@@ -405,7 +426,11 @@ describe('purchase orders repository', () => {
     expect(Number(updated.items[0].unit_cost)).toBe(84.375);
 
     expect(Number(updated.items[0].line_total)).toBe(590.62);
+    markPurchaseOrderOrdered({
+      purchase_order_id: order.purchase_order_id,
 
+      actor_id: 1,
+    });
     const received = receivePurchaseOrder({
       purchase_order_id: order.purchase_order_id,
 
@@ -476,6 +501,12 @@ describe('purchase orders repository', () => {
           unit_cost: 981.75,
         },
       ],
+    });
+
+    markPurchaseOrderOrdered({
+      purchase_order_id: order.purchase_order_id,
+
+      actor_id: 1,
     });
 
     const received = receivePurchaseOrder({
