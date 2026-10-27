@@ -632,7 +632,11 @@ export default function CustomersPage() {
       return false;
     }
 
-    if (entry.cancelled_at || entry.replacement_batch_id) {
+    if (
+      entry.cancelled_at ||
+      entry.replacement_batch_id ||
+      !entry.is_latest_mutable_batch
+    ) {
       return false;
     }
 

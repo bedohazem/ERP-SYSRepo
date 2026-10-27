@@ -1489,4 +1489,90 @@ describe('sale promotion exchanges', () => {
 
     expect(Number(current.sale.grand_total)).toBe(150);
   });
+
+  it('allows admin exchange on store safe without an open shift', () => {
+    const db = getDb();
+
+    const result = createPromotionSale(['EX250', 'EX200', 'EX150']);
+
+    const currentShift = getOpenCashShift();
+
+    expect(currentShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: currentShift!.id,
+      closing_counted_amount: 450,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    const giftUnit = getUnitByPrice(result.sale.saleId, 150);
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_safe',
+
+      items: [
+        {
+          promotion_unit_id: Number(giftUnit.id),
+
+          new_variant_id: result.variants.EX300.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.amount_to_collect).toBe(100);
+
+    expect(exchange.shift_id).toBeNull();
+
+    const row = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        payment_method
+
+      FROM sale_exchanges
+
+      WHERE id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(row.shift_id).toBeNull();
+
+    expect(row.payment_method).toBe('store_safe');
+
+    const movement = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        payment_method,
+        direction,
+        amount
+
+      FROM cash_movements
+
+      WHERE reference_type = 'sale_exchange'
+        AND reference_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(movement.shift_id).toBeNull();
+
+    expect(movement.payment_method).toBe('store_safe');
+
+    expect(movement.direction).toBe('in');
+
+    expect(Number(movement.amount)).toBe(100);
+  });
 });

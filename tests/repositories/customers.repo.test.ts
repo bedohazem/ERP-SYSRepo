@@ -1291,28 +1291,64 @@ describe('customers repository', () => {
     expect(receipt.sale.remaining_amount).toBe(50);
   });
 
-  it('caps customer payment to sale remaining amount', () => {
+  it('rejects customer payment greater than the sale remaining amount', () => {
     const customer = createTestCustomer();
+
     const sale = createPartialSale(customer.id, 100);
 
-    const payment = recordCustomerPayment({
-      customer_id: customer.id,
-      sale_id: sale.saleId,
-      amount: 500,
-      payment_method: 'cash',
-      actor_id: 1,
-    });
+    expect(() =>
+      recordCustomerPayment({
+        customer_id: customer.id,
 
-    expect(payment.ok).toBe(true);
-    expect(payment.paid_amount).toBe(200);
+        sale_id: sale.saleId,
+
+        amount: 500,
+
+        payment_method: 'cash',
+
+        actor_id: 1,
+      }),
+    ).toThrow('مبلغ الدفعة أكبر من المتبقي على الفاتورة وهو 200 ج.م');
 
     const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
-    expect(updatedCustomer.balance).toBe(0);
+
+    expect(updatedCustomer.balance).toBe(200);
 
     const receipt = getSaleReceipt(sale.saleId) as any;
-    expect(receipt.sale.paid).toBe(300);
-    expect(receipt.sale.remaining_amount).toBe(0);
-    expect(receipt.sale.payment_status).toBe('paid');
+
+    expect(receipt.sale.paid).toBe(100);
+
+    expect(receipt.sale.remaining_amount).toBe(200);
+
+    expect(receipt.sale.payment_status).toBe('partial');
+  });
+
+  it('rejects general customer payment greater than the total customer debt', () => {
+    const customer = createTestCustomer();
+
+    const sale = createPartialSale(customer.id, 100);
+
+    expect(() =>
+      recordCustomerPayment({
+        customer_id: customer.id,
+
+        amount: 500,
+
+        payment_method: 'cash',
+
+        actor_id: 1,
+      }),
+    ).toThrow('مبلغ الدفعة أكبر من إجمالي مديونية العميل وهي 200 ج.م');
+
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
+
+    expect(updatedCustomer.balance).toBe(200);
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    expect(receipt.sale.paid).toBe(100);
+
+    expect(receipt.sale.remaining_amount).toBe(200);
   });
 
   it('records general customer payment and allocates to oldest open sales', () => {
@@ -1830,6 +1866,215 @@ describe('customers repository', () => {
     expect(movement.payment_method).toBe('store_safe');
     expect(movement.direction).toBe('in');
     expect(Number(movement.amount)).toBe(50);
+  });
+
+  it('allows admin to update and cancel a non-drawer customer payment without an open shift', () => {
+    const db = getDb();
+
+    const customer = createTestCustomer('01099999998');
+
+    const sale = createPartialSale(customer.id, 100);
+
+    const shift = getOpenCashShift();
+
+    expect(shift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: shift!.id,
+      closing_counted_amount: 100,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 50,
+
+      payment_method: 'store_safe',
+
+      actor_id: 1,
+    });
+
+    expect(payment.shift_id).toBeNull();
+
+    const updated = updateCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      amount: 40,
+
+      payment_method: 'store_safe',
+
+      notes: 'Correct safe payment',
+
+      actor_id: 1,
+    });
+
+    expect(updated.shift_id).toBeNull();
+
+    const updatedBatch = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        payment_method
+
+      FROM customer_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(updated.batch_id) as any;
+
+    expect(updatedBatch.shift_id).toBeNull();
+
+    expect(updatedBatch.payment_method).toBe('store_safe');
+
+    const cancelled = cancelCustomerPaymentBatch({
+      batch_id: updated.batch_id,
+
+      reason: 'Cancel corrected safe payment',
+
+      actor_id: 1,
+    });
+
+    expect(cancelled.cancelled_shift_id).toBeNull();
+
+    const movements = db
+      .prepare(
+        `
+        SELECT
+          shift_id,
+          direction,
+          amount,
+          payment_method,
+          reference_type,
+          reference_id
+
+        FROM cash_movements
+
+        WHERE type = 'customer_payment'
+          AND payment_method = 'store_safe'
+
+          AND (
+            reference_id = ?
+            OR reference_id = ?
+          )
+
+        ORDER BY id ASC
+        `,
+      )
+      .all(payment.payment_batch_id, updated.batch_id) as any[];
+
+    expect(movements.every((movement) => movement.shift_id === null)).toBe(
+      true,
+    );
+
+    const safeBalance = movements.reduce(
+      (total, movement) =>
+        total +
+        (movement.direction === 'in'
+          ? Number(movement.amount || 0)
+          : -Number(movement.amount || 0)),
+      0,
+    );
+
+    expect(safeBalance).toBe(0);
+  });
+
+  it('blocks mutating an older customer payment when a newer active payment exists', () => {
+    const customer = createTestCustomer();
+
+    const sale = createPartialSale(customer.id, 100);
+
+    const firstPayment = recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 50,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    });
+
+    const secondPayment = recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: sale.saleId,
+
+      amount: 50,
+
+      payment_method: 'cash',
+
+      actor_id: 1,
+    });
+
+    expect(() =>
+      cancelCustomerPaymentBatch({
+        batch_id: firstPayment.payment_batch_id,
+
+        reason: 'Cancel old payment',
+
+        actor_id: 1,
+      }),
+    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للعميل');
+
+    expect(() =>
+      updateCustomerPaymentBatch({
+        batch_id: firstPayment.payment_batch_id,
+
+        amount: 25,
+
+        payment_method: 'cash',
+
+        notes: 'Edit old payment',
+
+        actor_id: 1,
+      }),
+    ).toThrow('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للعميل');
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    /*
+     * البيع الأصلي دفع منه 100،
+     * ثم دفعتان 50 + 50.
+     *
+     * فشل التعديل والإلغاء لازم
+     * يترك الحساب كما هو تمامًا.
+     */
+    expect(Number(receipt.sale.paid)).toBe(200);
+
+    expect(Number(receipt.sale.remaining_amount)).toBe(100);
+
+    const updatedCustomer = getCustomerById(customer.id) as CustomerTestRow;
+
+    expect(updatedCustomer.balance).toBe(100);
+
+    const statement = getCustomerStatement(customer.id, 1) as any;
+
+    const firstEntry = statement.entries.find(
+      (entry: any) =>
+        Number(entry.batch_id || 0) === firstPayment.payment_batch_id,
+    );
+
+    const secondEntry = statement.entries.find(
+      (entry: any) =>
+        Number(entry.batch_id || 0) === secondPayment.payment_batch_id,
+    );
+
+    expect(firstEntry).toBeTruthy();
+
+    expect(secondEntry).toBeTruthy();
+
+    expect(firstEntry.is_latest_mutable_batch).toBe(false);
+
+    expect(secondEntry.is_latest_mutable_batch).toBe(true);
   });
 
   it('summarizes customer debt by due date', () => {

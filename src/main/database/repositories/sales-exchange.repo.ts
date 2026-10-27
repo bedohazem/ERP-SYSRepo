@@ -5,8 +5,8 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo';
 import { syncCustomerTotalSpent } from './sales.repo';
-import { requireOperationalCashShift } from './cash-shifts.repo';
-import { getShiftBusinessDate } from '../shift-business-date';
+import { resolveFinancialOperationShift } from './cash-shifts.repo';
+import { resolveFinancialBusinessDate } from '../financial-business-date';
 import {
   getInventoryCostState,
   issueStockAtAverageCost,
@@ -695,11 +695,6 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
     throw new Error('لا توجد أصناف للاستبدال');
   }
 
-  const openShift = requireOperationalCashShift(
-    input.user_id,
-    'لا يمكن تسجيل استبدال بدون شفت مفتوح',
-  );
-
   const normalizedItems = input.items.map((item) => ({
     promotion_unit_id: Number(item.promotion_unit_id),
     new_variant_id: Number(item.new_variant_id),
@@ -1247,23 +1242,6 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       input.payment_method?.trim() || sale.payment_method || 'store_cash',
     );
 
-    const businessDate = getShiftBusinessDate(openShift.id);
-
-    const closedDay = db
-      .prepare(
-        `
-        SELECT id
-        FROM cash_day_closings
-        WHERE business_date = ?
-        LIMIT 1
-        `,
-      )
-      .get(businessDate);
-
-    if (closedDay) {
-      throw new Error(`لا يمكن عمل استبدال لأن يوم ${businessDate} تم تقفيله`);
-    }
-
     let cashCollectionAmount = 0;
     let debtReductionAmount = 0;
     let cashRefundAmount = 0;
@@ -1282,6 +1260,29 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         : 0;
 
       cashRefundAmount = roundMoney(customerCredit - debtReductionAmount);
+    }
+
+    const openShift = resolveFinancialOperationShift(
+      userId,
+      [paymentMethod],
+      'لا يمكن تسجيل استبدال بدون شفت مفتوح',
+    );
+
+    const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
+
+    const closedDay = db
+      .prepare(
+        `
+        SELECT id
+        FROM cash_day_closings
+        WHERE business_date = ?
+        LIMIT 1
+        `,
+      )
+      .get(businessDate);
+
+    if (closedDay) {
+      throw new Error(`لا يمكن عمل استبدال لأن يوم ${businessDate} تم تقفيله`);
     }
 
     const exchangeResult = db
@@ -1354,7 +1355,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       .run(
         saleId,
         userId,
-        openShift.id,
+        openShift?.id ?? null,
         promotionGroupId,
 
         oldGroupTotal,
@@ -1421,7 +1422,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         notes: `تحصيل فرق استبدال ${exchangeCode} ` + `لفاتورة رقم ${saleId}`,
         created_by: userId,
         business_date: businessDate,
-        shift_id: openShift.id,
+        shift_id: openShift?.id ?? null,
       });
     }
 
@@ -1436,7 +1437,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         notes: `رد فرق استبدال ${exchangeCode} ` + `لفاتورة رقم ${saleId}`,
         created_by: userId,
         business_date: businessDate,
-        shift_id: openShift.id,
+        shift_id: openShift?.id ?? null,
       });
     }
 
@@ -1851,7 +1852,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       debt_reduction_amount: debtReductionAmount,
 
       payment_method: paymentMethod,
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     };
   });
 
@@ -2331,11 +2332,6 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
     throw new Error('رقم الاستبدال غير صحيح');
   }
 
-  const openShift = requireOperationalCashShift(
-    Number(input.actor_id || 0),
-    'لا يمكن إلغاء استبدال بدون شفت مفتوح',
-  );
-
   const reason = input.reason?.trim() || 'إلغاء عملية استبدال';
 
   const exchangeCode = `EXC-${String(exchangeId).padStart(5, '0')}`;
@@ -2386,8 +2382,6 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
     }
 
     const saleId = Number(exchange.original_sale_id);
-
-    const cancelBusinessDate = getShiftBusinessDate(openShift.id);
 
     const latestActive = db
       .prepare(
@@ -2582,12 +2576,19 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       Number(exchange.debt_reduction_amount || 0),
     );
 
-    /*
-     * الاستبدال الأصلي حصل فيه
-     * تحصيل فرق من العميل.
-     *
-     * الإلغاء = رد نفس الفرق.
-     */
+    const openShift =
+      cashCollectionAmount > 0 || cashRefundAmount > 0
+        ? resolveFinancialOperationShift(
+            Number(input.actor_id || 0),
+            [paymentMethod],
+            'لا يمكن إلغاء استبدال بدون شفت مفتوح',
+          )
+        : null;
+
+    const cancelBusinessDate = resolveFinancialBusinessDate(
+      openShift?.id ?? null,
+    );
+
     if (cashCollectionAmount > 0) {
       createCashMovement({
         type: 'sale_exchange',
@@ -2601,7 +2602,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
-        shift_id: openShift.id,
+        shift_id: openShift?.id ?? null,
         notes: `رد تحصيل بسبب إلغاء ${exchangeCode}`,
 
         created_by: input.actor_id ?? null,
@@ -2630,7 +2631,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         reference_id: exchangeId,
 
         reference_type: 'sale_exchange_cancel',
-        shift_id: openShift.id,
+        shift_id: openShift?.id ?? null,
         notes: `استرداد رد فرق بسبب إلغاء ${exchangeCode}`,
 
         created_by: input.actor_id ?? null,
@@ -2990,7 +2991,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
         WHERE id = ?
         `,
-    ).run(input.actor_id ?? null, openShift.id, reason, exchangeId);
+    ).run(input.actor_id ?? null, openShift?.id ?? null, reason, exchangeId);
 
     if (exchange.customer_id) {
       syncCustomerTotalSpent(Number(exchange.customer_id));
@@ -3014,7 +3015,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       loyalty_balance_reversed: reverseLoyaltyBalanceAdjustment,
 
       restored_items: items.length,
-      cancelled_shift_id: openShift.id,
+      cancelled_shift_id: openShift?.id ?? null,
     };
   });
 

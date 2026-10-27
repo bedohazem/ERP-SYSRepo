@@ -4105,7 +4105,7 @@ describe('purchases repository', () => {
 
       discount_input: 25,
 
-      discount_value: 168.75,
+      discount_value: 1,
 
       items: [
         {
@@ -4125,7 +4125,9 @@ describe('purchases repository', () => {
     expect(Number(invoice.purchase.exact_total_amount)).toBe(506.25);
 
     expect(Number(invoice.purchase.total_amount)).toBe(506.25);
+    expect(Number(invoice.purchase.discount_input)).toBe(25);
 
+    expect(Number(invoice.purchase.discount_value)).toBe(168.75);
     /*
      * السعر الأصلي لا يتغير بسبب الخصم.
      */
@@ -4151,6 +4153,82 @@ describe('purchases repository', () => {
     expect(Number(state.buy_price)).toBe(84.375);
 
     expect(getSupplierBalance(supplierId)).toBe(506.25);
+  });
+
+  it('recalculates purchase discount server-side when editing an invoice', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 8,
+
+          unit_cost: 84.375,
+        },
+      ],
+    });
+
+    updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Correct purchase discount',
+
+      supplier_id: supplierId,
+
+      discount_type: 'percent',
+
+      discount_input: 25,
+
+      /*
+       * قيمة مزورة عمدًا.
+       * الـBackend يجب ألا يعتمد عليها.
+       */
+      discount_value: 1,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 8,
+
+          unit_cost: 84.375,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.sub_total)).toBe(675);
+
+    expect(Number(invoice.purchase.discount_input)).toBe(25);
+
+    expect(Number(invoice.purchase.discount_value)).toBe(168.75);
+
+    expect(Number(invoice.purchase.total_amount)).toBe(506.25);
+
+    expect(Number(invoice.items[0].unit_cost)).toBe(84.375);
+
+    expect(Number(invoice.items[0].line_total)).toBe(506.25);
+
+    const state = getVariantCostState('PURCHASE001');
+
+    expect(Number(state.inventory_value)).toBe(506.25);
   });
 
   it('allocates precise purchase returns cumulatively without losing cents', () => {

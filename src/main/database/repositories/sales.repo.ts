@@ -7,11 +7,8 @@ import {
 } from './sales-current-state.repo';
 import {
   getOpenCashShift,
-  requireOperationalCashShift,
   resolveFinancialOperationShift,
 } from './cash-shifts.repo';
-
-import { getShiftBusinessDate } from '../shift-business-date';
 import {
   issueStockAtAverageCost,
   issueStockAtCost,
@@ -2347,11 +2344,6 @@ export function createSaleReturn(input: {
     throw new Error('لا توجد أصناف للمرتجع');
   }
 
-  const openShift = requireOperationalCashShift(
-    input.user_id,
-    'لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح',
-  );
-
   const tx = db.transaction(() => {
     const originalSale = db
       .prepare(
@@ -3276,6 +3268,16 @@ export function createSaleReturn(input: {
       roundMoney(returnValue - debtReductionAmount),
     );
 
+    const openShift = resolveFinancialOperationShift(
+      userId,
+      [refundPaymentMethod],
+      'لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح',
+    );
+
+    const returnBusinessDate = resolveFinancialBusinessDate(
+      openShift?.id ?? null,
+    );
+
     const returnResult = db
       .prepare(
         `
@@ -3307,7 +3309,7 @@ export function createSaleReturn(input: {
         originalSaleId,
         originalSale.customer_id ?? null,
         userId,
-        openShift.id,
+        openShift?.id ?? null,
         returnSubTotal,
         returnListSubTotal,
         returnProductDiscount,
@@ -3335,7 +3337,8 @@ export function createSaleReturn(input: {
         reference_type: 'sale_return',
         notes: `مرتجع RET-${String(returnId).padStart(5, '0')} من فاتورة رقم ${originalSaleId}`,
         created_by: userId,
-        shift_id: openShift.id,
+        business_date: returnBusinessDate,
+        shift_id: openShift?.id ?? null,
       });
     }
 
@@ -3518,7 +3521,7 @@ export function createSaleReturn(input: {
       debt_reduction_amount: debtReductionAmount,
       return_value: returnValue,
       loyalty_points_reversed: loyaltyPointsToReverse,
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     };
   });
 
@@ -4205,13 +4208,6 @@ export function cancelSaleInvoice(input: {
     throw new Error('رقم فاتورة البيع غير صحيح');
   }
 
-  const openShift = requireOperationalCashShift(
-    Number(input.actor_id || 0),
-    'لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح',
-  );
-
-  const cancellationBusinessDate = getShiftBusinessDate(openShift.id);
-
   const reason = input.reason?.trim() || 'إلغاء فاتورة بيع';
 
   const tx = db.transaction(() => {
@@ -4381,6 +4377,23 @@ export function cancelSaleInvoice(input: {
             ]
           : [];
 
+    const refundAccounts = refundPayments
+      .filter((payment) => Number(payment.amount || 0) > 0)
+      .map((payment) => payment.payment_method);
+
+    const openShift =
+      refundAccounts.length > 0
+        ? resolveFinancialOperationShift(
+            Number(input.actor_id || 0),
+            refundAccounts,
+            'لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح',
+          )
+        : null;
+
+    const cancellationBusinessDate = resolveFinancialBusinessDate(
+      openShift?.id ?? null,
+    );
+
     const remainingAmount = Math.max(0, Number(sale.remaining_amount || 0));
 
     const grandTotal = Math.max(0, Number(sale.grand_total || 0));
@@ -4413,7 +4426,7 @@ export function cancelSaleInvoice(input: {
 
         business_date: cancellationBusinessDate,
 
-        shift_id: openShift.id,
+        shift_id: openShift?.id ?? null,
       });
     }
 
@@ -4495,7 +4508,7 @@ export function cancelSaleInvoice(input: {
         remaining_amount = 0
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, openShift.id, reason, saleId);
+    ).run(input.actor_id ?? null, openShift?.id ?? null, reason, saleId);
 
     if (customerId) {
       syncCustomerTotalSpent(customerId);
@@ -4507,7 +4520,7 @@ export function cancelSaleInvoice(input: {
       refunded_amount: paidAmount,
       removed_debt: remainingAmount,
       restored_items: items.length,
-      cancelled_shift_id: openShift.id,
+      cancelled_shift_id: openShift?.id ?? null,
     };
   });
 
@@ -4526,13 +4539,6 @@ export function cancelSaleReturn(input: {
   if (!returnId) {
     throw new Error('رقم المرتجع غير صحيح');
   }
-
-  const openShift = requireOperationalCashShift(
-    Number(input.actor_id || 0),
-    'لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح',
-  );
-
-  const cancellationBusinessDate = getShiftBusinessDate(openShift.id);
 
   const reason = input.reason?.trim() || 'إلغاء مرتجع بيع';
 
@@ -4588,6 +4594,72 @@ export function cancelSaleReturn(input: {
       const laterCode = `RET-${String(laterReturn.id).padStart(5, '0')}`;
 
       throw new Error(`يجب إلغاء المرتجع الأحدث ${laterCode} أولًا`);
+    }
+
+    /*
+     * لازم نحافظ على ترتيب العمليات
+     * عبر المرتجعات والاستبدالات معًا.
+     *
+     * نعتمد على stock_movements.id
+     * بدل created_at لأن التوقيت قد يكون
+     * متساويًا لنفس الثانية.
+     */
+    const returnMovement = db
+      .prepare(
+        `
+    SELECT MAX(id) AS max_id
+
+    FROM stock_movements
+
+    WHERE reference_type = 'sale_return'
+      AND reference_id = ?
+    `,
+      )
+      .get(returnId) as
+      | {
+          max_id: number | null;
+        }
+      | undefined;
+
+    const returnMovementId = Number(returnMovement?.max_id || 0);
+
+    if (!returnMovementId) {
+      throw new Error('تعذر التحقق من ترتيب عمليات المرتجع والاستبدال');
+    }
+
+    const laterExchange = db
+      .prepare(
+        `
+        SELECT se.id
+
+        FROM sale_exchanges se
+
+        WHERE se.original_sale_id = ?
+          AND se.cancelled_at IS NULL
+
+          AND EXISTS (
+            SELECT 1
+
+            FROM stock_movements sm
+
+            WHERE sm.reference_type = 'sale_exchange'
+              AND sm.reference_id = se.id
+              AND sm.id > ?
+          )
+
+        ORDER BY se.id DESC
+
+        LIMIT 1
+        `,
+      )
+      .get(Number(saleReturn.original_sale_id), returnMovementId) as
+      | {
+          id: number;
+        }
+      | undefined;
+
+    if (laterExchange) {
+      throw new Error('يجب إلغاء الاستبدال الأحدث أولًا');
     }
 
     const loyaltyBeforeCancellation = getSaleCurrentState(
@@ -4689,6 +4761,23 @@ export function cancelSaleReturn(input: {
         ? Number(saleReturn.cash_refund_amount || 0)
         : Number(cashRow?.amount || 0);
 
+    const refundAccount = resolveCashAccount(
+      saleReturn.payment_method || 'store_cash',
+    );
+
+    const openShift =
+      cashRefundAmount > 0
+        ? resolveFinancialOperationShift(
+            Number(input.actor_id || 0),
+            [refundAccount],
+            'لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح',
+          )
+        : null;
+
+    const cancellationBusinessDate = resolveFinancialBusinessDate(
+      openShift?.id ?? null,
+    );
+
     const settlementRow = db
       .prepare(
         `
@@ -4718,13 +4807,13 @@ export function cancelSaleReturn(input: {
         type: 'sale_return',
         direction: 'in',
         amount: cashRefundAmount,
-        payment_method: saleReturn.payment_method || 'store_cash',
+        payment_method: refundAccount,
         reference_id: returnId,
         reference_type: 'sale_return_cancel',
         notes: `عكس مرتجع بيع ملغي ${returnCode}`,
         created_by: input.actor_id ?? null,
         business_date: cancellationBusinessDate,
-        shift_id: openShift.id,
+        shift_id: openShift?.id ?? null,
       });
     }
 
@@ -4886,7 +4975,7 @@ export function cancelSaleReturn(input: {
         cancel_reason = ?
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, openShift.id, reason, returnId);
+    ).run(input.actor_id ?? null, openShift?.id ?? null, reason, returnId);
 
     if (saleReturn.customer_id) {
       syncCustomerTotalSpent(Number(saleReturn.customer_id));
@@ -4899,7 +4988,7 @@ export function cancelSaleReturn(input: {
       cash_restored: cashRefundAmount,
       debt_restored: debtReductionAmount,
       items_count: items.length,
-      cancelled_shift_id: openShift.id,
+      cancelled_shift_id: openShift?.id ?? null,
     };
   });
 

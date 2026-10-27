@@ -1,11 +1,6 @@
 import { getDb } from '../db';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
-import {
-  requireOperationalCashShift,
-  resolveFinancialOperationShift,
-} from './cash-shifts.repo';
-
-import { getShiftBusinessDate } from '../shift-business-date';
+import { resolveFinancialOperationShift } from './cash-shifts.repo';
 import { roundMoney } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 
@@ -1266,7 +1261,15 @@ export function recordCustomerPayment(input: {
         throw new Error('الفاتورة مدفوعة بالكامل بالفعل');
       }
 
-      const finalAmount = roundMoney(Math.min(amountInput, remaining));
+      if (amountInput > remaining) {
+        throw new Error(
+          `مبلغ الدفعة أكبر من المتبقي على الفاتورة وهو ${roundMoney(
+            remaining,
+          )} ج.م`,
+        );
+      }
+
+      const finalAmount = amountInput;
 
       const newPaid = roundMoney(
         Math.min(
@@ -1299,13 +1302,21 @@ export function recordCustomerPayment(input: {
         amount: finalAmount,
       });
     } else {
-      // دفعة عامة للعميل: تتوزع على أقدم فواتير مفتوحة
       const customerBalance = roundMoney(customer.balance);
-      let remainingPayment = Math.min(amountInput, customerBalance);
 
-      if (remainingPayment <= 0) {
+      if (customerBalance <= 0) {
         throw new Error('لا يوجد رصيد مستحق على العميل');
       }
+
+      if (amountInput > customerBalance) {
+        throw new Error(
+          `مبلغ الدفعة أكبر من إجمالي مديونية العميل وهي ${roundMoney(
+            customerBalance,
+          )} ج.م`,
+        );
+      }
+
+      let remainingPayment = amountInput;
 
       const openSales = db
         .prepare(
@@ -1478,6 +1489,185 @@ export function getCustomerPaymentBatchAccess(
   };
 }
 
+function assertCustomerPaymentBatchIsLatestMutable(
+  db: ReturnType<typeof getDb>,
+  batchId: number,
+  batch: {
+    customer_id: number;
+    created_at?: string | null;
+  },
+) {
+  /*
+   * لازم تكون آخر Batch فعالة للعميل.
+   */
+  const latestBatch = db
+    .prepare(
+      `
+      SELECT id
+
+      FROM customer_payment_batches
+
+      WHERE customer_id = ?
+        AND cancelled_at IS NULL
+
+      ORDER BY
+        datetime(created_at) DESC,
+        id DESC
+
+      LIMIT 1
+      `,
+    )
+    .get(Number(batch.customer_id)) as
+    | {
+        id: number;
+      }
+    | undefined;
+
+  if (Number(latestBatch?.id || 0) !== batchId) {
+    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للعميل');
+  }
+
+  const allocations = db
+    .prepare(
+      `
+      SELECT
+        id,
+        sale_id
+
+      FROM customer_payments
+
+      WHERE batch_id = ?
+
+      ORDER BY id ASC
+      `,
+    )
+    .all(batchId) as Array<{
+    id: number;
+    sale_id: number;
+  }>;
+
+  if (allocations.length === 0) {
+    throw new Error('لا توجد توزيعات مرتبطة بدفعة العميل');
+  }
+
+  const latestAllocationId = Math.max(
+    ...allocations.map((allocation) => Number(allocation.id || 0)),
+  );
+
+  /*
+   * نحمي أيضًا من دفعات Legacy
+   * أو دفعات أحدث لم تمر داخل Batch.
+   *
+   * تسويات المرتجع/الاستبدال الداخلية
+   * لها Guards مستقلة أسفل البلوك.
+   */
+  const newerPayment = db
+    .prepare(
+      `
+      SELECT cp.id
+
+      FROM customer_payments cp
+
+      LEFT JOIN customer_payment_batches b
+        ON b.id = cp.batch_id
+
+      WHERE cp.customer_id = ?
+
+        AND cp.id > ?
+
+        AND (
+          cp.batch_id IS NOT NULL
+
+          OR (
+            IFNULL(cp.notes, '') NOT LIKE
+              'تسوية مديونية بسبب مرتجع%'
+
+            AND IFNULL(cp.notes, '') NOT LIKE
+              'تسوية مديونية بسبب استبدال%'
+          )
+        )
+
+        AND (
+          cp.batch_id IS NULL
+          OR b.cancelled_at IS NULL
+        )
+
+      LIMIT 1
+      `,
+    )
+    .get(Number(batch.customer_id), latestAllocationId);
+
+  if (newerPayment) {
+    throw new Error('لا يمكن تعديل أو إلغاء الدفعة لوجود دفعة أحدث للعميل');
+  }
+
+  /*
+   * لو حصل مرتجع بعد الدفعة،
+   * ترتيب المديونية تغير.
+   * لازم نحافظ على التاريخ كما هو.
+   */
+  const laterReturn = db
+    .prepare(
+      `
+      SELECT sr.id
+
+      FROM sale_returns sr
+
+      WHERE sr.original_sale_id IN (
+        SELECT sale_id
+
+        FROM customer_payments
+
+        WHERE batch_id = ?
+      )
+
+        AND datetime(sr.created_at) >=
+            datetime(?)
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId, batch.created_at);
+
+  if (laterReturn) {
+    throw new Error(
+      'لا يمكن تعديل أو إلغاء الدفعة لوجود مرتجع بيع أحدث مرتبط بها',
+    );
+  }
+
+  /*
+   * ونفس القاعدة مع الاستبدال.
+   */
+  const laterExchange = db
+    .prepare(
+      `
+      SELECT se.id
+
+      FROM sale_exchanges se
+
+      WHERE se.original_sale_id IN (
+        SELECT sale_id
+
+        FROM customer_payments
+
+        WHERE batch_id = ?
+      )
+
+        AND datetime(se.created_at) >=
+            datetime(?)
+
+      LIMIT 1
+      `,
+    )
+    .get(batchId, batch.created_at);
+
+  if (laterExchange) {
+    throw new Error(
+      'لا يمكن تعديل أو إلغاء الدفعة لوجود استبدال بيع أحدث مرتبط بها',
+    );
+  }
+}
+
 export function cancelCustomerPaymentBatch(input: {
   batch_id: number;
   reason?: string | null;
@@ -1492,13 +1682,6 @@ export function cancelCustomerPaymentBatch(input: {
   }
 
   const actorId = Number(input.actor_id || 0);
-
-  const openShift = requireOperationalCashShift(
-    actorId,
-    'لا يمكن إلغاء دفعة عميل بدون شفت مفتوح',
-  );
-
-  const cancellationBusinessDate = getShiftBusinessDate(openShift.id);
 
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة عميل';
 
@@ -1529,6 +1712,8 @@ export function cancelCustomerPaymentBatch(input: {
   if (batch.cancelled_at) {
     throw new Error('دفعة العميل ملغاة بالفعل');
   }
+
+  assertCustomerPaymentBatchIsLatestMutable(db, batchId, batch);
 
   const allocations = db
     .prepare(
@@ -1601,6 +1786,20 @@ export function cancelCustomerPaymentBatch(input: {
     throw new Error('حركة الخزنة الخاصة بالدفعة ملغاة بالفعل');
   }
 
+  const paymentAccount = resolveCashAccount(
+    cashMovement.payment_method || batch.payment_method || 'cash',
+  );
+
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    [paymentAccount],
+    'لا يمكن إلغاء دفعة عميل تؤثر على درج المحل بدون شفت مفتوح',
+  );
+
+  const cancellationBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
+
   const cashBalanceRow = db
     .prepare(
       `
@@ -1626,7 +1825,7 @@ export function cancelCustomerPaymentBatch(input: {
       AND cancelled_at IS NULL
     `,
     )
-    .get(String(cashMovement.payment_method || 'store_cash')) as
+    .get(paymentAccount) as
     | {
         balance: number;
       }
@@ -1701,7 +1900,7 @@ export function cancelCustomerPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift.id, reason, batchId);
+    ).run(actorId, openShift?.id ?? null, reason, batchId);
 
     createCashMovement({
       type: 'customer_payment',
@@ -1723,7 +1922,7 @@ export function cancelCustomerPaymentBatch(input: {
 
       business_date: cancellationBusinessDate,
 
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     });
 
     return {
@@ -1735,7 +1934,7 @@ export function cancelCustomerPaymentBatch(input: {
 
       cancelled_amount: allocationTotal,
 
-      cancelled_shift_id: openShift.id,
+      cancelled_shift_id: openShift?.id ?? null,
 
       allocations: allocations.map((allocation) => ({
         sale_id: Number(allocation.sale_id),
@@ -1761,13 +1960,6 @@ export function updateCustomerPaymentBatch(input: {
   const amountInput = roundMoney(input.amount);
 
   const actorId = Number(input.actor_id || 0);
-
-  const openShift = requireOperationalCashShift(
-    actorId,
-    'لا يمكن تعديل دفعة عميل بدون شفت مفتوح',
-  );
-
-  const correctionBusinessDate = getShiftBusinessDate(openShift.id);
 
   if (!batchId) {
     throw new Error('رقم دفعة العميل غير صحيح');
@@ -1804,6 +1996,8 @@ export function updateCustomerPaymentBatch(input: {
   if (batch.cancelled_at) {
     throw new Error('لا يمكن تعديل دفعة ملغاة');
   }
+
+  assertCustomerPaymentBatchIsLatestMutable(db, batchId, batch);
 
   const customer = db
     .prepare(
@@ -1948,6 +2142,16 @@ export function updateCustomerPaymentBatch(input: {
 
   const newAccount = resolveCashAccount(newPaymentMethod);
 
+  const openShift = resolveFinancialOperationShift(
+    actorId,
+    Array.from(new Set([oldAccount, newAccount])),
+    'لا يمكن تعديل دفعة عميل تؤثر على درج المحل بدون شفت مفتوح',
+  );
+
+  const correctionBusinessDate = resolveFinancialBusinessDate(
+    openShift?.id ?? null,
+  );
+
   const cashBalanceRow = db
     .prepare(
       `
@@ -2067,7 +2271,7 @@ export function updateCustomerPaymentBatch(input: {
 
         correctionBusinessDate,
 
-        openShift.id,
+        openShift?.id ?? null,
 
         batch.created_at,
       );
@@ -2092,7 +2296,13 @@ export function updateCustomerPaymentBatch(input: {
 
       WHERE id = ?
       `,
-    ).run(actorId, openShift.id, 'تم تعديل دفعة العميل', newBatchId, batchId);
+    ).run(
+      actorId,
+      openShift?.id ?? null,
+      'تم تعديل دفعة العميل',
+      newBatchId,
+      batchId,
+    );
 
     const insertPayment = db.prepare(`
       INSERT INTO customer_payments (
@@ -2303,7 +2513,7 @@ export function updateCustomerPaymentBatch(input: {
 
       business_date: correctionBusinessDate,
 
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     });
 
     /*
@@ -2329,7 +2539,7 @@ export function updateCustomerPaymentBatch(input: {
 
       business_date: correctionBusinessDate,
 
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     });
 
     return {
@@ -2347,7 +2557,7 @@ export function updateCustomerPaymentBatch(input: {
 
       allocations: newAllocations,
 
-      shift_id: openShift.id,
+      shift_id: openShift?.id ?? null,
     };
   });
 
@@ -2424,7 +2634,89 @@ export function getCustomerStatement(
         THEN 0
 
         ELSE 1
-      END AS batch_requires_admin_password
+      END AS batch_requires_admin_password,
+
+      CASE
+        WHEN b.id IS NOT NULL
+          AND b.cancelled_at IS NULL
+
+          AND NOT EXISTS (
+            SELECT 1
+
+            FROM customer_payments newer
+
+            LEFT JOIN customer_payment_batches newer_batch
+              ON newer_batch.id = newer.batch_id
+
+            WHERE newer.customer_id = cp.customer_id
+
+              AND newer.id > (
+                SELECT IFNULL(
+                  MAX(current_cp.id),
+                  0
+                )
+
+                FROM customer_payments current_cp
+
+                WHERE current_cp.batch_id = b.id
+              )
+
+              AND (
+                newer.batch_id IS NOT NULL
+
+                OR (
+                  IFNULL(newer.notes, '') NOT LIKE
+                    'تسوية مديونية بسبب مرتجع%'
+
+                  AND IFNULL(newer.notes, '') NOT LIKE
+                    'تسوية مديونية بسبب استبدال%'
+                )
+              )
+
+              AND (
+                newer.batch_id IS NULL
+                OR newer_batch.cancelled_at IS NULL
+              )
+          )
+
+          AND NOT EXISTS (
+            SELECT 1
+
+            FROM sale_returns newer_return
+
+            WHERE newer_return.original_sale_id IN (
+              SELECT current_payment.sale_id
+
+              FROM customer_payments current_payment
+
+              WHERE current_payment.batch_id = b.id
+            )
+
+              AND datetime(newer_return.created_at) >=
+                  datetime(b.created_at)
+          )
+
+          AND NOT EXISTS (
+            SELECT 1
+
+            FROM sale_exchanges newer_exchange
+
+            WHERE newer_exchange.original_sale_id IN (
+              SELECT current_payment.sale_id
+
+              FROM customer_payments current_payment
+
+              WHERE current_payment.batch_id = b.id
+            )
+
+              AND datetime(newer_exchange.created_at) >=
+                  datetime(b.created_at)
+          )
+
+        THEN 1
+
+        ELSE 0
+      END AS batch_is_latest_mutable
 
     FROM customer_payments cp
 
@@ -2596,6 +2888,8 @@ export function getCustomerStatement(
             : Number(first.batch_created_by),
 
         requires_admin_password: Boolean(first.batch_requires_admin_password),
+
+        is_latest_mutable_batch: Boolean(first.batch_is_latest_mutable),
 
         payment_method: first.batch_payment_method || first.payment_method,
 

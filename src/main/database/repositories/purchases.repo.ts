@@ -473,6 +473,46 @@ function getPurchaseBuyPriceFromSnapshot(item: { unit_cost?: number | null }) {
   return preservePrecision(unitCost);
 }
 
+function resolvePurchaseInvoiceDiscount(
+  subTotalInput: number,
+  discountTypeInput: unknown,
+  discountInputValue: unknown,
+) {
+  const subTotal = truncateMoney(Math.max(0, Number(subTotalInput || 0)));
+
+  const discountType = discountTypeInput === 'percent' ? 'percent' : 'amount';
+
+  const rawDiscountInput = Number(discountInputValue ?? 0);
+
+  if (!Number.isFinite(rawDiscountInput) || rawDiscountInput < 0) {
+    throw new Error('قيمة خصم فاتورة الشراء غير صحيحة');
+  }
+
+  if (discountType === 'percent' && rawDiscountInput > 100) {
+    throw new Error('نسبة خصم فاتورة الشراء لا يمكن أن تتجاوز 100%');
+  }
+
+  const discountInput =
+    discountType === 'percent'
+      ? preservePrecision(rawDiscountInput)
+      : preservePrecision(rawDiscountInput);
+
+  const calculatedDiscount =
+    discountType === 'percent'
+      ? preciseMultiply(subTotal, preciseDivide(discountInput, 100))
+      : discountInput;
+
+  const discountValue = truncateMoney(
+    Math.min(subTotal, Math.max(0, calculatedDiscount)),
+  );
+
+  return {
+    discountType,
+    discountInput,
+    discountValue,
+  };
+}
+
 function applyPurchaseInvoiceDiscount<
   T extends {
     quantity: number;
@@ -609,14 +649,12 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       basePreparedItems.map((item) => item.rawLineTotal),
     );
 
-    const discountType =
-      input.discount_type === 'percent' ? 'percent' : 'amount';
-
-    const discountValueInput = Number(input.discount_value || 0);
-
-    const discountValue = Number.isFinite(discountValueInput)
-      ? truncateMoney(Math.min(subTotal, Math.max(0, discountValueInput)))
-      : 0;
+    const { discountType, discountInput, discountValue } =
+      resolvePurchaseInvoiceDiscount(
+        subTotal,
+        input.discount_type,
+        input.discount_input,
+      );
 
     const preparedItems = applyPurchaseInvoiceDiscount(
       basePreparedItems,
@@ -689,14 +727,6 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
       roundingAdjustment = 0;
     }
-
-    const discountInputRaw = Number(input.discount_input || 0);
-
-    const discountInput = Number.isFinite(discountInputRaw)
-      ? discountType === 'percent'
-        ? Math.max(0, discountInputRaw)
-        : Math.max(0, preservePrecision(discountInputRaw))
-      : 0;
 
     const paymentStatus = normalizePaymentStatus(
       totalAmount,
@@ -1483,14 +1513,12 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       basePreparedItems.map((item) => item.rawLineTotal),
     );
 
-    const discountType =
-      input.discount_type === 'percent' ? 'percent' : 'amount';
-
-    const discountValueInput = Number(input.discount_value || 0);
-
-    const discountValue = Number.isFinite(discountValueInput)
-      ? truncateMoney(Math.min(subTotal, Math.max(0, discountValueInput)))
-      : 0;
+    const { discountType, discountInput, discountValue } =
+      resolvePurchaseInvoiceDiscount(
+        subTotal,
+        input.discount_type,
+        input.discount_input,
+      );
 
     const preparedItems = applyPurchaseInvoiceDiscount(
       basePreparedItems,
@@ -1566,14 +1594,6 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       paidAmount,
       remainingAmount,
     );
-
-    const discountInputRaw = Number(input.discount_input || 0);
-
-    const discountInput = Number.isFinite(discountInputRaw)
-      ? discountType === 'percent'
-        ? Math.max(0, discountInputRaw)
-        : Math.max(0, preservePrecision(discountInputRaw))
-      : 0;
 
     const oldPaidAmount = preservePrecision(Number(purchase.paid_amount || 0));
 

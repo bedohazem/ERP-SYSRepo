@@ -626,6 +626,109 @@ describe('sale exchange cancellation', () => {
     expect(cancelled.ok).toBe(true);
   });
 
+  it('blocks cancelling an older return while a newer active exchange exists', () => {
+    const result = createPromotionSale([
+      'CEX250',
+      'CEX200',
+      'CEX150',
+      'CEX350',
+    ]);
+
+    const db = getDb();
+
+    const saleItems = db
+      .prepare(
+        `
+      SELECT
+        id,
+        variant_id,
+        quantity,
+        promotion_group_id
+
+      FROM sale_items
+
+      WHERE sale_id = ?
+
+      ORDER BY id ASC
+      `,
+      )
+      .all(result.sale.saleId) as any[];
+
+    const standaloneItem = saleItems.find((item) => !item.promotion_group_id);
+
+    expect(standaloneItem).toBeTruthy();
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      refund_payment_method: 'store_cash',
+
+      reason: 'مرتجع قبل الاستبدال',
+
+      items: [
+        {
+          sale_item_id: Number(standaloneItem.id),
+
+          variant_id: Number(standaloneItem.variant_id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    const gift = getUnitByPrice(result.sale.saleId, 150);
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      reason: 'استبدال أحدث من المرتجع',
+
+      items: [
+        {
+          promotion_unit_id: Number(gift.id),
+
+          new_variant_id: result.variants.CEX300.variant_id,
+        },
+      ],
+    });
+
+    expect(() =>
+      cancelSaleReturn({
+        return_id: saleReturn.returnId,
+
+        actor_id: 1,
+
+        reason: 'محاولة إلغاء مرتجع قديم',
+      }),
+    ).toThrow('يجب إلغاء الاستبدال الأحدث أولًا');
+
+    expect(
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+
+        actor_id: 1,
+
+        reason: 'إلغاء الاستبدال الأحدث',
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      cancelSaleReturn({
+        return_id: saleReturn.returnId,
+
+        actor_id: 1,
+
+        reason: 'إلغاء المرتجع بعد الاستبدال',
+      }).ok,
+    ).toBe(true);
+  });
+
   it('restores customer debt when cancelling a cheaper exchange', () => {
     const customerId = createCustomer();
 
@@ -752,6 +855,89 @@ describe('sale exchange cancellation', () => {
     const state = getSaleCurrentState(result.sale.saleId);
 
     expect(state.financials.current_loyalty_points_earned).toBe(4);
+  });
+
+  it('allows admin to cancel a store safe exchange without an open shift', () => {
+    const db = getDb();
+
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
+
+    const gift = getUnitByPrice(result.sale.saleId, 150);
+
+    const currentShift = getOpenCashShift();
+
+    expect(currentShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: currentShift!.id,
+
+      closing_counted_amount: 450,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_safe',
+
+      items: [
+        {
+          promotion_unit_id: Number(gift.id),
+
+          new_variant_id: result.variants.CEX300.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.shift_id).toBeNull();
+
+    const cancelled = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+
+      actor_id: 1,
+
+      reason: 'Cancel safe exchange',
+    });
+
+    expect(cancelled.cancelled_shift_id).toBeNull();
+
+    const reverse = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        payment_method,
+        direction,
+        amount
+
+      FROM cash_movements
+
+      WHERE reference_type =
+        'sale_exchange_cancel'
+
+        AND reference_id = ?
+
+      ORDER BY id DESC
+
+      LIMIT 1
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(reverse.shift_id).toBeNull();
+
+    expect(reverse.payment_method).toBe('store_safe');
+
+    expect(reverse.direction).toBe('out');
+
+    expect(Number(reverse.amount)).toBe(100);
   });
 
   it('cancels a previous-shift exchange in the current shift', () => {

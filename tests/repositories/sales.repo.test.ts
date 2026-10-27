@@ -869,6 +869,137 @@ describe('sales repository', () => {
     expect(Number(movement.amount)).toBe(150);
   });
 
+  it('allows admin sale return to store safe without an open shift', () => {
+    const db = getDb();
+
+    const currentShift = getOpenCashShift();
+
+    expect(currentShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: Number(currentShift!.id),
+
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    const variant = seedProduct();
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      change_amount: 0,
+
+      payment_method: 'store_safe',
+
+      paid: 300,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 2,
+
+          unit_price: 150,
+        },
+      ],
+    });
+
+    expect(sale.shift_id).toBeNull();
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      refund_payment_method: 'store_safe',
+
+      reason: 'Admin safe return',
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.shift_id).toBeNull();
+
+    expect(saleReturn.refundAmount).toBe(150);
+
+    const returnRow = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        payment_method
+
+      FROM sale_returns
+
+      WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(returnRow.shift_id).toBeNull();
+
+    expect(returnRow.payment_method).toBe('store_safe');
+
+    const movement = db
+      .prepare(
+        `
+        SELECT
+          shift_id,
+          payment_method,
+          direction,
+          amount
+
+        FROM cash_movements
+
+        WHERE reference_type = 'sale_return'
+          AND reference_id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(movement.shift_id).toBeNull();
+
+    expect(movement.payment_method).toBe('store_safe');
+
+    expect(movement.direction).toBe('out');
+
+    expect(Number(movement.amount)).toBe(150);
+  });
+
   it('rejects item quantity less than or equal zero', () => {
     const variant = seedProduct();
 
