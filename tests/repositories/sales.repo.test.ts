@@ -5270,4 +5270,276 @@ describe('sales repository', () => {
 
     expect(calendarDay.total).toBe(0);
   });
+
+  it('restores the exact cent cost snapshot when cancelling a multi-unit sale', () => {
+    const db = getDb();
+
+    createProduct({
+      name: 'Cent Sale Cancel Product',
+      category_id: null,
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'SALE-CENT-CANCEL',
+          size: 'M',
+          color: 'Black',
+
+          buy_price: 16.667,
+          sell_price: 200,
+
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('SALE-CENT-CANCEL') as
+      SaleVariantTestRow | undefined;
+
+    if (!variant) {
+      throw new Error('Failed to seed cent cancel product');
+    }
+
+    receiveStockAtCost(db, {
+      variant_id: variant.variant_id,
+
+      quantity: 12,
+
+      unit_cost: 16.667,
+
+      cost_value: 200,
+
+      reference_type: 'test_purchase',
+
+      created_by: 1,
+    });
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 1400,
+      discount_value: 0,
+      grand_total: 1400,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 1400,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 7,
+
+          unit_price: 200,
+        },
+      ],
+    });
+
+    let state = getInventoryCostState(db, variant.variant_id);
+
+    expect(state.stock).toBe(5);
+
+    expect(state.inventory_value).toBe(83.33);
+
+    const saleItem = db
+      .prepare(
+        `
+        SELECT cost_value
+
+        FROM sale_items
+
+        WHERE sale_id = ?
+
+        ORDER BY id ASC
+
+        LIMIT 1
+        `,
+      )
+      .get(sale.saleId) as {
+      cost_value: number;
+    };
+
+    expect(Number(saleItem.cost_value)).toBe(116.67);
+
+    cancelSaleInvoice({
+      sale_id: sale.saleId,
+
+      actor_id: 1,
+
+      reason: 'Verify exact cent cost restoration',
+    });
+
+    state = getInventoryCostState(db, variant.variant_id);
+
+    expect(state.stock).toBe(12);
+
+    expect(state.inventory_value).toBe(200);
+  });
+
+  it('restores the exact old cost before recalculating an edited sale', () => {
+    const db = getDb();
+
+    createProduct({
+      name: 'Cent Sale Edit Product',
+      category_id: null,
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'SALE-CENT-EDIT',
+          size: 'L',
+          color: 'Blue',
+
+          buy_price: 16.667,
+          sell_price: 200,
+
+          min_stock: 1,
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('SALE-CENT-EDIT') as
+      SaleVariantTestRow | undefined;
+
+    if (!variant) {
+      throw new Error('Failed to seed cent edit product');
+    }
+
+    receiveStockAtCost(db, {
+      variant_id: variant.variant_id,
+
+      quantity: 12,
+
+      unit_cost: 16.667,
+
+      cost_value: 200,
+
+      reference_type: 'test_purchase',
+
+      created_by: 1,
+    });
+
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 1400,
+      discount_value: 0,
+      grand_total: 1400,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 1400,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 7,
+
+          unit_price: 200,
+        },
+      ],
+    });
+
+    updateSaleInvoice({
+      sale_id: sale.saleId,
+
+      actor_id: 1,
+
+      customer_id: null,
+
+      sub_total: 1200,
+      discount_value: 0,
+      grand_total: 1200,
+
+      change_amount: 0,
+
+      payment_method: 'cash',
+
+      paid: 1200,
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 6,
+
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const state = getInventoryCostState(db, variant.variant_id);
+
+    expect(state.stock).toBe(6);
+
+    /*
+     * 12 قطعة = 200
+     * بعد تعديل البيع إلى 6 قطع:
+     * المتبقي = 100 بالضبط.
+     */
+    expect(state.inventory_value).toBe(100);
+
+    const editedSaleItem = db
+      .prepare(
+        `
+        SELECT
+          quantity,
+          cost_value
+
+        FROM sale_items
+
+        WHERE sale_id = ?
+
+        ORDER BY id ASC
+
+        LIMIT 1
+        `,
+      )
+      .get(sale.saleId) as {
+      quantity: number;
+      cost_value: number;
+    };
+
+    expect(Number(editedSaleItem.quantity)).toBe(6);
+
+    expect(Number(editedSaleItem.cost_value)).toBe(100);
+  });
 });

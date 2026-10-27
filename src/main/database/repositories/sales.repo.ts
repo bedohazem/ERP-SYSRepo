@@ -3959,7 +3959,8 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         SELECT
           variant_id,
           quantity,
-          unit_cost
+          unit_cost,
+          cost_value
 
         FROM sale_items
 
@@ -3970,6 +3971,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       variant_id: number;
       quantity: number;
       unit_cost: number;
+      cost_value: number | null;
     }>;
 
     const storedPayments = db
@@ -4010,9 +4012,6 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
             ]
           : [];
 
-    /*
-     * 1) عكس التحصيل القديم.
-     */
     for (const payment of oldPayments) {
       if (Number(payment.amount || 0) <= 0) {
         continue;
@@ -4047,10 +4046,6 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       });
     }
 
-    /*
-     * 2) رجّع المخزون القديم.
-     */
-
     for (const item of oldItems) {
       receiveStockAtCost(db, {
         variant_id: Number(item.variant_id),
@@ -4058,6 +4053,13 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
         quantity: Number(item.quantity || 0),
 
         unit_cost: Number(item.unit_cost || 0),
+
+        cost_value: roundCost(
+          Number(
+            item.cost_value ??
+              Number(item.unit_cost || 0) * Number(item.quantity || 0),
+          ),
+        ),
 
         reference_id: saleId,
 
@@ -4067,9 +4069,6 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       });
     }
 
-    /*
-     * 3) رجّع أثر المديونية والنقاط القديمة.
-     */
     if (oldCustomerId) {
       db.prepare(
         `
@@ -4103,10 +4102,6 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       );
     }
 
-    /*
-     * loyalty_transactions لا تستخدم
-     * ON DELETE CASCADE.
-     */
     db.prepare(
       `
       DELETE FROM loyalty_transactions
@@ -4114,9 +4109,6 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       `,
     ).run(saleId);
 
-    /*
-     * باقي تفاصيل الفاتورة عليها Cascade.
-     */
     db.prepare(
       `
       DELETE FROM sales
@@ -4431,12 +4423,13 @@ export function cancelSaleInvoice(input: {
 
         quantity: Number(item.quantity || 0),
 
-        /*
-         * نرجع السلعة بنفس التكلفة
-         * التي خرجت بها أصلًا.
-         */
         unit_cost: Number(item.unit_cost || 0),
-
+        cost_value: roundCost(
+          Number(
+            item.cost_value ??
+              Number(item.unit_cost || 0) * Number(item.quantity || 0),
+          ),
+        ),
         reference_id: saleId,
 
         reference_type: 'sale_cancel',
