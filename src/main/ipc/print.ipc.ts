@@ -336,8 +336,17 @@ export function registerPrintIpc(): void {
 
     const printWindow = new BrowserWindow({
       show: false,
-      webPreferences: getSecureWebPreferences(app.isPackaged),
+      opacity: 0,
+      skipTaskbar: true,
+      focusable: false,
+      backgroundColor: '#ffffff',
+
+      webPreferences: {
+        ...getSecureWebPreferences(app.isPackaged),
+        backgroundThrottling: false,
+      },
     });
+
     hardenAuxiliaryWindow(printWindow);
     let tempHtmlPath = '';
 
@@ -350,6 +359,17 @@ export function registerPrintIpc(): void {
       await fs.writeFile(tempHtmlPath, hardenPrintHtml(html), 'utf8');
 
       await printWindow.loadFile(tempHtmlPath);
+
+      /*
+       * الطباعة الصامتة تحتاج أن تتعمل للصفحة
+       * Render فعلي قبل إرسالها للطابعة.
+       * النافذة شفافة ولا تظهر للمستخدم.
+       */
+      printWindow.showInactive();
+
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 250);
+      });
 
       await new Promise<void>((resolve, reject) => {
         printWindow.webContents.print(
