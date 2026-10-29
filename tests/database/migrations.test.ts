@@ -401,6 +401,24 @@ describe('database migrations', () => {
 
         name: 'purchase-item-entered-unit-cost',
       },
+
+      {
+        version: 31,
+
+        name: 'supplier-credit-allocations',
+      },
+
+      {
+        version: 32,
+
+        name: 'supplier-credit-allocation-corrections',
+      },
+
+      {
+        version: 33,
+
+        name: 'repair-legacy-supplier-credit-allocations',
+      },
     ]);
 
     const performanceIndexes = database

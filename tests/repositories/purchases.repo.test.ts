@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
+import {
+  closeDb,
+  getDb,
+  resetDatabaseData,
+  repairLegacySupplierCreditAllocations,
+} from '../../src/main/database/db';
 import {
   createProduct,
   getVariantByBarcode,
@@ -1592,7 +1597,9 @@ describe('purchases repository', () => {
 
     expect(newPurchase.total_amount).toBe(500);
 
-    expect(newPurchase.remaining_amount).toBe(500);
+    expect(newPurchase.paid_amount).toBe(100);
+
+    expect(newPurchase.remaining_amount).toBe(400);
 
     /*
      * ممنوع يبقى 1499
@@ -1601,6 +1608,512 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBe(400);
 
     expect(getSupplierTotalPurchased(supplierId)).toBe(500);
+  });
+
+  it('consumes supplier credit when paying a later invoice and closes the invoice correctly', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * فاتورة أولى مدفوعة بالكامل = 1000
+     */
+    const paidPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 1000,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 10,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const paidInvoice = getPurchaseInvoice(paidPurchase.purchaseId) as any;
+
+    /*
+     * نرجع الفاتورة بالكامل كرَصيد دائن.
+     *
+     * المورد أصبح مديونًا لنا بـ1000.
+     */
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: paidPurchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(paidInvoice.items[0].id),
+
+          quantity: 10,
+        },
+      ],
+    });
+
+    expect(purchaseReturn.credit_amount).toBe(1000);
+
+    expect(getSupplierBalance(supplierId)).toBe(-1000);
+
+    /*
+     * فاتورة جديدة آجل = 2000.
+     *
+     * صافي المطلوب دفعه فعليًا للمورد = 1000
+     * لأن لنا عنده رصيد دائن 1000.
+     */
+    const newPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 20,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(newPurchase.total_amount).toBe(2000);
+
+    expect(newPurchase.paid_amount).toBe(1000);
+
+    expect(newPurchase.remaining_amount).toBe(1000);
+
+    expect(getSupplierBalance(supplierId)).toBe(1000);
+
+    /*
+     * ندفع فقط صافي المستحق = 1000.
+     *
+     * الصحيح بعد الدفع:
+     *
+     * 1000 رصيد دائن
+     * +
+     * 1000 كاش
+     * =
+     * تسوية كامل فاتورة الـ2000.
+     */
+    recordSupplierPayment({
+      supplier_id: supplierId,
+
+      purchase_id: newPurchase.purchaseId,
+
+      amount: 1000,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+
+      notes: 'Settle invoice using supplier credit plus cash',
+    });
+
+    const settledInvoice = getPurchaseInvoice(newPurchase.purchaseId) as any;
+
+    expect(settledInvoice.purchase.supplier_credit_applied).toBe(1000);
+
+    expect(
+      Number(settledInvoice.purchase.paid_amount) -
+        Number(settledInvoice.purchase.supplier_credit_applied),
+    ).toBe(1000);
+
+    expect(settledInvoice.credit_allocations).toHaveLength(1);
+
+    expect(settledInvoice.credit_allocations[0].return_id).toBe(
+      purchaseReturn.return_id,
+    );
+
+    expect(Number(settledInvoice.credit_allocations[0].amount)).toBe(1000);
+
+    expect(settledInvoice.credit_allocations[0].cancelled_at).toBeNull();
+
+    const listedPurchase = listPurchaseInvoices({
+      search: `#${newPurchase.purchaseId}`,
+    });
+
+    expect(
+      Number((listedPurchase.rows[0] as any).supplier_credit_applied),
+    ).toBe(1000);
+
+    expect(settledInvoice.purchase.paid_amount).toBe(2000);
+
+    expect(settledInvoice.purchase.remaining_amount).toBe(0);
+
+    expect(settledInvoice.purchase.payment_status).toBe('paid');
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+  });
+
+  it('restores consumed supplier credit when cancelling the benefiting purchase', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const firstPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 100,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const firstInvoice = getPurchaseInvoice(firstPurchase.purchaseId) as any;
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: firstPurchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(firstInvoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(-100);
+
+    const secondPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 5,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(secondPurchase.paid_amount).toBe(100);
+
+    expect(secondPurchase.remaining_amount).toBe(400);
+
+    expect(secondPurchase.supplier_credit_applied).toBe(100);
+
+    expect(getSupplierBalance(supplierId)).toBe(400);
+
+    const cancelled = cancelPurchaseInvoice({
+      purchase_id: secondPurchase.purchaseId,
+
+      actor_id: 1,
+
+      reason: 'Cancel credit consuming purchase',
+    });
+
+    expect(cancelled.reversed_cash).toBe(0);
+
+    expect(cancelled.reversed_supplier_credit).toBe(100);
+
+    expect(cancelled.supplier_balance).toBe(-100);
+
+    expect(getSupplierBalance(supplierId)).toBe(-100);
+
+    const allocation = getDb()
+      .prepare(
+        `
+      SELECT *
+
+      FROM supplier_credit_allocations
+
+      WHERE
+        return_id = ?
+
+        AND purchase_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(purchaseReturn.return_id, secondPurchase.purchaseId) as any;
+
+    expect(Number(allocation.amount)).toBe(100);
+
+    expect(allocation.cancelled_at).toBeTruthy();
+  });
+
+  it('blocks cancelling supplier return while its credit is consumed by another purchase', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const firstPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 100,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const firstInvoice = getPurchaseInvoice(firstPurchase.purchaseId) as any;
+
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: firstPurchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(firstInvoice.items[0].id),
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(() =>
+      cancelPurchaseReturn({
+        return_id: purchaseReturn.return_id,
+
+        actor_id: 1,
+
+        reason: 'Should be blocked',
+      }),
+    ).toThrow(
+      'لا يمكن إلغاء أو تعديل مرتجع الشراء لأن رصيده الدائن مستخدم في فاتورة شراء أخرى',
+    );
+  });
+
+  it('keeps unused supplier credit when credit exceeds the new purchase', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const paidPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 1500,
+      settle_full_balance: true,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 15,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const paidInvoice = getPurchaseInvoice(paidPurchase.purchaseId) as any;
+
+    createPurchaseReturn({
+      purchase_id: paidPurchase.purchaseId,
+      actor_id: 1,
+      refund_mode: 'credit',
+      items: [
+        {
+          purchase_item_id: Number(paidInvoice.items[0].id),
+          quantity: 15,
+        },
+      ],
+    });
+
+    expect(getSupplierBalance(supplierId)).toBe(-1500);
+
+    const firstNewPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 10,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(firstNewPurchase.paid_amount).toBe(1000);
+    expect(firstNewPurchase.remaining_amount).toBe(0);
+    expect(firstNewPurchase.supplier_credit_applied).toBe(1000);
+
+    /*
+     * لسه لينا 500 عند المورد.
+     */
+    expect(getSupplierBalance(supplierId)).toBe(-500);
+
+    const secondNewPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(secondNewPurchase.paid_amount).toBe(500);
+    expect(secondNewPurchase.remaining_amount).toBe(0);
+    expect(secondNewPurchase.supplier_credit_applied).toBe(500);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+  });
+
+  it('applies newly created supplier credit to an already open purchase', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * فاتورة قديمة مفتوحة 500.
+     */
+    const openPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(openPurchase.remaining_amount).toBe(500);
+
+    /*
+     * فاتورة أخرى مدفوعة 1000.
+     */
+    const paidPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 1000,
+      settle_full_balance: true,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 10,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const paidInvoice = getPurchaseInvoice(paidPurchase.purchaseId) as any;
+
+    /*
+     * رجعنا منها 300 كرَصيد دائن.
+     *
+     * المفروض الرصيد يتطبق فورًا
+     * على الفاتورة المفتوحة القديمة.
+     */
+    const purchaseReturn = createPurchaseReturn({
+      purchase_id: paidPurchase.purchaseId,
+      actor_id: 1,
+      refund_mode: 'credit',
+      items: [
+        {
+          purchase_item_id: Number(paidInvoice.items[0].id),
+          quantity: 3,
+        },
+      ],
+    });
+
+    expect(purchaseReturn.credit_amount).toBe(300);
+
+    const updatedOpenPurchase = getPurchaseInvoice(
+      openPurchase.purchaseId,
+    ) as any;
+
+    expect(updatedOpenPurchase.purchase.paid_amount).toBe(300);
+    expect(updatedOpenPurchase.purchase.remaining_amount).toBe(200);
+    expect(updatedOpenPurchase.purchase.payment_status).toBe('partial');
+
+    expect(updatedOpenPurchase.purchase.supplier_credit_applied).toBe(300);
+
+    expect(updatedOpenPurchase.credit_allocations).toHaveLength(1);
+
+    expect(updatedOpenPurchase.credit_allocations[0].return_id).toBe(
+      purchaseReturn.return_id,
+    );
+
+    expect(Number(updatedOpenPurchase.credit_allocations[0].amount)).toBe(300);
+
+    expect(getSupplierBalance(supplierId)).toBe(200);
   });
 
   it('keeps unpaid return cents as supplier credit when cash refund is not settled', () => {
@@ -4619,5 +5132,215 @@ describe('purchases repository', () => {
     expect(allocatedLines).toBe(60.02);
 
     expect(getSupplierBalance(supplierId)).toBe(60.02);
+  });
+
+  it('repairs legacy supplier credit bug without creating fake cash or payments', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    /*
+     * نعمل رصيد دائن 1000.
+     */
+    const paidPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+
+      paid_amount: 1000,
+
+      settle_full_balance: true,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 10,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const paidInvoice = getPurchaseInvoice(paidPurchase.purchaseId) as any;
+
+    createPurchaseReturn({
+      purchase_id: paidPurchase.purchaseId,
+
+      actor_id: 1,
+
+      refund_mode: 'credit',
+
+      items: [
+        {
+          purchase_item_id: Number(paidInvoice.items[0].id),
+
+          quantity: 10,
+        },
+      ],
+    });
+
+    /*
+     * فاتورة 2000:
+     * النظام الجديد هيقفلها
+     * 1000 دفع + 1000 رصيد.
+     */
+    const newPurchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+
+      actor_id: 1,
+
+      paid_amount: 1000,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 20,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const db = getDb();
+
+    /*
+     * نرجع البيانات يدويًا للشكل
+     * القديم المكسور الذي كان موجودًا:
+     *
+     * paid = 1000
+     * remaining = 1000
+     * والرصيد الدائن لم يتم استهلاكه.
+     */
+    db.prepare(
+      `
+    DELETE FROM supplier_credit_allocations
+
+    WHERE purchase_id = ?
+    `,
+    ).run(newPurchase.purchaseId);
+
+    db.prepare(
+      `
+    UPDATE purchase_invoices
+
+    SET
+      paid_amount = 1000,
+
+      remaining_amount = 1000,
+
+      payment_status = 'partial'
+
+    WHERE id = ?
+    `,
+    ).run(newPurchase.purchaseId);
+
+    db.prepare(
+      `
+    UPDATE suppliers
+
+    SET balance = 0
+
+    WHERE id = ?
+    `,
+    ).run(supplierId);
+
+    const paymentCountBefore = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM supplier_payments
+
+      WHERE purchase_id = ?
+      `,
+      )
+      .get(newPurchase.purchaseId) as {
+      count: number;
+    };
+
+    const cashCountBefore = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM cash_movements
+
+      WHERE
+        reference_id = ?
+
+        AND reference_type =
+          'purchase_invoice'
+      `,
+      )
+      .get(newPurchase.purchaseId) as {
+      count: number;
+    };
+
+    /*
+     * نفس الإصلاح الذي ستشغله
+     * Migration 33 على بيانات العميل.
+     */
+    const repaired = repairLegacySupplierCreditAllocations(db);
+
+    expect(repaired.repaired_purchases).toBeGreaterThanOrEqual(1);
+
+    expect(repaired.allocated_amount).toBeGreaterThanOrEqual(1000);
+
+    const repairedInvoice = getPurchaseInvoice(newPurchase.purchaseId) as any;
+
+    expect(repairedInvoice.purchase.paid_amount).toBe(2000);
+
+    expect(repairedInvoice.purchase.remaining_amount).toBe(0);
+
+    expect(repairedInvoice.purchase.payment_status).toBe('paid');
+
+    expect(repairedInvoice.purchase.supplier_credit_applied).toBe(1000);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    /*
+     * ممنوع Migration تعمل دفعة وهمية.
+     */
+    const paymentCountAfter = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM supplier_payments
+
+      WHERE purchase_id = ?
+      `,
+      )
+      .get(newPurchase.purchaseId) as {
+      count: number;
+    };
+
+    expect(paymentCountAfter.count).toBe(paymentCountBefore.count);
+
+    /*
+     * وممنوع تعمل حركة خزنة وهمية.
+     */
+    const cashCountAfter = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM cash_movements
+
+      WHERE
+        reference_id = ?
+
+        AND reference_type =
+          'purchase_invoice'
+      `,
+      )
+      .get(newPurchase.purchaseId) as {
+      count: number;
+    };
+
+    expect(cashCountAfter.count).toBe(cashCountBefore.count);
   });
 });

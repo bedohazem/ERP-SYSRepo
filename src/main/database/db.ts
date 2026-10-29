@@ -18,6 +18,399 @@ export function closeDb(): void {
   }
 }
 
+export function repairLegacySupplierCreditAllocations(
+  database: Database.Database,
+) {
+  const EPSILON = 0.000000001;
+
+  const normalize = (value: number) => (Math.abs(value) <= EPSILON ? 0 : value);
+
+  const supplierRows = database
+    .prepare(
+      `
+      SELECT DISTINCT
+        pr.supplier_id
+
+      FROM purchase_returns pr
+
+      WHERE
+        pr.cancelled_at IS NULL
+
+        AND IFNULL(
+          pr.credit_amount,
+          0
+        ) > ?
+
+        AND EXISTS (
+          SELECT 1
+
+          FROM purchase_invoices pi
+
+          WHERE
+            pi.supplier_id = pr.supplier_id
+
+            AND IFNULL(
+              pi.status,
+              'active'
+            ) != 'cancelled'
+
+            AND IFNULL(
+              pi.remaining_amount,
+              0
+            ) > ?
+        )
+
+      ORDER BY pr.supplier_id ASC
+      `,
+    )
+    .all(EPSILON, EPSILON) as Array<{
+    supplier_id: number;
+  }>;
+
+  const getCredits = database.prepare(
+    `
+    SELECT
+      pr.id,
+
+      IFNULL(
+        pr.credit_amount,
+        0
+      ) AS credit_amount,
+
+      IFNULL(
+        (
+          SELECT SUM(
+            sca.amount
+          )
+
+          FROM supplier_credit_allocations sca
+
+          WHERE
+            sca.return_id = pr.id
+
+            AND sca.cancelled_at
+              IS NULL
+        ),
+        0
+      ) AS allocated_amount
+
+    FROM purchase_returns pr
+
+    WHERE
+      pr.supplier_id = ?
+
+      AND pr.cancelled_at
+        IS NULL
+
+      AND IFNULL(
+        pr.credit_amount,
+        0
+      ) > ?
+
+    ORDER BY
+      datetime(pr.created_at) ASC,
+      pr.id ASC
+    `,
+  );
+
+  const getOpenPurchases = database.prepare(
+    `
+    SELECT
+      id,
+      total_amount,
+      paid_amount,
+      remaining_amount
+
+    FROM purchase_invoices
+
+    WHERE
+      supplier_id = ?
+
+      AND IFNULL(
+        status,
+        'active'
+      ) != 'cancelled'
+
+      AND IFNULL(
+        remaining_amount,
+        0
+      ) > ?
+
+    ORDER BY id ASC
+    `,
+  );
+
+  const insertAllocation = database.prepare(
+    `
+    INSERT INTO supplier_credit_allocations (
+      supplier_id,
+      return_id,
+      purchase_id,
+      amount
+    )
+
+    VALUES (?, ?, ?, ?)
+    `,
+  );
+
+  const updatePurchase = database.prepare(
+    `
+    UPDATE purchase_invoices
+
+    SET
+      paid_amount = ?,
+
+      remaining_amount = ?,
+
+      payment_status = ?
+
+    WHERE id = ?
+    `,
+  );
+
+  const getSupplierBalanceParts = database.prepare(
+    `
+    SELECT
+      IFNULL(
+        (
+          SELECT SUM(
+            CASE
+              WHEN
+                IFNULL(
+                  pi.status,
+                  'active'
+                ) != 'cancelled'
+
+                AND IFNULL(
+                  pi.remaining_amount,
+                  0
+                ) > ?
+
+              THEN pi.remaining_amount
+
+              ELSE 0
+            END
+          )
+
+          FROM purchase_invoices pi
+
+          WHERE pi.supplier_id = ?
+        ),
+        0
+      ) AS open_debt,
+
+      IFNULL(
+        (
+          SELECT SUM(
+            MAX(
+              0,
+
+              IFNULL(
+                pr.credit_amount,
+                0
+              )
+
+              -
+
+              IFNULL(
+                (
+                  SELECT SUM(
+                    sca.amount
+                  )
+
+                  FROM supplier_credit_allocations sca
+
+                  WHERE
+                    sca.return_id = pr.id
+
+                    AND sca.cancelled_at
+                      IS NULL
+                ),
+                0
+              )
+            )
+          )
+
+          FROM purchase_returns pr
+
+          WHERE
+            pr.supplier_id = ?
+
+            AND pr.cancelled_at
+              IS NULL
+        ),
+        0
+      ) AS available_credit
+    `,
+  );
+
+  const updateSupplierBalance = database.prepare(
+    `
+    UPDATE suppliers
+
+    SET
+      balance = ?,
+
+      updated_at =
+        CURRENT_TIMESTAMP
+
+    WHERE id = ?
+    `,
+  );
+
+  let repairedPurchases = 0;
+
+  let allocatedAmount = 0;
+
+  for (const supplierRow of supplierRows) {
+    const supplierId = Number(supplierRow.supplier_id);
+
+    const credits = (
+      getCredits.all(supplierId, EPSILON) as Array<{
+        id: number;
+        credit_amount: number;
+        allocated_amount: number;
+      }>
+    )
+      .map((row) => ({
+        id: Number(row.id),
+
+        available: normalize(
+          Math.max(
+            0,
+
+            Number(row.credit_amount || 0) - Number(row.allocated_amount || 0),
+          ),
+        ),
+      }))
+      .filter((row) => row.available > EPSILON);
+
+    if (credits.length === 0) {
+      continue;
+    }
+
+    const purchases = getOpenPurchases.all(supplierId, EPSILON) as Array<{
+      id: number;
+      total_amount: number;
+      paid_amount: number;
+      remaining_amount: number;
+    }>;
+
+    let creditIndex = 0;
+
+    for (const purchase of purchases) {
+      let purchaseRemaining = normalize(
+        Math.max(0, Number(purchase.remaining_amount || 0)),
+      );
+
+      if (purchaseRemaining <= EPSILON) {
+        continue;
+      }
+
+      let invoiceAllocated = 0;
+
+      while (purchaseRemaining > EPSILON && creditIndex < credits.length) {
+        const credit = credits[creditIndex];
+
+        if (credit.available <= EPSILON) {
+          creditIndex += 1;
+
+          continue;
+        }
+
+        const allocation = normalize(
+          Math.min(purchaseRemaining, credit.available),
+        );
+
+        if (allocation <= EPSILON) {
+          break;
+        }
+
+        insertAllocation.run(
+          supplierId,
+
+          credit.id,
+
+          Number(purchase.id),
+
+          allocation,
+        );
+
+        credit.available = normalize(
+          Math.max(0, credit.available - allocation),
+        );
+
+        purchaseRemaining = normalize(
+          Math.max(0, purchaseRemaining - allocation),
+        );
+
+        invoiceAllocated = normalize(invoiceAllocated + allocation);
+
+        allocatedAmount = normalize(allocatedAmount + allocation);
+
+        if (credit.available <= EPSILON) {
+          creditIndex += 1;
+        }
+      }
+
+      if (invoiceAllocated <= EPSILON) {
+        continue;
+      }
+
+      const newPaidAmount = normalize(
+        Number(purchase.paid_amount || 0) + invoiceAllocated,
+      );
+
+      const paymentStatus =
+        purchaseRemaining <= EPSILON
+          ? 'paid'
+          : newPaidAmount > EPSILON
+            ? 'partial'
+            : 'unpaid';
+
+      updatePurchase.run(
+        newPaidAmount,
+
+        purchaseRemaining,
+
+        paymentStatus,
+
+        Number(purchase.id),
+      );
+
+      repairedPurchases += 1;
+    }
+
+    const balanceParts = getSupplierBalanceParts.get(
+      EPSILON,
+
+      supplierId,
+
+      supplierId,
+    ) as {
+      open_debt: number;
+      available_credit: number;
+    };
+
+    const supplierBalance = normalize(
+      Number(balanceParts?.open_debt || 0) -
+        Number(balanceParts?.available_credit || 0),
+    );
+
+    updateSupplierBalance.run(
+      supplierBalance,
+
+      supplierId,
+    );
+  }
+
+  return {
+    repaired_purchases: repairedPurchases,
+
+    allocated_amount: allocatedAmount,
+  };
+}
+
 function repairLegacyFirstShiftOpeningTransfer(db: Database.Database) {
   const firstShift = db
     .prepare(
@@ -3864,6 +4257,117 @@ export function getDb(): Database.Database {
          */
         up: () => {},
       },
+
+      {
+        version: 31,
+
+        name: 'supplier-credit-allocations',
+
+        up: () => {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS supplier_credit_allocations (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              supplier_id INTEGER NOT NULL,
+
+              return_id INTEGER NOT NULL,
+
+              purchase_id INTEGER NOT NULL,
+
+              amount REAL NOT NULL DEFAULT 0,
+
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+
+              FOREIGN KEY (supplier_id)
+                REFERENCES suppliers(id),
+
+              FOREIGN KEY (return_id)
+                REFERENCES purchase_returns(id),
+
+              FOREIGN KEY (purchase_id)
+                REFERENCES purchase_invoices(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_credit_allocations_supplier
+
+            ON supplier_credit_allocations(
+              supplier_id
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_credit_allocations_return
+
+            ON supplier_credit_allocations(
+              return_id
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_credit_allocations_purchase
+
+            ON supplier_credit_allocations(
+              purchase_id
+            );
+          `);
+        },
+      },
+
+      {
+        version: 32,
+
+        name: 'supplier-credit-allocation-corrections',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'supplier_credit_allocations',
+            'cancelled_at',
+            'TEXT',
+          );
+
+          safeAddColumn(
+            db,
+            'supplier_credit_allocations',
+            'cancelled_by',
+            'INTEGER',
+          );
+
+          safeAddColumn(
+            db,
+            'supplier_credit_allocations',
+            'cancel_reason',
+            'TEXT',
+          );
+
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_credit_allocations_return_active
+
+            ON supplier_credit_allocations(
+              return_id,
+              cancelled_at
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_credit_allocations_purchase_active
+
+            ON supplier_credit_allocations(
+              purchase_id,
+              cancelled_at
+            );
+          `);
+        },
+      },
+
+      {
+        version: 33,
+
+        name: 'repair-legacy-supplier-credit-allocations',
+
+        up: (database) => {
+          repairLegacySupplierCreditAllocations(database);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);
@@ -3892,6 +4396,8 @@ export function resetDatabaseData(): void {
 
       DELETE FROM store_liability_payments;
       DELETE FROM store_liabilities;
+
+      DELETE FROM supplier_credit_allocations;
 
       DELETE FROM supplier_payments;
       DELETE FROM supplier_payment_batches;

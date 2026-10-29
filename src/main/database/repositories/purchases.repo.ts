@@ -256,10 +256,26 @@ function resolveStoredPurchaseInitialCashAmount(purchase: {
   exact_total_amount?: number | null;
   paid_amount?: number | null;
   rounding_adjustment?: number | null;
+  supplier_credit_applied?: number | null;
 }) {
   const paidAmount = preservePrecision(Number(purchase.paid_amount || 0));
 
-  if (!hasPositivePreciseAmount(paidAmount)) {
+  const supplierCreditApplied = preservePrecision(
+    Number(purchase.supplier_credit_applied || 0),
+  );
+
+  /*
+   * paid_amount محاسبي:
+   * قد يحتوي كاش + رصيد دائن.
+   *
+   * المطلوب هنا هو الجزء الذي
+   * تم تسويته عن طريق الدفع فقط.
+   */
+  const cashAccountingAmount = normalizePreciseZero(
+    Math.max(0, preciseSubtract(paidAmount, supplierCreditApplied)),
+  );
+
+  if (!hasPositivePreciseAmount(cashAccountingAmount)) {
     return 0;
   }
 
@@ -277,12 +293,324 @@ function resolveStoredPurchaseInitialCashAmount(purchase: {
     Math.abs(preciseSubtract(totalAmount, exactTotalAmount)) > 0.0001;
 
   if (legacyRoundedInvoice) {
-    return paidAmount;
+    return cashAccountingAmount;
   }
 
   return normalizePreciseZero(
-    Math.max(0, preciseAdd(paidAmount, roundingAdjustment)),
+    Math.max(0, preciseAdd(cashAccountingAmount, roundingAdjustment)),
   );
+}
+
+function getSupplierAvailableCredit(
+  db: ReturnType<typeof getDb>,
+  supplierId: number,
+) {
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        pr.id,
+
+        IFNULL(
+          pr.credit_amount,
+          0
+        ) AS credit_amount,
+
+        IFNULL(
+          (
+            SELECT SUM(
+              sca.amount
+            )
+
+            FROM supplier_credit_allocations sca
+
+            WHERE
+              sca.return_id = pr.id
+
+              AND sca.cancelled_at
+                IS NULL
+          ),
+          0
+        ) AS allocated_amount
+
+      FROM purchase_returns pr
+
+      WHERE
+        pr.supplier_id = ?
+
+        AND pr.cancelled_at
+          IS NULL
+
+        AND IFNULL(
+          pr.credit_amount,
+          0
+        ) > ${PRECISE_MONEY_EPSILON}
+
+      ORDER BY
+        datetime(pr.created_at) ASC,
+        pr.id ASC
+      `,
+    )
+    .all(supplierId) as Array<{
+    id: number;
+    credit_amount: number;
+    allocated_amount: number;
+  }>;
+
+  return normalizePreciseZero(
+    preciseSum(
+      rows.map((row) =>
+        Math.max(
+          0,
+          preciseSubtract(
+            Number(row.credit_amount || 0),
+            Number(row.allocated_amount || 0),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+function allocateSupplierCreditToPurchase(
+  db: ReturnType<typeof getDb>,
+  input: {
+    supplier_id: number;
+    purchase_id: number;
+    amount: number;
+  },
+) {
+  let remaining = normalizePreciseZero(Number(input.amount || 0));
+
+  if (!hasPositivePreciseAmount(remaining)) {
+    return 0;
+  }
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        pr.id,
+
+        IFNULL(
+          pr.credit_amount,
+          0
+        ) AS credit_amount,
+
+        IFNULL(
+          (
+            SELECT SUM(
+              sca.amount
+            )
+
+            FROM supplier_credit_allocations sca
+
+            WHERE
+              sca.return_id = pr.id
+
+              AND sca.cancelled_at
+                IS NULL
+          ),
+          0
+        ) AS allocated_amount
+
+      FROM purchase_returns pr
+
+      WHERE
+        pr.supplier_id = ?
+
+        AND pr.cancelled_at
+          IS NULL
+
+        AND IFNULL(
+          pr.credit_amount,
+          0
+        ) > ${PRECISE_MONEY_EPSILON}
+
+      ORDER BY
+        datetime(pr.created_at) ASC,
+        pr.id ASC
+      `,
+    )
+    .all(Number(input.supplier_id)) as any[];
+
+  const insertAllocation = db.prepare(
+    `
+    INSERT INTO supplier_credit_allocations (
+      supplier_id,
+      return_id,
+      purchase_id,
+      amount
+    )
+
+    VALUES (?, ?, ?, ?)
+    `,
+  );
+
+  let allocatedTotal = 0;
+
+  for (const row of rows) {
+    if (!hasPositivePreciseAmount(remaining)) {
+      break;
+    }
+
+    const available = normalizePreciseZero(
+      Math.max(
+        0,
+        preciseSubtract(
+          Number(row.credit_amount || 0),
+          Number(row.allocated_amount || 0),
+        ),
+      ),
+    );
+
+    if (!hasPositivePreciseAmount(available)) {
+      continue;
+    }
+
+    const allocation = normalizePreciseZero(Math.min(remaining, available));
+
+    insertAllocation.run(
+      Number(input.supplier_id),
+      Number(row.id),
+      Number(input.purchase_id),
+      allocation,
+    );
+
+    allocatedTotal = preciseAdd(allocatedTotal, allocation);
+
+    remaining = normalizePreciseZero(preciseSubtract(remaining, allocation));
+  }
+
+  if (hasPositivePreciseAmount(remaining)) {
+    throw new Error('تعذر توزيع كامل الرصيد الدائن للمورد');
+  }
+
+  return normalizePreciseZero(allocatedTotal);
+}
+
+function applyAvailableSupplierCreditToOpenPurchases(
+  db: ReturnType<typeof getDb>,
+  supplierId: number,
+) {
+  let availableCredit = getSupplierAvailableCredit(db, supplierId);
+
+  if (!hasPositivePreciseAmount(availableCredit)) {
+    return 0;
+  }
+
+  const purchases = db
+    .prepare(
+      `
+      SELECT
+        id,
+        total_amount,
+        paid_amount,
+        remaining_amount
+
+      FROM purchase_invoices
+
+      WHERE
+        supplier_id = ?
+
+        AND IFNULL(
+          status,
+          'active'
+        ) != 'cancelled'
+
+        AND remaining_amount >
+            ${PRECISE_MONEY_EPSILON}
+
+      ORDER BY
+        id ASC
+      `,
+    )
+    .all(supplierId) as any[];
+
+  const updatePurchase = db.prepare(
+    `
+    UPDATE purchase_invoices
+
+    SET
+      paid_amount = ?,
+
+      remaining_amount = ?,
+
+      payment_status = ?
+
+    WHERE id = ?
+    `,
+  );
+
+  let totalAllocated = 0;
+
+  for (const purchase of purchases) {
+    if (!hasPositivePreciseAmount(availableCredit)) {
+      break;
+    }
+
+    const purchaseRemaining = normalizePreciseZero(
+      Number(purchase.remaining_amount || 0),
+    );
+
+    if (!hasPositivePreciseAmount(purchaseRemaining)) {
+      continue;
+    }
+
+    const requestedAllocation = normalizePreciseZero(
+      Math.min(purchaseRemaining, availableCredit),
+    );
+
+    if (!hasPositivePreciseAmount(requestedAllocation)) {
+      continue;
+    }
+
+    const allocated = allocateSupplierCreditToPurchase(db, {
+      supplier_id: supplierId,
+
+      purchase_id: Number(purchase.id),
+
+      amount: requestedAllocation,
+    });
+
+    if (!hasPositivePreciseAmount(allocated)) {
+      continue;
+    }
+
+    const newPaid = normalizePreciseZero(
+      preciseAdd(Number(purchase.paid_amount || 0), allocated),
+    );
+
+    const newRemaining = normalizePreciseZero(
+      Math.max(0, preciseSubtract(purchaseRemaining, allocated)),
+    );
+
+    const newStatus = normalizePaymentStatus(
+      Number(purchase.total_amount || 0),
+
+      newPaid,
+
+      newRemaining,
+    );
+
+    updatePurchase.run(
+      newPaid,
+
+      newRemaining,
+
+      newStatus,
+
+      Number(purchase.id),
+    );
+
+    totalAllocated = preciseAdd(totalAllocated, allocated);
+
+    availableCredit = normalizePreciseZero(
+      preciseSubtract(availableCredit, allocated),
+    );
+  }
+
+  return normalizePreciseZero(totalAllocated);
 }
 
 function calculateSupplierNetBalance(
@@ -294,68 +622,39 @@ function calculateSupplierNetBalance(
       `
       SELECT
         IFNULL(
-          (
-            SELECT SUM(
-              CASE
-                WHEN
-                  IFNULL(
-                    pi.status,
-                    'active'
-                  ) != 'cancelled'
+          SUM(
+            CASE
+              WHEN
+                IFNULL(
+                  status,
+                  'active'
+                ) != 'cancelled'
 
-                  AND
-                  pi.remaining_amount > ${PRECISE_MONEY_EPSILON}
+                AND remaining_amount >
+                    ${PRECISE_MONEY_EPSILON}
 
-                THEN pi.remaining_amount
+              THEN remaining_amount
 
-                ELSE 0
-              END
-            )
-
-            FROM purchase_invoices pi
-
-            WHERE pi.supplier_id = ?
+              ELSE 0
+            END
           ),
           0
-        ) AS open_debt,
+        ) AS open_debt
 
-        IFNULL(
-          (
-            SELECT SUM(
-              CASE
-                WHEN pr.cancelled_at IS NULL
+      FROM purchase_invoices
 
-                THEN MAX(
-                  0,
-                  IFNULL(
-                    pr.credit_amount,
-                    0
-                  )
-                )
-
-                ELSE 0
-              END
-            )
-
-            FROM purchase_returns pr
-
-            WHERE pr.supplier_id = ?
-          ),
-          0
-        ) AS supplier_credit
+      WHERE supplier_id = ?
       `,
     )
-    .get(supplierId, supplierId) as {
+    .get(supplierId) as {
     open_debt: number;
-    supplier_credit: number;
   };
 
-  return normalizePreciseZero(
-    preciseSubtract(
-      Number(row?.open_debt || 0),
-      Number(row?.supplier_credit || 0),
-    ),
-  );
+  const openDebt = preservePrecision(Number(row?.open_debt || 0));
+
+  const supplierCredit = getSupplierAvailableCredit(db, supplierId);
+
+  return normalizePreciseZero(preciseSubtract(openDebt, supplierCredit));
 }
 
 function rebuildSupplierBalance(
@@ -669,6 +968,32 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
     const settleFullBalance = Boolean(input.settle_full_balance);
 
+    const availableSupplierCredit = getSupplierAvailableCredit(db, supplierId);
+
+    /*
+     * الأولوية المحاسبية:
+     *
+     * 1. نحترم الكاش الذي أدخله المستخدم.
+     * 2. الرصيد الدائن يكمل الجزء المتبقي فقط.
+     *
+     * مثال:
+     * فاتورة 981.75
+     * رصيد دائن 100
+     * المستخدم دفع 982 كتسوية كاملة
+     * => لا نستخدم الرصيد الدائن.
+     *
+     * مثال:
+     * فاتورة 2000
+     * رصيد دائن 1000
+     * المستخدم دفع 1000
+     * => نستخدم 1000 من الرصيد
+     *    وتغلق الفاتورة بالكامل.
+     */
+
+    let supplierCreditApplied = 0;
+
+    let cashAccountingAmount = 0;
+
     let paidAmount = 0;
 
     let remainingAmount = totalAmount;
@@ -676,50 +1001,159 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
     let roundingAdjustment = 0;
 
     /*
-     * المبلغ الخارج فعليًا
-     * دائمًا جنيه صحيح.
+     * الكاش الحقيقي الخارج.
      */
     const cashPaidAmount = cashAmountInput;
 
     if (settleFullBalance) {
-      const settlement = resolveWholeMoneySettlement(
+      /*
+       * أولًا:
+       * هل الكاش المدخل وحده
+       * يكفي لتسوية كامل الفاتورة؟
+       *
+       * لو نعم، نحافظ على الرصيد
+       * الدائن كما هو.
+       */
+      const noCreditSettlement = resolveWholeMoneySettlement(
         cashPaidAmount,
         totalAmount,
       );
 
-      /*
-       * لو المستحق أقل من 50 قرش،
-       * أقرب جنيه ممكن يكون صفر.
-       * ولا يتم السماح بده إلا
-       * مع اختيار التسوية صراحة.
-       */
-      const zeroCashSettlement =
+      const noCreditZeroSettlement =
         cashPaidAmount === 0 && roundMoney(totalAmount) === 0;
 
-      if (!settlement.isFullSettlement && !zeroCashSettlement) {
-        throw new Error(
-          `لتسوية كامل الفاتورة يجب أن يكون المبلغ المدفوع ${roundMoney(
-            totalAmount,
-          )} ج.م`,
+      if (noCreditSettlement.isFullSettlement || noCreditZeroSettlement) {
+        supplierCreditApplied = 0;
+
+        cashAccountingAmount = totalAmount;
+
+        paidAmount = totalAmount;
+
+        remainingAmount = 0;
+
+        roundingAdjustment = preciseSubtract(
+          cashPaidAmount,
+          cashAccountingAmount,
+        );
+      } else {
+        /*
+         * الكاش وحده لا يغلق الفاتورة.
+         *
+         * نحاول استخدام أكبر قدر متاح
+         * من رصيد المورد الدائن.
+         */
+        const maxSupplierCredit = normalizePreciseZero(
+          Math.min(totalAmount, availableSupplierCredit),
+        );
+
+        const targetAfterMaxCredit = normalizePreciseZero(
+          Math.max(0, preciseSubtract(totalAmount, maxSupplierCredit)),
+        );
+
+        const maxCreditSettlement = resolveWholeMoneySettlement(
+          cashPaidAmount,
+          targetAfterMaxCredit,
+        );
+
+        const maxCreditZeroSettlement =
+          cashPaidAmount === 0 && roundMoney(targetAfterMaxCredit) === 0;
+
+        if (maxCreditSettlement.isFullSettlement || maxCreditZeroSettlement) {
+          /*
+           * أكبر رصيد دائن متاح
+           * + الكاش
+           * يغلق الفاتورة.
+           */
+          supplierCreditApplied = maxSupplierCredit;
+
+          cashAccountingAmount = targetAfterMaxCredit;
+        } else {
+          /*
+           * قد لا نحتاج كل الرصيد الدائن.
+           *
+           * مثال:
+           * فاتورة = 1000
+           * الرصيد الدائن = 700
+           * المستخدم دفع = 500
+           *
+           * نستخدم 500 فقط من الرصيد.
+           */
+          const requiredSupplierCredit = normalizePreciseZero(
+            Math.max(0, preciseSubtract(totalAmount, cashPaidAmount)),
+          );
+
+          if (exceedsPreciseAmount(requiredSupplierCredit, maxSupplierCredit)) {
+            throw new Error(
+              `لتسوية كامل الفاتورة لا يكفي المبلغ المدفوع مع الرصيد الدائن المتاح`,
+            );
+          }
+
+          const targetAfterRequiredCredit = normalizePreciseZero(
+            Math.max(0, preciseSubtract(totalAmount, requiredSupplierCredit)),
+          );
+
+          const requiredCreditSettlement = resolveWholeMoneySettlement(
+            cashPaidAmount,
+            targetAfterRequiredCredit,
+          );
+
+          const requiredCreditZeroSettlement =
+            cashPaidAmount === 0 && roundMoney(targetAfterRequiredCredit) === 0;
+
+          if (
+            !requiredCreditSettlement.isFullSettlement &&
+            !requiredCreditZeroSettlement
+          ) {
+            throw new Error(
+              'قيمة الدفع لا تطابق تسوية كامل الفاتورة بعد احتساب الرصيد الدائن',
+            );
+          }
+
+          supplierCreditApplied = requiredSupplierCredit;
+
+          cashAccountingAmount = targetAfterRequiredCredit;
+        }
+
+        paidAmount = totalAmount;
+
+        remainingAmount = 0;
+
+        roundingAdjustment = preciseSubtract(
+          cashPaidAmount,
+          cashAccountingAmount,
         );
       }
-
-      /*
-       * محاسبيًا نقفل الدين كله.
-       */
-      paidAmount = totalAmount;
-
-      remainingAmount = 0;
-
-      roundingAdjustment = preciseSubtract(cashPaidAmount, totalAmount);
     } else {
+      /*
+       * دفعة عادية وليست تسوية كاملة.
+       *
+       * الكاش أولًا.
+       */
       if (exceedsPreciseAmount(cashPaidAmount, totalAmount)) {
         throw new Error(
           'المبلغ المدفوع أكبر من المستحق؛ فعّل تسوية كامل الفاتورة إذا كنت تريد إقفال فرق القروش',
         );
       }
 
-      paidAmount = preservePrecision(Math.min(cashPaidAmount, totalAmount));
+      cashAccountingAmount = preservePrecision(
+        Math.min(cashPaidAmount, totalAmount),
+      );
+
+      const remainingAfterCash = normalizePreciseZero(
+        Math.max(0, preciseSubtract(totalAmount, cashAccountingAmount)),
+      );
+
+      /*
+       * الرصيد الدائن يغطي ما تبقى
+       * بعد الدفعة الفعلية فقط.
+       */
+      supplierCreditApplied = normalizePreciseZero(
+        Math.min(remainingAfterCash, availableSupplierCredit),
+      );
+
+      paidAmount = normalizePreciseZero(
+        preciseAdd(cashAccountingAmount, supplierCreditApplied),
+      );
 
       remainingAmount = normalizePreciseZero(
         Math.max(0, preciseSubtract(totalAmount, paidAmount)),
@@ -806,6 +1240,18 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       );
 
     const purchaseId = Number(purchaseResult.lastInsertRowid);
+
+    const allocatedSupplierCredit = allocateSupplierCreditToPurchase(db, {
+      supplier_id: supplierId,
+
+      purchase_id: purchaseId,
+
+      amount: supplierCreditApplied,
+    });
+
+    if (!samePreciseAmount(allocatedSupplierCredit, supplierCreditApplied)) {
+      throw new Error('قيمة الرصيد الدائن الموزعة غير متطابقة');
+    }
 
     db.prepare(
       `
@@ -897,42 +1343,24 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       `,
     ).run(totalAmount, supplierId);
 
-    /*
-     * الرصيد لا يعتمد على القيمة
-     * المخزنة القديمة في suppliers.balance.
-     *
-     * مصدر الحقيقة:
-     * الفواتير المفتوحة
-     * -
-     * الأرصدة الدائنة النشطة.
-     */
     rebuildSupplierBalance(db, supplierId);
 
-    if (paidAmount > 0) {
-      /*
-       * حتى لو الكاش الفعلي = صفر،
-       * نحتاج تسجيل التسوية المحاسبية
-       * على الفاتورة.
-       *
-       * مثال:
-       * إجمالي الفاتورة = 0.40
-       * تسوية كاملة لأقرب جنيه = 0
-       */
+    if (hasPositivePreciseAmount(cashAccountingAmount)) {
       db.prepare(
         `
-    INSERT INTO supplier_payments (
-      supplier_id,
-      purchase_id,
-      amount,
-      payment_method,
-      notes
-    )
-    VALUES (?, ?, ?, ?, ?)
-  `,
+        INSERT INTO supplier_payments (
+          supplier_id,
+          purchase_id,
+          amount,
+          payment_method,
+          notes
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `,
       ).run(
         supplierId,
         purchaseId,
-        paidAmount,
+        cashAccountingAmount,
         paymentMethod,
         `دفعة عند إنشاء فاتورة شراء رقم ${purchaseId}`,
       );
@@ -969,6 +1397,7 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       rounding_adjustment: roundingAdjustment,
       paid_amount: paidAmount,
       cash_amount: cashPaidAmount,
+      supplier_credit_applied: supplierCreditApplied,
       settle_full_balance: settleFullBalance,
       remaining_amount: remainingAmount,
       payment_status: paymentStatus,
@@ -1272,6 +1701,38 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
     if (purchase.safe_status === 'opening_balance') {
       throw new Error('الرصيد الافتتاحي لا يتم تعديله كفاتورة شراء');
+    }
+
+    const activeSupplierCreditAllocation = db
+      .prepare(
+        `
+        SELECT
+          IFNULL(
+            SUM(amount),
+            0
+          ) AS amount
+
+        FROM supplier_credit_allocations
+
+        WHERE
+          purchase_id = ?
+
+          AND cancelled_at
+            IS NULL
+        `,
+      )
+      .get(purchaseId) as {
+      amount: number;
+    };
+
+    if (
+      hasPositivePreciseAmount(
+        Number(activeSupplierCreditAllocation?.amount || 0),
+      )
+    ) {
+      throw new Error(
+        'لا يمكن تعديل فاتورة شراء تم استخدام رصيد دائن للمورد عليها؛ ألغِ الفاتورة وأنشئها من جديد',
+      );
     }
 
     /*
@@ -2142,9 +2603,33 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
         `
         SELECT
           pi.*,
-          IFNULL(pi.status, 'active') AS safe_status
+
+          IFNULL(
+            (
+              SELECT SUM(
+                sca.amount
+              )
+
+              FROM supplier_credit_allocations sca
+
+              WHERE
+                sca.purchase_id = pi.id
+
+                AND sca.cancelled_at
+                  IS NULL
+            ),
+            0
+          ) AS supplier_credit_applied,
+
+          IFNULL(
+            pi.status,
+            'active'
+          ) AS safe_status
+
         FROM purchase_invoices pi
+
         WHERE pi.id = ?
+
         LIMIT 1
       `,
       )
@@ -2330,6 +2815,41 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       `,
     ).run(totalAmount, Number(purchase.supplier_id));
 
+    const reversedSupplierCredit = preservePrecision(
+      Number(purchase.supplier_credit_applied || 0),
+    );
+
+    /*
+     * إلغاء الفاتورة يفك أي مقاصة
+     * تمت عليها ويرجع الرصيد الدائن
+     * للمرتجع الأصلي.
+     */
+    db.prepare(
+      `
+      UPDATE supplier_credit_allocations
+
+      SET
+        cancelled_at =
+          CURRENT_TIMESTAMP,
+
+        cancelled_by = ?,
+
+        cancel_reason = ?
+
+      WHERE
+        purchase_id = ?
+
+        AND cancelled_at
+          IS NULL
+      `,
+    ).run(
+      actorId,
+
+      `إلغاء فاتورة شراء رقم ${purchaseId}`,
+
+      purchaseId,
+    );
+
     const supplierBalance = rebuildSupplierBalance(
       db,
       Number(purchase.supplier_id),
@@ -2365,6 +2885,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       reversed_total: totalAmount,
       reversed_paid: paidAmount,
       reversed_cash: cashPaidAmount,
+      reversed_supplier_credit: reversedSupplierCredit,
       supplier_balance: supplierBalance,
       reversed_remaining: remainingAmount,
       items_count: items.length,
@@ -2507,18 +3028,18 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       const previousReturnedValueRow = db
         .prepare(
           `
-    SELECT
-      IFNULL(
-        SUM(pri.line_total),
-        0
-      ) AS returned_value
-    FROM purchase_return_items pri
-    JOIN purchase_returns pr
-      ON pr.id = pri.return_id
-    WHERE
-      pri.purchase_item_id = ?
-      AND pr.cancelled_at IS NULL
-  `,
+          SELECT
+            IFNULL(
+              SUM(pri.line_total),
+              0
+            ) AS returned_value
+          FROM purchase_return_items pri
+          JOIN purchase_returns pr
+            ON pr.id = pri.return_id
+          WHERE
+            pri.purchase_item_id = ?
+            AND pr.cancelled_at IS NULL
+        `,
         )
         .get(purchaseItemId) as
         | {
@@ -2585,26 +3106,26 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
     const previousReturnsRow = db
       .prepare(
         `
-    SELECT
-      IFNULL(
-        SUM(
-          COALESCE(
-            exact_total_amount,
-            total_amount,
+        SELECT
+          IFNULL(
+            SUM(
+              COALESCE(
+                exact_total_amount,
+                total_amount,
+                0
+              )
+            ),
             0
-          )
-        ),
-        0
-      ) AS exact_returned
+          ) AS exact_returned
 
-    FROM purchase_returns
+        FROM purchase_returns
 
-    WHERE
-      purchase_id = ?
+        WHERE
+          purchase_id = ?
 
-      AND cancelled_at
-        IS NULL
-    `,
+          AND cancelled_at
+            IS NULL
+        `,
       )
       .get(purchaseId) as
       | {
@@ -2898,6 +3419,19 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
     ).run(newRemaining, newPaymentStatus, purchaseId);
 
     /*
+     * أي رصيد دائن متاح للمورد
+     * يتم استخدامه فورًا في تسوية
+     * أقدم فواتيره المفتوحة.
+     *
+     * لا توجد هنا أي حركة كاش.
+     * دي مقاصة محاسبية فقط.
+     */
+    const supplierCreditAllocated = applyAvailableSupplierCreditToOpenPurchases(
+      db,
+      Number(purchase.supplier_id),
+    );
+
+    /*
      * صافي المشتريات ينخفض
      * بقيمة المرتجع الدقيقة.
      */
@@ -2999,6 +3533,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
        * حق متبقٍ لنا عند المورد.
        */
       credit_amount: creditAmount,
+      supplier_credit_allocated: supplierCreditAllocated,
 
       settle_cash_refund: settleCashRefund,
 
@@ -3101,6 +3636,34 @@ function getPurchaseReturnMutationContext(returnIdInput: number) {
   if (Number(latestActiveReturn?.id || 0) !== returnId) {
     throw new Error(
       'يجب تعديل أو إلغاء آخر مرتجع شراء فعال على الفاتورة أولًا',
+    );
+  }
+
+  const activeCreditAllocation = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(amount),
+          0
+        ) AS amount
+
+      FROM supplier_credit_allocations
+
+      WHERE
+        return_id = ?
+
+        AND cancelled_at
+          IS NULL
+      `,
+    )
+    .get(returnId) as {
+    amount: number;
+  };
+
+  if (hasPositivePreciseAmount(Number(activeCreditAllocation?.amount || 0))) {
+    throw new Error(
+      'لا يمكن إلغاء أو تعديل مرتجع الشراء لأن رصيده الدائن مستخدم في فاتورة شراء أخرى؛ ألغِ الفاتورة المستفيدة أولًا',
     );
   }
 
@@ -3598,6 +4161,23 @@ export function listPurchaseInvoices(input?: {
       SELECT
         pi.*,
 
+        IFNULL(
+          (
+            SELECT SUM(
+              sca.amount
+            )
+
+            FROM supplier_credit_allocations sca
+
+            WHERE
+              sca.purchase_id = pi.id
+
+              AND sca.cancelled_at
+                IS NULL
+          ),
+          0
+        ) AS supplier_credit_applied,
+
         COALESCE(
           NULLIF(
             pi.exact_total_amount,
@@ -3792,6 +4372,23 @@ export function getPurchaseInvoice(purchaseId: number) {
       SELECT
         pi.*,
 
+        IFNULL(
+          (
+            SELECT SUM(
+              sca.amount
+            )
+
+            FROM supplier_credit_allocations sca
+
+            WHERE
+              sca.purchase_id = pi.id
+
+              AND sca.cancelled_at
+                IS NULL
+          ),
+          0
+        ) AS supplier_credit_applied,
+
         COALESCE(
           NULLIF(
             pi.exact_total_amount,
@@ -3936,11 +4533,37 @@ export function getPurchaseInvoice(purchaseId: number) {
     )
     .all(Number(purchaseId));
 
+  const creditAllocations = db
+    .prepare(
+      `
+      SELECT
+        sca.*,
+
+        pr.purchase_id
+          AS source_purchase_id,
+
+        pr.created_at
+          AS return_created_at
+
+      FROM supplier_credit_allocations sca
+
+      JOIN purchase_returns pr
+        ON pr.id = sca.return_id
+
+      WHERE sca.purchase_id = ?
+
+      ORDER BY
+        sca.id ASC
+    `,
+    )
+    .all(Number(purchaseId));
+
   return {
     purchase,
     items,
     payments,
     returns,
+    credit_allocations: creditAllocations,
   };
 }
 

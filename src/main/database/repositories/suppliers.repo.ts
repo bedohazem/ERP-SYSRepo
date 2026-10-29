@@ -269,8 +269,28 @@ export function getSupplierAgingSummary(
         SUM(
           MAX(
             0,
+
             IFNULL(
               pr.credit_amount,
+              0
+            )
+
+            -
+
+            IFNULL(
+              (
+                SELECT SUM(
+                  sca.amount
+                )
+
+                FROM supplier_credit_allocations sca
+
+                WHERE
+                  sca.return_id = pr.id
+
+                  AND sca.cancelled_at
+                    IS NULL
+              ),
               0
             )
           )

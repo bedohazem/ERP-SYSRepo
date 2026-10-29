@@ -45,6 +45,7 @@ type PurchaseRow = {
   discount_input?: number;
   discount_value?: number;
   paid_amount: number;
+  supplier_credit_applied?: number;
   remaining_amount: number;
   payment_status: 'paid' | 'partial' | 'unpaid' | 'cancelled' | string;
   payment_method?: string | null;
@@ -1129,8 +1130,42 @@ export default function PurchaseHistoryPage() {
                           }}
                         >
                           <span style={{ color: '#6ee7b7', fontWeight: 900 }}>
-                            مدفوع: {money(row.paid_amount)}
+                            إجمالي المسدد: {money(row.paid_amount)}
                           </span>
+
+                          <span
+                            style={{
+                              color: '#bfdbfe',
+                              fontSize: '12px',
+                              fontWeight: 800,
+                            }}
+                          >
+                            بالدفعات:{' '}
+                            {money(
+                              Math.max(
+                                0,
+                                preciseSubtract(
+                                  Number(row.paid_amount || 0),
+                                  Number(row.supplier_credit_applied || 0),
+                                ),
+                              ),
+                            )}
+                          </span>
+
+                          {hasPositivePreciseAmount(
+                            Number(row.supplier_credit_applied || 0),
+                          ) && (
+                            <span
+                              style={{
+                                color: '#fbbf24',
+                                fontSize: '12px',
+                                fontWeight: 900,
+                              }}
+                            >
+                              من رصيد دائن:{' '}
+                              {money(row.supplier_credit_applied || 0)}
+                            </span>
+                          )}
 
                           <span
                             style={{
@@ -1559,9 +1594,32 @@ export default function PurchaseHistoryPage() {
                 value={money(selectedPurchase.purchase.returned_amount || 0)}
               />
               <InfoCard
-                title="المدفوع"
+                title="إجمالي المسدد"
                 value={money(selectedPurchase.purchase.paid_amount)}
               />
+
+              <InfoCard
+                title="مسدد بالدفعات"
+                value={money(
+                  Math.max(
+                    0,
+                    preciseSubtract(
+                      Number(selectedPurchase.purchase.paid_amount || 0),
+                      Number(
+                        selectedPurchase.purchase.supplier_credit_applied || 0,
+                      ),
+                    ),
+                  ),
+                )}
+              />
+
+              <InfoCard
+                title="مسدد من رصيد دائن"
+                value={money(
+                  selectedPurchase.purchase.supplier_credit_applied || 0,
+                )}
+              />
+
               <InfoCard
                 title="المتبقي"
                 value={money(selectedPurchase.purchase.remaining_amount)}
@@ -1763,6 +1821,99 @@ export default function PurchaseHistoryPage() {
                 </tbody>
               </table>
             </div>
+
+            {(selectedPurchase.credit_allocations ?? []).length > 0 && (
+              <>
+                <h4 style={{ margin: '22px 0 12px' }}>تسويات الرصيد الدائن</h4>
+
+                <div style={{ overflowX: 'auto' }}>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      direction: 'rtl',
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                        <th style={thStyle}>مرتجع المصدر</th>
+
+                        <th style={thStyle}>الفاتورة الأصلية</th>
+
+                        <th style={thStyle}>القيمة</th>
+
+                        <th style={thStyle}>الحالة</th>
+
+                        <th style={thStyle}>التاريخ</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {(selectedPurchase.credit_allocations ?? []).map(
+                        (allocation: any) => {
+                          const cancelled = Boolean(allocation.cancelled_at);
+
+                          return (
+                            <tr
+                              key={allocation.id}
+                              style={{
+                                borderTop: '1px solid rgba(255,255,255,0.06)',
+
+                                opacity: cancelled ? 0.65 : 1,
+                              }}
+                            >
+                              <td style={tdStyle}>#{allocation.return_id}</td>
+
+                              <td style={tdStyle}>
+                                #{allocation.source_purchase_id}
+                              </td>
+
+                              <td
+                                style={{
+                                  ...tdStyle,
+
+                                  textDecoration: cancelled
+                                    ? 'line-through'
+                                    : 'none',
+                                }}
+                              >
+                                {money(allocation.amount)}
+                              </td>
+
+                              <td style={tdStyle}>
+                                {cancelled ? (
+                                  <span
+                                    style={{
+                                      color: '#fca5a5',
+                                      fontWeight: 900,
+                                    }}
+                                  >
+                                    تم عكسها
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      color: '#fbbf24',
+                                      fontWeight: 900,
+                                    }}
+                                  >
+                                    مستخدمة
+                                  </span>
+                                )}
+                              </td>
+
+                              <td style={tdStyle}>
+                                {formatDate(allocation.created_at)}
+                              </td>
+                            </tr>
+                          );
+                        },
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
 
             {(selectedPurchase.returns ?? []).length > 0 && (
               <>
