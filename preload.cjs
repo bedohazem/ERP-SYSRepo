@@ -182,7 +182,7 @@ contextBridge.exposeInMainWorld('api', {
   updateSaleInvoice: (input) => invokeMain('sales:update', input),
   cancelSaleInvoice: (input) => invokeMain('sales:cancel', input),
   getSaleReceipt: (saleId) => invokeMain('sales:get-receipt', saleId),
-
+  getSaleAuditTrail: (saleId) => invokeMain('sales:audit-trail', saleId),
   getSaleCurrentState: (saleId) => invokeMain('sales:current-state', saleId),
   listSales: (input) => invokeMain('sales:list', input),
   createSaleReturn: (input) => invokeMain('sales:return', input),

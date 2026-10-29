@@ -33,6 +33,7 @@ import { createSupplier } from '../../src/main/database/repositories/suppliers.r
 import { createCashMovement } from '../../src/main/database/repositories/cash.repo';
 import {
   closeCashShift,
+  getCashShiftDetails,
   getOpenCashShift,
   openCashShift,
   listCashShiftVariances,
@@ -1766,6 +1767,193 @@ describe('reports repository', () => {
     expect(dashboard.sales.outstanding_debt_total).toBe(100);
 
     expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1);
+  });
+
+  it('attributes admin non-cash and credit sales to the currently open cashier shift', () => {
+    const currentShift = getOpenCashShift();
+
+    expect(currentShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: currentShift!.id,
+
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    });
+
+    const cashier = createUser(
+      'Shift Sales Cashier',
+
+      'shift_sales_cashier',
+
+      '1234',
+
+      'cashier',
+    );
+
+    const cashierShift = openCashShift({
+      opening_counted_amount: 0,
+
+      opened_by: cashier.id,
+    });
+
+    const variant = seedReportProduct({
+      name: 'Admin Shift Sale Product',
+
+      barcode: 'ADMIN-SHIFT-SALE',
+
+      openingQty: 10,
+
+      buyPrice: 50,
+
+      sellPrice: 300,
+    });
+
+    /*
+     * الأدمن يبيع بوسيلة غير الكاش
+     * أثناء شفت الكاشير.
+     */
+    const paidSale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 0,
+
+      grand_total: 200,
+
+      paid: 200,
+
+      remaining_amount: 0,
+
+      payment_status: 'paid',
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 200,
+        },
+      ],
+    });
+
+    expect(paidSale.shift_id).toBe(cashierShift.id);
+
+    const customer = createTestCustomer(
+      'Shift Credit Customer',
+
+      '01066666666',
+    );
+
+    /*
+     * الأدمن يسجل فاتورة آجل
+     * أثناء نفس شفت الكاشير.
+     */
+    const creditSale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 300,
+
+      discount_value: 0,
+
+      grand_total: 300,
+
+      paid: 0,
+
+      remaining_amount: 300,
+
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 300,
+        },
+      ],
+    });
+
+    expect(creditSale.shift_id).toBe(cashierShift.id);
+
+    /*
+     * الرئيسية الخاصة بصاحب الشفت
+     * ترى الفاتورتين حتى لو أنشأهما الأدمن.
+     */
+    const dashboard = getCashierDashboardSummary({
+      user_id: cashier.id,
+    });
+
+    expect(dashboard.sales.invoices_count).toBe(2);
+
+    expect(dashboard.sales.invoice_sales).toBe(500);
+
+    expect(dashboard.sales.paid_sales_total).toBe(200);
+
+    expect(dashboard.sales.outstanding_debt_total).toBe(300);
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(1);
+
+    /*
+     * تفاصيل الشفت تحتوي أيضًا
+     * على فاتورة الآجل رغم عدم وجود
+     * حركة نقدية لها.
+     */
+    const details = getCashShiftDetails(cashierShift.id);
+
+    expect(details.sales).toHaveLength(2);
+
+    expect(details.sales_summary.invoices_count).toBe(2);
+
+    expect(details.sales_summary.invoice_sales).toBe(500);
+
+    expect(details.sales_summary.paid_total).toBe(200);
+
+    expect(details.sales_summary.remaining_total).toBe(300);
+
+    const creditInvoice = details.sales.find(
+      (sale: any) => Number(sale.id) === creditSale.saleId,
+    );
+
+    expect(creditInvoice).toBeTruthy();
+
+    expect(Number(creditInvoice.remaining_amount)).toBe(300);
+
+    expect(creditInvoice.payment_status).toBe('unpaid');
   });
 
   it('keeps shift operations on the shift opening business date', () => {

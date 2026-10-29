@@ -19,6 +19,7 @@ import {
   getSaleEditAccess,
   updateSaleInvoice,
   CreditLimitExceededError,
+  getSaleAuditTrail,
 } from '../database/repositories/sales.repo';
 import { userHasPermission } from '../database/repositories/user.repo';
 import {
@@ -1225,6 +1226,14 @@ export function registerSalesIpc(): void {
     );
 
     return protectSalesCostData(actor, result);
+  });
+
+  ipcMain.handle('sales:audit-trail', (event, saleId) => {
+    requirePermission(event, 'sales.history');
+
+    return getSaleAuditTrail(
+      requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
+    );
   });
 
   ipcMain.handle('sales:current-state', (event, saleId: number) => {

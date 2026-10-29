@@ -769,6 +769,28 @@ declare global {
         loyalty: any[];
       }>;
 
+      getSaleAuditTrail: (saleId: number) => Promise<
+        Array<{
+          id: number;
+
+          action: string;
+
+          entity_id: number | null;
+
+          user_name?: string | null;
+
+          username?: string | null;
+
+          approved_by_name?: string | null;
+
+          approved_by_username?: string | null;
+
+          created_at: string;
+
+          details: Record<string, any>;
+        }>
+      >;
+
       getSaleCurrentState: (saleId: number) => Promise<{
         sale: any;
 
@@ -3169,6 +3191,94 @@ declare global {
             total: number;
           }>;
         };
+
+        sales: Array<{
+          id: number;
+
+          grand_total: number;
+
+          paid_amount: number;
+
+          remaining_amount: number;
+
+          payment_status: string;
+
+          payment_method: string;
+
+          discount_total: number;
+
+          cancelled_at?: string | null;
+
+          cancel_reason?: string | null;
+
+          created_at: string;
+
+          customer_name?: string | null;
+
+          created_by_name?: string | null;
+        }>;
+
+        sales_summary: {
+          invoices_count: number;
+
+          active_invoices_count: number;
+
+          cancelled_invoices_count: number;
+
+          invoice_sales: number;
+
+          discounts_total: number;
+
+          paid_total: number;
+
+          remaining_total: number;
+        };
+
+        operations_summary: {
+          customer_payments_count: number;
+
+          customer_payments_total: number;
+
+          expenses_count: number;
+
+          expenses_total: number;
+
+          returns_count: number;
+
+          returns_total: number;
+
+          returns_cash_refund: number;
+
+          returns_debt_reduction: number;
+
+          exchanges_count: number;
+
+          exchange_cash_collection: number;
+
+          exchange_cash_refund: number;
+
+          exchange_debt_reduction: number;
+
+          exchange_difference: number;
+        };
+
+        timeline: Array<{
+          id: number;
+
+          action: string;
+
+          entity: string;
+
+          entity_id: number | null;
+
+          user_name?: string | null;
+
+          approved_by_name?: string | null;
+
+          created_at: string;
+
+          details: Record<string, any>;
+        }>;
 
         movements: any[];
 

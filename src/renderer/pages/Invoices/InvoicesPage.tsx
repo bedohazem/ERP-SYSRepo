@@ -25,6 +25,7 @@ import { formatMoney, roundMoney } from '../../../shared/money';
 
 type SaleRow = {
   id: number;
+  shift_id?: number | null;
   customer_name?: string | null;
   customer_phone?: string | null;
   cashier_name?: string | null;
@@ -71,6 +72,26 @@ type SaleRow = {
   exchange_count?: number;
   cancelled_exchange_count?: number;
   exchange_difference_total?: number;
+};
+
+type SaleAuditRow = {
+  id: number;
+
+  action: string;
+
+  entity_id: number | null;
+
+  user_name?: string | null;
+
+  username?: string | null;
+
+  approved_by_name?: string | null;
+
+  approved_by_username?: string | null;
+
+  created_at: string;
+
+  details: Record<string, any>;
 };
 
 type InvoicesTab = 'sales' | 'returns' | 'exchanges';
@@ -545,6 +566,11 @@ function buildReturnDraftItems(
 export default function InvoicesPage() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<SaleRow[]>([]);
+  const [auditSaleId, setAuditSaleId] = useState<number | null>(null);
+
+  const [auditRows, setAuditRows] = useState<SaleAuditRow[]>([]);
+
+  const [auditLoading, setAuditLoading] = useState(false);
   const [total, setTotal] = useState(0);
   const [salesPage, setSalesPage] = useState(1);
   const [activeTab, setActiveTab] = useState<InvoicesTab>('sales');
@@ -664,6 +690,28 @@ export default function InvoicesPage() {
       setTotal(0);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function openSaleAuditTrail(saleId: number) {
+    setAuditSaleId(saleId);
+
+    setAuditRows([]);
+
+    setAuditLoading(true);
+
+    try {
+      const result = await window.api.getSaleAuditTrail(saleId);
+
+      setAuditRows(Array.isArray(result) ? result : []);
+    } catch (error) {
+      console.error('Failed to load sale audit trail:', error);
+
+      setMessage('تعذر تحميل سجل تعديلات الفاتورة');
+
+      setAuditSaleId(null);
+    } finally {
+      setAuditLoading(false);
     }
   }
 
@@ -1827,7 +1875,21 @@ export default function InvoicesPage() {
                   key={sale.id}
                   style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                 >
-                  <td style={tdStyle}>#{sale.id}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: 'grid', gap: '4px' }}>
+                      <strong>#{sale.id}</strong>
+
+                      <span
+                        style={{
+                          color: sale.shift_id ? '#93c5fd' : '#64748b',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        {sale.shift_id ? `شفت #${sale.shift_id}` : 'بدون شفت'}
+                      </span>
+                    </div>
+                  </td>
                   <td style={tdStyle}>
                     <div style={{ display: 'grid', gap: '4px' }}>
                       <strong>{sale.customer_name || 'عميل نقدي'}</strong>
@@ -2169,7 +2231,7 @@ export default function InvoicesPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(3, minmax(68px, 1fr))',
+                        gridTemplateColumns: 'repeat(2, minmax(90px, 1fr))',
                         gap: '7px',
                         width: '100%',
                         alignItems: 'stretch',
@@ -2181,6 +2243,22 @@ export default function InvoicesPage() {
                         style={smallButtonStyle}
                       >
                         عرض
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void openSaleAuditTrail(sale.id)}
+                        style={{
+                          ...smallButtonStyle,
+
+                          borderColor: '#a855f7',
+
+                          color: '#d8b4fe',
+
+                          background: 'rgba(168,85,247,0.10)',
+                        }}
+                      >
+                        سجل التعديلات
                       </button>
 
                       {!sale.cancelled_at &&
@@ -4346,6 +4424,331 @@ export default function InvoicesPage() {
                 إغلاق
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {auditSaleId !== null && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.68)',
+            zIndex: 100001,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: 'min(1000px, calc(100vw - 48px))',
+              maxHeight: '90vh',
+              overflow: 'auto',
+              borderRadius: '18px',
+              border: '1px solid rgba(255,255,255,0.10)',
+              background: '#111827',
+              padding: '22px',
+              direction: 'rtl',
+              boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                marginBottom: '18px',
+              }}
+            >
+              <div>
+                <h3 style={{ margin: '0 0 5px' }}>
+                  سجل مراجعة الفاتورة #{auditSaleId}
+                </h3>
+
+                <div
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                  }}
+                >
+                  كل إنشاء أو تعديل أو إلغاء تم على الفاتورة
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAuditSaleId(null);
+                  setAuditRows([]);
+                }}
+                style={closeButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            {auditLoading ? (
+              <div
+                style={{
+                  padding: '30px',
+                  textAlign: 'center',
+                  color: '#94a3b8',
+                }}
+              >
+                جاري تحميل السجل...
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '12px',
+                }}
+              >
+                {auditRows.map((item) => {
+                  const details = item.details || {};
+
+                  const beforeSale = details.before?.sale || null;
+
+                  const afterSale = details.after?.sale || null;
+
+                  const actionLabel =
+                    item.action === 'sale_created'
+                      ? 'إنشاء الفاتورة'
+                      : item.action === 'sale_updated'
+                        ? 'تعديل الفاتورة'
+                        : item.action === 'sale_cancelled'
+                          ? 'إلغاء الفاتورة'
+                          : item.action === 'sale_credit_limit_overridden'
+                            ? 'تجاوز الحد الائتماني'
+                            : item.action;
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        padding: '14px',
+                        borderRadius: '14px',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: 'rgba(255,255,255,0.035)',
+                        display: 'grid',
+                        gap: '10px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <strong
+                          style={{
+                            color:
+                              item.action === 'sale_cancelled'
+                                ? '#fca5a5'
+                                : item.action === 'sale_updated'
+                                  ? '#93c5fd'
+                                  : '#86efac',
+                          }}
+                        >
+                          {actionLabel}
+                        </strong>
+
+                        <span
+                          style={{
+                            color: '#94a3b8',
+                            fontSize: '12px',
+                          }}
+                        >
+                          {formatDate(item.created_at)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: '14px',
+                          flexWrap: 'wrap',
+                          color: '#cbd5e1',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <span>
+                          بواسطة: <strong>{item.user_name || '—'}</strong>
+                        </span>
+
+                        {item.approved_by_name && (
+                          <span>
+                            موافقة المدير:{' '}
+                            <strong>{item.approved_by_name}</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      {details.reason && (
+                        <div
+                          style={{
+                            padding: '9px 11px',
+                            borderRadius: '10px',
+                            background: 'rgba(245,158,11,0.08)',
+                            color: '#fde68a',
+                          }}
+                        >
+                          سبب التعديل: {details.reason}
+                        </div>
+                      )}
+
+                      {item.action === 'sale_created' && (
+                        <div
+                          style={{
+                            color: '#cbd5e1',
+                            lineHeight: 1.8,
+                          }}
+                        >
+                          الإجمالي: {money(details.grand_total || 0)}
+                          {' • '}
+                          المدفوع: {money(details.paid || 0)}
+                          {' • '}
+                          الشفت: #{details.shift_id || '—'}
+                        </div>
+                      )}
+
+                      {item.action === 'sale_updated' &&
+                        beforeSale &&
+                        afterSale && (
+                          <div
+                            style={{
+                              overflow: 'auto',
+                            }}
+                          >
+                            <table
+                              style={{
+                                width: '100%',
+                                minWidth: '650px',
+                                borderCollapse: 'collapse',
+                              }}
+                            >
+                              <thead>
+                                <tr>
+                                  <th style={thStyle}>البيان</th>
+
+                                  <th style={thStyle}>قبل</th>
+
+                                  <th style={thStyle}>بعد</th>
+                                </tr>
+                              </thead>
+
+                              <tbody>
+                                <tr>
+                                  <td style={tdStyle}>الإجمالي</td>
+
+                                  <td style={tdStyle}>
+                                    {money(beforeSale.grand_total)}
+                                  </td>
+
+                                  <td style={tdStyle}>
+                                    {money(afterSale.grand_total)}
+                                  </td>
+                                </tr>
+
+                                <tr>
+                                  <td style={tdStyle}>المدفوع</td>
+
+                                  <td style={tdStyle}>
+                                    {money(beforeSale.paid)}
+                                  </td>
+
+                                  <td style={tdStyle}>
+                                    {money(afterSale.paid)}
+                                  </td>
+                                </tr>
+
+                                <tr>
+                                  <td style={tdStyle}>المتبقي</td>
+
+                                  <td style={tdStyle}>
+                                    {money(beforeSale.remaining_amount)}
+                                  </td>
+
+                                  <td style={tdStyle}>
+                                    {money(afterSale.remaining_amount)}
+                                  </td>
+                                </tr>
+
+                                <tr>
+                                  <td style={tdStyle}>طريقة الدفع</td>
+
+                                  <td style={tdStyle}>
+                                    {getPaymentMethodLabel(
+                                      beforeSale.payment_method,
+                                    )}
+                                  </td>
+
+                                  <td style={tdStyle}>
+                                    {getPaymentMethodLabel(
+                                      afterSale.payment_method,
+                                    )}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+
+                            <div
+                              style={{
+                                marginTop: '10px',
+                                color: '#94a3b8',
+                                fontSize: '12px',
+                              }}
+                            >
+                              الأصناف قبل التعديل:{' '}
+                              {Array.isArray(details.before?.items)
+                                ? details.before.items.length
+                                : 0}
+                              {' • '}
+                              بعد التعديل:{' '}
+                              {Array.isArray(details.after?.items)
+                                ? details.after.items.length
+                                : 0}
+                            </div>
+                          </div>
+                        )}
+
+                      {item.action === 'sale_cancelled' && (
+                        <div
+                          style={{
+                            color: '#cbd5e1',
+                            lineHeight: 1.8,
+                          }}
+                        >
+                          المبلغ المردود: {money(details.refunded_amount || 0)}
+                          {' • '}
+                          المديونية الملغاة: {money(details.removed_debt || 0)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {auditRows.length === 0 && (
+                  <div
+                    style={{
+                      padding: '28px',
+                      textAlign: 'center',
+                      color: '#94a3b8',
+                    }}
+                  >
+                    لا توجد عمليات مراجعة مسجلة لهذه الفاتورة
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

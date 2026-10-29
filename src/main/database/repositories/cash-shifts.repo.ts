@@ -1561,6 +1561,434 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
   const preview = getCashShiftExpectedBalance(shiftId);
 
+  const sales = db
+    .prepare(
+      `
+    SELECT
+      s.id,
+
+      s.grand_total,
+
+      MAX(
+        0,
+        s.grand_total -
+        MAX(
+          0,
+          IFNULL(
+            s.remaining_amount,
+            0
+          )
+        )
+      ) AS paid_amount,
+
+      MAX(
+        0,
+        IFNULL(
+          s.remaining_amount,
+          0
+        )
+      ) AS remaining_amount,
+
+      s.payment_status,
+      s.payment_method,
+
+      (
+        IFNULL(
+          s.product_discount_value,
+          0
+        )
+        +
+        IFNULL(
+          s.discount_value,
+          0
+        )
+        +
+        IFNULL(
+          s.promotion_discount_value,
+          0
+        )
+        +
+        IFNULL(
+          s.loyalty_discount_value,
+          0
+        )
+      ) AS discount_total,
+
+      s.cancelled_at,
+      s.cancel_reason,
+
+      s.created_at,
+
+      c.name AS customer_name,
+
+      u.name AS created_by_name
+
+    FROM sales s
+
+    LEFT JOIN customers c
+      ON c.id = s.customer_id
+
+    LEFT JOIN users u
+      ON u.id = s.user_id
+
+    WHERE
+      s.shift_id = ?
+
+      AND
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+
+    ORDER BY
+      s.created_at ASC,
+      s.id ASC
+    `,
+    )
+    .all(shiftId) as any[];
+
+  const salesSummary = sales.reduce(
+    (summary, sale) => {
+      const cancelled = Boolean(sale.cancelled_at);
+
+      summary.invoices_count += 1;
+
+      if (cancelled) {
+        summary.cancelled_invoices_count += 1;
+
+        return summary;
+      }
+
+      summary.active_invoices_count += 1;
+
+      summary.invoice_sales = roundFinancial(
+        summary.invoice_sales + Number(sale.grand_total || 0),
+      );
+
+      summary.discounts_total = roundFinancial(
+        summary.discounts_total + Number(sale.discount_total || 0),
+      );
+
+      summary.paid_total = roundFinancial(
+        summary.paid_total + Number(sale.paid_amount || 0),
+      );
+
+      summary.remaining_total = roundFinancial(
+        summary.remaining_total + Number(sale.remaining_amount || 0),
+      );
+
+      return summary;
+    },
+    {
+      invoices_count: 0,
+
+      active_invoices_count: 0,
+
+      cancelled_invoices_count: 0,
+
+      invoice_sales: 0,
+
+      discounts_total: 0,
+
+      paid_total: 0,
+
+      remaining_total: 0,
+    },
+  );
+
+  const operationsSummaryRow = db
+    .prepare(
+      `
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM customer_payment_batches cpb
+        WHERE cpb.shift_id = ?
+          AND cpb.cancelled_at IS NULL
+      ) AS customer_payments_count,
+
+      (
+        SELECT IFNULL(SUM(cpb.amount), 0)
+        FROM customer_payment_batches cpb
+        WHERE cpb.shift_id = ?
+          AND cpb.cancelled_at IS NULL
+      ) AS customer_payments_total,
+
+      (
+        SELECT COUNT(*)
+        FROM expenses e
+        WHERE e.shift_id = ?
+          AND e.cancelled_at IS NULL
+      ) AS expenses_count,
+
+      (
+        SELECT IFNULL(SUM(e.amount), 0)
+        FROM expenses e
+        WHERE e.shift_id = ?
+          AND e.cancelled_at IS NULL
+      ) AS expenses_total,
+
+      (
+        SELECT COUNT(*)
+        FROM sale_returns sr
+        WHERE sr.shift_id = ?
+          AND sr.cancelled_at IS NULL
+      ) AS returns_count,
+
+      (
+        SELECT IFNULL(SUM(sr.refund_amount), 0)
+        FROM sale_returns sr
+        WHERE sr.shift_id = ?
+          AND sr.cancelled_at IS NULL
+      ) AS returns_total,
+
+      (
+        SELECT IFNULL(SUM(sr.cash_refund_amount), 0)
+        FROM sale_returns sr
+        WHERE sr.shift_id = ?
+          AND sr.cancelled_at IS NULL
+      ) AS returns_cash_refund,
+
+      (
+        SELECT IFNULL(SUM(sr.debt_reduction_amount), 0)
+        FROM sale_returns sr
+        WHERE sr.shift_id = ?
+          AND sr.cancelled_at IS NULL
+      ) AS returns_debt_reduction,
+
+      (
+        SELECT COUNT(*)
+        FROM sale_exchanges se
+        WHERE se.shift_id = ?
+          AND se.cancelled_at IS NULL
+      ) AS exchanges_count,
+
+      (
+        SELECT IFNULL(SUM(se.cash_collection_amount), 0)
+        FROM sale_exchanges se
+        WHERE se.shift_id = ?
+          AND se.cancelled_at IS NULL
+      ) AS exchange_cash_collection,
+
+      (
+        SELECT IFNULL(SUM(se.cash_refund_amount), 0)
+        FROM sale_exchanges se
+        WHERE se.shift_id = ?
+          AND se.cancelled_at IS NULL
+      ) AS exchange_cash_refund,
+
+      (
+        SELECT IFNULL(SUM(se.debt_reduction_amount), 0)
+        FROM sale_exchanges se
+        WHERE se.shift_id = ?
+          AND se.cancelled_at IS NULL
+      ) AS exchange_debt_reduction,
+
+      (
+        SELECT IFNULL(SUM(se.difference_amount), 0)
+        FROM sale_exchanges se
+        WHERE se.shift_id = ?
+          AND se.cancelled_at IS NULL
+      ) AS exchange_difference
+    `,
+    )
+    .get(
+      shiftId,
+      shiftId,
+
+      shiftId,
+      shiftId,
+
+      shiftId,
+      shiftId,
+      shiftId,
+      shiftId,
+
+      shiftId,
+      shiftId,
+      shiftId,
+      shiftId,
+      shiftId,
+    ) as any;
+
+  const operationsSummary = {
+    customer_payments_count: Number(
+      operationsSummaryRow?.customer_payments_count || 0,
+    ),
+
+    customer_payments_total: roundFinancial(
+      Number(operationsSummaryRow?.customer_payments_total || 0),
+    ),
+
+    expenses_count: Number(operationsSummaryRow?.expenses_count || 0),
+
+    expenses_total: roundFinancial(
+      Number(operationsSummaryRow?.expenses_total || 0),
+    ),
+
+    returns_count: Number(operationsSummaryRow?.returns_count || 0),
+
+    returns_total: roundFinancial(
+      Number(operationsSummaryRow?.returns_total || 0),
+    ),
+
+    returns_cash_refund: roundFinancial(
+      Number(operationsSummaryRow?.returns_cash_refund || 0),
+    ),
+
+    returns_debt_reduction: roundFinancial(
+      Number(operationsSummaryRow?.returns_debt_reduction || 0),
+    ),
+
+    exchanges_count: Number(operationsSummaryRow?.exchanges_count || 0),
+
+    exchange_cash_collection: roundFinancial(
+      Number(operationsSummaryRow?.exchange_cash_collection || 0),
+    ),
+
+    exchange_cash_refund: roundFinancial(
+      Number(operationsSummaryRow?.exchange_cash_refund || 0),
+    ),
+
+    exchange_debt_reduction: roundFinancial(
+      Number(operationsSummaryRow?.exchange_debt_reduction || 0),
+    ),
+
+    exchange_difference: roundFinancial(
+      Number(operationsSummaryRow?.exchange_difference || 0),
+    ),
+  };
+
+  const activityRows = db
+    .prepare(
+      `
+    SELECT
+      al.id,
+      al.action,
+      al.entity,
+      al.entity_id,
+      al.details,
+      al.created_at,
+
+      u.name AS user_name,
+
+      approved_user.name AS approved_by_name
+
+    FROM activity_logs al
+
+    LEFT JOIN users u
+      ON u.id = al.user_id
+
+    LEFT JOIN users approved_user
+      ON approved_user.id = al.approved_by
+
+    WHERE
+      datetime(al.created_at) >= datetime(?)
+
+      AND (
+        ? IS NULL
+
+        OR
+          datetime(al.created_at) <= datetime(?)
+      )
+
+    ORDER BY
+      al.created_at ASC,
+      al.id ASC
+    `,
+    )
+    .all(
+      shift.opened_at,
+
+      shift.closed_at ?? null,
+
+      shift.closed_at ?? null,
+    ) as any[];
+
+  const timeline = activityRows.flatMap((row) => {
+    let details: any = {};
+
+    try {
+      details = row.details ? JSON.parse(String(row.details)) : {};
+    } catch {
+      details = {
+        raw: String(row.details || ''),
+      };
+    }
+
+    const relatedShiftIds = [
+      details?.shift_id,
+
+      details?.cancelled_shift_id,
+
+      details?.updated_shift_id,
+
+      details?.before?.shift_id,
+
+      details?.after?.shift_id,
+
+      details?.before?.sale?.shift_id,
+
+      details?.after?.sale?.shift_id,
+    ]
+      .map((value) => Number(value || 0))
+      .filter((value) => Number.isInteger(value) && value > 0);
+
+    const belongsToShift =
+      (String(row.entity || '') === 'cash_shifts' &&
+        Number(row.entity_id || 0) === shiftId) ||
+      relatedShiftIds.includes(shiftId);
+
+    if (!belongsToShift) {
+      return [];
+    }
+
+    /*
+     * إنشاء البيع/المصروف/دفعة العميل/المرتجع/الاستبدال
+     * له Activity Log مستقل ومفهوم أكثر.
+     *
+     * لذلك نخفي cash_in / cash_out الناتج مباشرة
+     * من نفس العملية حتى لا تظهر مرتين في الـTimeline.
+     *
+     * الإيداع والسحب والتحويل وتسويات الشفت تظل ظاهرة.
+     */
+    const representedFinancialTypes = new Set([
+      'sale',
+      'customer_payment',
+      'expense',
+      'sale_return',
+      'sale_exchange',
+    ]);
+
+    const isDuplicateCashEvent =
+      (row.action === 'cash_in' || row.action === 'cash_out') &&
+      representedFinancialTypes.has(String(details?.type || ''));
+
+    if (isDuplicateCashEvent) {
+      return [];
+    }
+
+    return [
+      {
+        id: Number(row.id),
+
+        action: String(row.action || ''),
+
+        entity: String(row.entity || ''),
+
+        entity_id: row.entity_id == null ? null : Number(row.entity_id),
+
+        user_name: row.user_name || null,
+
+        approved_by_name: row.approved_by_name || null,
+
+        created_at: String(row.created_at || ''),
+
+        details,
+      },
+    ];
+  });
+
   const movements = db
     .prepare(
       `
@@ -1596,6 +2024,10 @@ export function getCashShiftDetails(shiftIdInput: number) {
   return {
     shift,
     preview,
+    sales,
+    sales_summary: salesSummary,
+    operations_summary: operationsSummary,
+    timeline,
     movements,
     variances,
   };

@@ -15,6 +15,10 @@ import {
   loadReceiptPrintSettings,
   openReceiptPrintWindow,
 } from '../../utils/receiptPrint';
+import {
+  formatActivityDetails,
+  getActivityActionLabel,
+} from '../../utils/activity-log';
 
 type ShiftRow = {
   id: number;
@@ -69,6 +73,94 @@ type ShiftDetails = {
       total: number;
     }>;
   };
+
+  sales: Array<{
+    id: number;
+
+    grand_total: number;
+
+    paid_amount: number;
+
+    remaining_amount: number;
+
+    payment_status: string;
+
+    payment_method: string;
+
+    discount_total: number;
+
+    cancelled_at?: string | null;
+
+    cancel_reason?: string | null;
+
+    created_at: string;
+
+    customer_name?: string | null;
+
+    created_by_name?: string | null;
+  }>;
+
+  sales_summary: {
+    invoices_count: number;
+
+    active_invoices_count: number;
+
+    cancelled_invoices_count: number;
+
+    invoice_sales: number;
+
+    discounts_total: number;
+
+    paid_total: number;
+
+    remaining_total: number;
+  };
+
+  operations_summary: {
+    customer_payments_count: number;
+
+    customer_payments_total: number;
+
+    expenses_count: number;
+
+    expenses_total: number;
+
+    returns_count: number;
+
+    returns_total: number;
+
+    returns_cash_refund: number;
+
+    returns_debt_reduction: number;
+
+    exchanges_count: number;
+
+    exchange_cash_collection: number;
+
+    exchange_cash_refund: number;
+
+    exchange_debt_reduction: number;
+
+    exchange_difference: number;
+  };
+
+  timeline: Array<{
+    id: number;
+
+    action: string;
+
+    entity: string;
+
+    entity_id: number | null;
+
+    user_name?: string | null;
+
+    approved_by_name?: string | null;
+
+    created_at: string;
+
+    details: Record<string, any>;
+  }>;
 
   movements: Array<{
     id: number;
@@ -723,6 +815,84 @@ function ShiftDetailsModal({
         )
         .join('');
 
+      const salesHtml = details.sales
+        .map((sale) => {
+          const remaining = Number(sale.remaining_amount || 0);
+
+          const status = sale.cancelled_at
+            ? 'ملغاة'
+            : remaining > 0
+              ? Number(sale.paid_amount || 0) > 0
+                ? 'جزئي / آجل'
+                : 'آجل'
+              : 'مسددة';
+
+          return `
+            <div class="detail-row">
+              <div class="detail-title">
+                فاتورة #${sale.id}
+                • ${escapeHtml(status)}
+              </div>
+
+              <div class="detail-meta">
+                العميل:
+                ${escapeHtml(sale.customer_name || 'عميل نقدي')}
+              </div>
+
+              <div class="detail-meta">
+                الإجمالي ${money(sale.grand_total)}
+                • الخصم ${money(sale.discount_total)}
+              </div>
+
+              <div class="detail-meta">
+                المدفوع ${money(sale.paid_amount)}
+                • الباقي ${money(sale.remaining_amount)}
+              </div>
+
+              <div class="detail-meta">
+                ${escapeHtml(getPaymentMethodLabel(sale.payment_method))}
+                • ${escapeHtml(sale.created_by_name || '—')}
+                • ${escapeHtml(formatDate(sale.created_at))}
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      const timelineHtml = details.timeline
+        .map(
+          (item) => `
+            <div class="detail-row">
+              <div class="detail-title">
+                ${escapeHtml(getActivityActionLabel(item.action))}
+              </div>
+
+              <div class="detail-meta">
+                ${escapeHtml(getShiftTimelineSummary(item))}
+              </div>
+
+              <div class="detail-meta">
+                بواسطة:
+                ${escapeHtml(item.user_name || '—')}
+                •
+                ${escapeHtml(formatDate(item.created_at))}
+              </div>
+
+              ${
+                item.approved_by_name
+                  ? `
+                    <div class="detail-meta">
+                      موافقة المدير:
+                      ${escapeHtml(item.approved_by_name)}
+                    </div>
+                  `
+                  : ''
+              }
+            </div>
+          `,
+        )
+        .join('');
+
       const html = `
       <!doctype html>
 
@@ -906,6 +1076,28 @@ function ShiftDetailsModal({
             width: 17%;
           }
 
+          .detail-list {
+            display: grid;
+            gap: 5px;
+          }
+
+          .detail-row {
+            border-bottom: 1px dotted #bbb;
+            padding: 6px 2px;
+          }
+
+          .detail-title {
+            font-size: 9px;
+            font-weight: 900;
+            margin-bottom: 3px;
+          }
+
+          .detail-meta {
+            font-size: 8px;
+            line-height: 1.6;
+            overflow-wrap: anywhere;
+          }
+
           @media print {
             body {
               margin: 0;
@@ -1035,6 +1227,99 @@ function ShiftDetailsModal({
               </strong>
             </div>
 
+            <div class="card">
+              <span class="card-label">عدد الفواتير</span>
+              <strong class="card-value">
+                ${details.sales_summary.invoices_count}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">مبيعات الفواتير</span>
+              <strong class="card-value">
+                ${money(details.sales_summary.invoice_sales)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">الخصومات</span>
+              <strong class="card-value">
+                ${money(details.sales_summary.discounts_total)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">المحصل</span>
+              <strong class="card-value">
+                ${money(details.sales_summary.paid_total)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">الآجل / المتبقي</span>
+              <strong class="card-value">
+                ${money(details.sales_summary.remaining_total)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">دفعات العملاء</span>
+              <strong class="card-value">
+                ${money(details.operations_summary.customer_payments_total)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">المصروفات</span>
+              <strong class="card-value">
+                ${money(details.operations_summary.expenses_total)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">المرتجعات</span>
+              <strong class="card-value">
+                ${money(details.operations_summary.returns_total)}
+              </strong>
+            </div>
+
+            <div class="card">
+              <span class="card-label">الاستبدالات</span>
+              <strong class="card-value">
+                ${details.operations_summary.exchanges_count}
+              </strong>
+            </div>
+
+          </div>
+
+          <div class="section-title">
+            فواتير الشفت
+          </div>
+
+          <div class="detail-list">
+            ${
+              salesHtml ||
+              `
+                <div class="detail-row">
+                  لا توجد فواتير مرتبطة بالشفت
+                </div>
+              `
+            }
+          </div>
+
+          <div class="section-title">
+            سجل أحداث الشفت
+          </div>
+
+          <div class="detail-list">
+            ${
+              timelineHtml ||
+              `
+                <div class="detail-row">
+                  لا توجد أحداث مسجلة
+                </div>
+              `
+            }
           </div>
 
           <div class="section-title">
@@ -1167,6 +1452,31 @@ function ShiftDetailsModal({
           }}
         >
           <InfoCard
+            title="عدد الفواتير"
+            value={String(details.sales_summary.invoices_count)}
+          />
+
+          <InfoCard
+            title="مبيعات الفواتير"
+            value={money(details.sales_summary.invoice_sales)}
+          />
+
+          <InfoCard
+            title="إجمالي الخصومات"
+            value={money(details.sales_summary.discounts_total)}
+          />
+
+          <InfoCard
+            title="المحصل من الفواتير"
+            value={money(details.sales_summary.paid_total)}
+          />
+
+          <InfoCard
+            title="البيع الآجل / المتبقي"
+            value={money(details.sales_summary.remaining_total)}
+          />
+
+          <InfoCard
             title="رصيد الافتتاح"
             value={money(shift.opening_counted_amount)}
           />
@@ -1221,6 +1531,79 @@ function ShiftDetailsModal({
           />
         </div>
 
+        <h4
+          style={{
+            margin: '4px 0 10px',
+          }}
+        >
+          ملخص عمليات الشفت
+        </h4>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+            gap: '10px',
+            marginBottom: '20px',
+          }}
+        >
+          <InfoCard
+            title="دفعات العملاء"
+            value={`${money(
+              details.operations_summary.customer_payments_total,
+            )} • ${details.operations_summary.customer_payments_count} عملية`}
+          />
+
+          <InfoCard
+            title="المصروفات"
+            value={`${money(
+              details.operations_summary.expenses_total,
+            )} • ${details.operations_summary.expenses_count} عملية`}
+          />
+
+          <InfoCard
+            title="مرتجعات البيع"
+            value={`${money(
+              details.operations_summary.returns_total,
+            )} • ${details.operations_summary.returns_count} عملية`}
+          />
+
+          <InfoCard
+            title="رد نقدي للمرتجعات"
+            value={money(details.operations_summary.returns_cash_refund)}
+          />
+
+          <InfoCard
+            title="خفض مديونية بالمرتجعات"
+            value={money(details.operations_summary.returns_debt_reduction)}
+          />
+
+          <InfoCard
+            title="عمليات الاستبدال"
+            value={`${details.operations_summary.exchanges_count} عملية`}
+          />
+
+          <InfoCard
+            title="تحصيل فرق استبدال"
+            value={money(details.operations_summary.exchange_cash_collection)}
+          />
+
+          <InfoCard
+            title="رد فرق استبدال"
+            value={money(details.operations_summary.exchange_cash_refund)}
+          />
+
+          <InfoCard
+            title="خفض مديونية بالاستبدال"
+            value={money(details.operations_summary.exchange_debt_reduction)}
+          />
+
+          <InfoCard
+            title="صافي فرق الاستبدالات"
+            value={money(details.operations_summary.exchange_difference)}
+          />
+        </div>
+
         {shift.close_reason?.trim() && (
           <div
             style={{
@@ -1255,6 +1638,190 @@ function ShiftDetailsModal({
             </div>
           </div>
         )}
+
+        <h4>فواتير الشفت</h4>
+
+        <div
+          style={{
+            overflow: 'auto',
+            marginBottom: '18px',
+          }}
+        >
+          <table
+            style={{
+              width: '100%',
+              minWidth: '950px',
+              borderCollapse: 'collapse',
+            }}
+          >
+            <thead>
+              <tr>
+                <th style={thStyle}>الفاتورة</th>
+                <th style={thStyle}>العميل</th>
+                <th style={thStyle}>الإجمالي</th>
+                <th style={thStyle}>الخصم</th>
+                <th style={thStyle}>المدفوع</th>
+                <th style={thStyle}>الباقي</th>
+                <th style={thStyle}>الحالة</th>
+                <th style={thStyle}>طريقة الدفع</th>
+                <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>الوقت</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {details.sales.map((sale) => {
+                const remaining = Number(sale.remaining_amount || 0);
+
+                const statusLabel = sale.cancelled_at
+                  ? 'ملغاة'
+                  : remaining > 0
+                    ? Number(sale.paid_amount || 0) > 0
+                      ? 'جزئي / آجل'
+                      : 'آجل'
+                    : 'مسددة';
+
+                return (
+                  <tr
+                    key={sale.id}
+                    style={{
+                      opacity: sale.cancelled_at ? 0.6 : 1,
+                    }}
+                  >
+                    <td style={tdStyle}>
+                      <strong>#{sale.id}</strong>
+                    </td>
+
+                    <td style={tdStyle}>{sale.customer_name || 'عميل نقدي'}</td>
+
+                    <td style={tdStyle}>{money(sale.grand_total)}</td>
+
+                    <td style={tdStyle}>{money(sale.discount_total)}</td>
+
+                    <td style={tdStyle}>{money(sale.paid_amount)}</td>
+
+                    <td style={tdStyle}>
+                      <strong
+                        style={{
+                          color: remaining > 0 ? '#fbbf24' : '#86efac',
+                        }}
+                      >
+                        {money(remaining)}
+                      </strong>
+                    </td>
+
+                    <td style={tdStyle}>
+                      <strong
+                        style={{
+                          color: sale.cancelled_at
+                            ? '#f87171'
+                            : remaining > 0
+                              ? '#fbbf24'
+                              : '#86efac',
+                        }}
+                      >
+                        {statusLabel}
+                      </strong>
+                    </td>
+
+                    <td style={tdStyle}>
+                      {getPaymentMethodLabel(sale.payment_method)}
+                    </td>
+
+                    <td style={tdStyle}>{sale.created_by_name || '—'}</td>
+
+                    <td style={tdStyle}>{formatDate(sale.created_at)}</td>
+                  </tr>
+                );
+              })}
+
+              {details.sales.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={10}
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      padding: '24px',
+                      color: '#94a3b8',
+                    }}
+                  >
+                    لا توجد فواتير مرتبطة بهذا الشفت
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <h4>سجل أحداث الشفت</h4>
+
+        <div
+          style={{
+            overflow: 'auto',
+            marginBottom: '20px',
+          }}
+        >
+          <table
+            style={{
+              width: '100%',
+              minWidth: '1000px',
+              borderCollapse: 'collapse',
+            }}
+          >
+            <thead>
+              <tr>
+                <th style={thStyle}>الوقت</th>
+                <th style={thStyle}>العملية</th>
+                <th style={thStyle}>التفاصيل</th>
+                <th style={thStyle}>المستخدم</th>
+                <th style={thStyle}>موافقة المدير</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {details.timeline.map((item) => (
+                <tr key={item.id}>
+                  <td style={tdStyle}>{formatDate(item.created_at)}</td>
+
+                  <td style={tdStyle}>
+                    <strong>{getActivityActionLabel(item.action)}</strong>
+                  </td>
+
+                  <td
+                    style={{
+                      ...tdStyle,
+                      minWidth: '420px',
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    {getShiftTimelineSummary(item)}
+                  </td>
+
+                  <td style={tdStyle}>{item.user_name || '—'}</td>
+
+                  <td style={tdStyle}>{item.approved_by_name || '—'}</td>
+                </tr>
+              ))}
+
+              {details.timeline.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    style={{
+                      ...tdStyle,
+                      textAlign: 'center',
+                      padding: '24px',
+                      color: '#94a3b8',
+                    }}
+                  >
+                    لا توجد أحداث مسجلة لهذا الشفت
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         <h4>حركات الشفت</h4>
 
@@ -1358,6 +1925,151 @@ function ShiftDetailsModal({
       </div>
     </div>
   );
+}
+
+function getShiftTimelineSummary(item: ShiftDetails['timeline'][number]) {
+  const details = item.details || {};
+
+  const reference = item.entity_id == null ? '—' : `#${item.entity_id}`;
+
+  switch (item.action) {
+    case 'sale_created': {
+      const total = Number(details.grand_total || 0);
+
+      const paid = Number(details.paid || 0);
+
+      const remaining = Math.max(0, total - paid);
+
+      const paymentState =
+        remaining <= 0 ? 'مسددة' : paid > 0 ? 'جزئي / آجل' : 'آجل بالكامل';
+
+      return (
+        `فاتورة ${reference}` +
+        ` • الإجمالي ${money(total)}` +
+        ` • المدفوع ${money(paid)}` +
+        ` • الباقي ${money(remaining)}` +
+        ` • ${paymentState}` +
+        (details.payment_method
+          ? ` • ${getPaymentMethodLabel(details.payment_method)}`
+          : '')
+      );
+    }
+
+    case 'sale_updated': {
+      const before = details.before?.sale || {};
+
+      const after = details.after?.sale || {};
+
+      return (
+        `فاتورة ${reference}` +
+        ` • السبب: ${details.reason || '—'}` +
+        ` • الإجمالي ${money(before.grand_total || 0)} ← ${money(
+          after.grand_total || 0,
+        )}` +
+        ` • المدفوع ${money(before.paid || 0)} ← ${money(after.paid || 0)}` +
+        ` • الباقي ${money(before.remaining_amount || 0)} ← ${money(
+          after.remaining_amount || 0,
+        )}`
+      );
+    }
+
+    case 'sale_cancelled':
+      return (
+        `إلغاء فاتورة ${reference}` +
+        ` • السبب: ${details.reason || '—'}` +
+        ` • المبلغ المردود ${money(details.refunded_amount || 0)}` +
+        ` • المديونية الملغاة ${money(details.removed_debt || 0)}`
+      );
+
+    case 'customer_payment_created':
+      return (
+        `دفعة عميل ${reference}` +
+        ` • ${money(details.amount || 0)}` +
+        (details.payment_method
+          ? ` • ${getPaymentMethodLabel(details.payment_method)}`
+          : '') +
+        (Array.isArray(details.allocations)
+          ? ` • موزعة على ${details.allocations.length} فاتورة`
+          : '')
+      );
+
+    case 'customer_payment_updated':
+      return (
+        `تعديل دفعة عميل ${reference}` +
+        ` • ${money(details.old_amount || 0)} ← ${money(
+          details.new_amount || 0,
+        )}` +
+        (details.payment_method
+          ? ` • ${getPaymentMethodLabel(details.payment_method)}`
+          : '')
+      );
+
+    case 'customer_payment_cancelled':
+      return (
+        `إلغاء دفعة عميل ${reference}` +
+        ` • ${money(details.amount || 0)}` +
+        ` • السبب: ${details.reason || '—'}`
+      );
+
+    case 'expense_created':
+      return (
+        `${details.title || `مصروف ${reference}`}` +
+        ` • ${money(details.amount || 0)}` +
+        (details.payment_method
+          ? ` • ${getPaymentMethodLabel(details.payment_method)}`
+          : '') +
+        (details.category ? ` • ${details.category}` : '')
+      );
+
+    case 'expense_updated':
+      return (
+        `تعديل مصروف ${reference}` +
+        ` • ${details.before?.title || '—'}` +
+        ` • ${money(details.before?.amount || 0)} ← ${money(
+          details.after?.amount || 0,
+        )}`
+      );
+
+    case 'expense_cancelled':
+      return (
+        `إلغاء مصروف ${reference}` +
+        ` • ${details.title || '—'}` +
+        ` • ${money(details.amount || 0)}` +
+        ` • السبب: ${details.reason || '—'}`
+      );
+
+    case 'sale_return_created':
+      return (
+        `${details.return_code || `مرتجع ${reference}`}` +
+        ` • فاتورة #${details.original_sale_id || '—'}` +
+        ` • قيمة مردودة ${money(details.refund_amount || 0)}` +
+        ` • السبب: ${details.reason || '—'}`
+      );
+
+    case 'sale_exchange_created':
+      return (
+        `${details.exchange_code || `استبدال ${reference}`}` +
+        ` • فاتورة #${details.original_sale_id || '—'}` +
+        ` • فرق الفاتورة ${money(details.difference_amount || 0)}` +
+        ` • تحصيل ${money(details.amount_to_collect || 0)}` +
+        ` • رد ${money(details.amount_to_refund || 0)}` +
+        ` • تخفيض مديونية ${money(details.debt_reduction_amount || 0)}`
+      );
+
+    case 'cash_in':
+    case 'cash_out':
+      return (
+        `${details.direction === 'out' ? 'خروج' : 'دخول'} ` +
+        `${money(details.amount || 0)}` +
+        (details.payment_method
+          ? ` • ${getPaymentMethodLabel(details.payment_method)}`
+          : '') +
+        (details.notes ? ` • ${details.notes}` : '')
+      );
+
+    default:
+      return formatActivityDetails(JSON.stringify(details));
+  }
 }
 
 function getMovementTypeLabel(type: string) {

@@ -6,6 +6,7 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo';
 import {
+  getCashShiftById,
   getOpenCashShift,
   resolveFinancialOperationShift,
 } from './cash-shifts.repo';
@@ -103,6 +104,8 @@ type CreateSaleInternalOptions = {
   created_at?: string | null;
 
   invoice_user_id?: number | null;
+
+  shift_id_override?: number | null;
   salesperson_snapshot?: SalespersonSnapshot | null;
   /*
    * يستخدم فقط أثناء تعديل
@@ -413,7 +416,7 @@ function createSaleInternal(
         )
     : [];
 
-  const openShift = resolveFinancialOperationShift(
+  const financialShift = resolveFinancialOperationShift(
     input.user_id,
 
     requestedPayments.length > 0
@@ -422,6 +425,25 @@ function createSaleInternal(
 
     'لا يمكن تسجيل فاتورة بيع من درج المحل بدون شفت مفتوح',
   );
+
+  /*
+   * أي فاتورة جديدة أثناء وجود شفت مفتوح
+   * تُنسب للشفت الحالي حتى لو أنشأها الأدمن
+   * وكانت وسيلة الدفع لا تمس درج المحل.
+   *
+   * ده لا يجبر الأدمن على فتح شفت:
+   * لو مفيش شفت مفتوح تظل العملية مسموحة
+   * للحسابات غير النقدية كالمعتاد.
+   *
+   * أثناء تعديل فاتورة قديمة نحافظ على
+   * ارتباطها التاريخي بالشفت كما هو.
+   */
+  const openShift =
+    options.shift_id_override !== undefined
+      ? options.shift_id_override
+        ? getCashShiftById(options.shift_id_override)
+        : null
+      : (financialShift ?? getOpenCashShift());
 
   const loyalty = getLoyaltySettingsForSale();
 
@@ -1148,7 +1170,7 @@ function createSaleInternal(
 
         business_date: businessDate,
 
-        shift_id: paymentShift?.id ?? null,
+        shift_id: paymentShift?.id ?? openShift?.id ?? null,
       });
     }
 
@@ -1881,6 +1903,104 @@ export function getSaleReceipt(saleId: number) {
   };
 }
 
+export function getSaleAuditTrail(saleIdInput: number) {
+  const db = getDb();
+
+  const saleId = Number(saleIdInput || 0);
+
+  if (!Number.isInteger(saleId) || saleId <= 0) {
+    throw new Error('رقم فاتورة البيع غير صحيح');
+  }
+
+  const saleExists = db
+    .prepare(
+      `
+      SELECT id
+      FROM sales
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(saleId);
+
+  if (!saleExists) {
+    throw new Error('فاتورة البيع غير موجودة');
+  }
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        al.id,
+        al.action,
+        al.entity_id,
+        al.details,
+        al.created_at,
+
+        u.name AS user_name,
+        u.username,
+
+        approver.name AS approved_by_name,
+        approver.username AS approved_by_username
+
+      FROM activity_logs al
+
+      LEFT JOIN users u
+        ON u.id = al.user_id
+
+      LEFT JOIN users approver
+        ON approver.id = al.approved_by
+
+      WHERE
+        al.entity = 'sales'
+        AND al.entity_id = ?
+        AND al.action IN (
+          'sale_created',
+          'sale_updated',
+          'sale_cancelled',
+          'sale_credit_limit_overridden'
+        )
+
+      ORDER BY
+        al.created_at ASC,
+        al.id ASC
+      `,
+    )
+    .all(saleId) as any[];
+
+  return rows.map((row) => {
+    let details: any = {};
+
+    try {
+      details = row.details ? JSON.parse(String(row.details)) : {};
+    } catch {
+      details = {
+        raw: String(row.details || ''),
+      };
+    }
+
+    return {
+      id: Number(row.id),
+
+      action: String(row.action || ''),
+
+      entity_id: row.entity_id == null ? null : Number(row.entity_id),
+
+      user_name: row.user_name || null,
+
+      username: row.username || null,
+
+      approved_by_name: row.approved_by_name || null,
+
+      approved_by_username: row.approved_by_username || null,
+
+      created_at: String(row.created_at || ''),
+
+      details,
+    };
+  });
+}
+
 export function listSales(input?: {
   search?: string;
 
@@ -2040,6 +2160,7 @@ export function listSales(input?: {
         s.user_id,
         s.salesperson_id,
         s.business_date,
+        s.shift_id,
         s.sub_total,
 
         COALESCE(
@@ -4167,7 +4288,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
 
     const result = createSaleInternal(nextSaleInput, {
       forced_sale_id: saleId,
-
+      shift_id_override: sale.shift_id == null ? null : Number(sale.shift_id),
       invoice_user_id: Number(sale.user_id || 0) || actorId,
       salesperson_snapshot: preservedSalespersonSnapshot,
       created_at: sale.created_at ?? null,

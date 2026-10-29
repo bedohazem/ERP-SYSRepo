@@ -24,6 +24,7 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   salesperson_target_updated: 'تعديل تارجت بائع',
 
   sale_created: 'إنشاء فاتورة بيع',
+  sale_updated: 'تعديل فاتورة بيع',
   sale_credit_limit_overridden: 'تجاوز الحد الائتماني للعميل بموافقة المدير',
   sale_held: 'تعليق فاتورة بيع',
 
