@@ -2480,6 +2480,18 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       `,
     ).run(totalAmount, nextSupplierId);
 
+    /*
+     * تعديل الفاتورة قد يفتح مديونية جديدة
+     * بينما المورد عنده رصيد دائن متاح.
+     *
+     * لازم المقاصة تحصل قبل تثبيت
+     * صافي رصيد المورد.
+     */
+    const supplierCreditAllocated = applyAvailableSupplierCreditToOpenPurchases(
+      db,
+      nextSupplierId,
+    );
+
     if (oldSupplierId !== nextSupplierId) {
       rebuildSupplierBalance(db, oldSupplierId);
     }
@@ -2556,6 +2568,45 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       );
     }
 
+    const finalPurchaseState = db
+      .prepare(
+        `
+        SELECT
+          pi.paid_amount,
+          pi.remaining_amount,
+          pi.payment_status,
+
+          IFNULL(
+            (
+              SELECT SUM(
+                sca.amount
+              )
+
+              FROM supplier_credit_allocations sca
+
+              WHERE
+                sca.purchase_id = pi.id
+
+                AND sca.cancelled_at
+                  IS NULL
+            ),
+            0
+          ) AS supplier_credit_applied
+
+        FROM purchase_invoices pi
+
+        WHERE pi.id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(purchaseId) as {
+      paid_amount: number;
+      remaining_amount: number;
+      payment_status: string;
+      supplier_credit_applied: number;
+    };
+
     return {
       ok: true,
 
@@ -2569,14 +2620,20 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       exact_total_amount: exactTotalAmount,
 
       rounding_adjustment: roundingAdjustment,
-      paid_amount: paidAmount,
+      paid_amount: preservePrecision(finalPurchaseState.paid_amount),
 
       cash_amount: cashPaidAmount,
 
       settle_full_balance: settleFullBalance,
-      remaining_amount: remainingAmount,
+      remaining_amount: preservePrecision(finalPurchaseState.remaining_amount),
 
-      payment_status: paymentStatus,
+      payment_status: finalPurchaseState.payment_status,
+
+      supplier_credit_applied: preservePrecision(
+        finalPurchaseState.supplier_credit_applied,
+      ),
+
+      supplier_credit_allocated: supplierCreditAllocated,
       due_date: dueDate,
       items_count: preparedItems.length,
 
@@ -2850,6 +2907,20 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       purchaseId,
     );
 
+    /*
+     * إلغاء الفاتورة حرر Credit
+     * كان مستخدم عليها.
+     *
+     * لو فيه فواتير أخرى مفتوحة
+     * لنفس المورد، نعيد استخدامه
+     * فورًا قبل حساب الرصيد النهائي.
+     */
+    const reallocatedSupplierCredit =
+      applyAvailableSupplierCreditToOpenPurchases(
+        db,
+        Number(purchase.supplier_id),
+      );
+
     const supplierBalance = rebuildSupplierBalance(
       db,
       Number(purchase.supplier_id),
@@ -2887,6 +2958,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       reversed_cash: cashPaidAmount,
       reversed_supplier_credit: reversedSupplierCredit,
       supplier_balance: supplierBalance,
+      reallocated_supplier_credit: reallocatedSupplierCredit,
       reversed_remaining: remainingAmount,
       items_count: items.length,
       cancelled_shift_id: openShift?.id ?? null,
@@ -3923,6 +3995,19 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
     );
 
     /*
+     * إلغاء المرتجع قد يعيد جزءًا
+     * من الدين على الفاتورة الأصلية.
+     *
+     * لو المورد عنده Credit آخر
+     * متاح، نطبقه فورًا على الدين
+     * المستعاد قبل حساب الرصيد.
+     */
+    const reappliedSupplierCredit = applyAvailableSupplierCreditToOpenPurchases(
+      db,
+      Number(purchaseReturn.supplier_id),
+    );
+
+    /*
      * إعادة بناء الرصيد بعد
      * إلغاء المرتجع:
      *
@@ -3972,6 +4057,7 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       items_count: items.length,
 
       cancelled_shift_id: openShift?.id ?? null,
+      reapplied_supplier_credit: reappliedSupplierCredit,
     };
   });
 
@@ -5502,6 +5588,18 @@ export function cancelSupplierPaymentBatch(input: {
       );
     }
 
+    /*
+     * إلغاء الدفعة أعاد دينًا للفواتير.
+     *
+     * لو ظهر للمورد Credit بعد تسجيل
+     * الدفعة الأصلية، نستهلكه الآن
+     * قبل تثبيت المديونية الجديدة.
+     */
+    const reappliedSupplierCredit = applyAvailableSupplierCreditToOpenPurchases(
+      db,
+      Number(batch.supplier_id),
+    );
+
     const supplierBalance = rebuildSupplierBalance(
       db,
       Number(batch.supplier_id),
@@ -5596,6 +5694,7 @@ export function cancelSupplierPaymentBatch(input: {
         purchase_id: Number(allocation.purchase_id),
 
         amount: preservePrecision(Number(allocation.amount || 0)),
+        reapplied_supplier_credit: reappliedSupplierCredit,
       })),
     };
   });
@@ -5747,6 +5846,19 @@ export function updateSupplierPaymentBatch(input: {
         Number(allocation.purchase_id),
       );
     }
+
+    /*
+     * عكس الدفعة القديمة قد يفتح دينًا
+     * بينما يوجد Credit أحدث للمورد.
+     *
+     * الرصيد الدائن له الأولوية
+     * في المقاصة قبل حساب قيمة
+     * الدفعة البديلة المطلوبة.
+     */
+    const reappliedSupplierCredit = applyAvailableSupplierCreditToOpenPurchases(
+      db,
+      supplierId,
+    );
 
     /*
      * بعد عكس القديمة،
@@ -6188,6 +6300,7 @@ export function updateSupplierPaymentBatch(input: {
       allocations: newAllocations,
 
       shift_id: openShift?.id ?? null,
+      reapplied_supplier_credit: reappliedSupplierCredit,
     };
   });
 

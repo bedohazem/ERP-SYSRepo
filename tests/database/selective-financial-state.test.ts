@@ -11,6 +11,7 @@ import {
 import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo';
 
 import {
+  createPurchaseInvoice,
   listPurchaseInvoices,
   recordSupplierPayment,
 } from '../../src/main/database/repositories/purchases.repo';
@@ -840,4 +841,247 @@ describe('selective financial state', () => {
         .all(),
     ).toEqual([]);
   }, 30_000);
+
+  it('preserves supplier net credit through selective financial reset', () => {
+    const db = getDb();
+
+    const admin = ensureAdmin();
+
+    const category = createCategory({
+      name: 'Supplier Credit Backup Category',
+
+      description: null,
+    });
+
+    createProduct({
+      name: 'Supplier Credit Backup Product',
+
+      category_id: category.id,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'SUPPLIER-CREDIT-BACKUP',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 100,
+
+          sell_price: 150,
+
+          min_stock: 1,
+
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const supplierResult = db
+      .prepare(
+        `
+      INSERT INTO suppliers (
+        name,
+        phone,
+        balance,
+        total_purchased
+      )
+
+      VALUES (
+        'Supplier With Credit',
+        '01039999999',
+        -300,
+        0
+      )
+      `,
+      )
+      .run();
+
+    const supplierId = Number(supplierResult.lastInsertRowid);
+
+    /*
+     * مصدر تاريخي للـCredit.
+     */
+    const purchaseResult = db
+      .prepare(
+        `
+      INSERT INTO purchase_invoices (
+        supplier_id,
+
+        total_amount,
+        exact_total_amount,
+        sub_total,
+
+        paid_amount,
+        remaining_amount,
+
+        payment_status,
+        payment_method,
+
+        status
+      )
+
+      VALUES (
+        ?,
+
+        300,
+        300,
+        300,
+
+        300,
+        0,
+
+        'paid',
+        'owner_bank',
+
+        'active'
+      )
+      `,
+      )
+      .run(supplierId);
+
+    db.prepare(
+      `
+    INSERT INTO purchase_returns (
+      purchase_id,
+      supplier_id,
+
+      total_amount,
+      exact_total_amount,
+
+      debt_reduction_amount,
+      cash_refund_amount,
+      credit_amount,
+
+      refund_mode,
+
+      created_by
+    )
+
+    VALUES (
+      ?,
+      ?,
+
+      300,
+      300,
+
+      0,
+      0,
+      300,
+
+      'credit',
+
+      ?
+    )
+    `,
+    ).run(
+      Number(purchaseResult.lastInsertRowid),
+
+      supplierId,
+
+      admin.id,
+    );
+
+    /*
+     * نعمل Selective Financial Reset
+     * زي الاستخدام الحقيقي.
+     */
+    resetDatabaseKeepingSelectiveData({
+      sections: ['catalog_stock', 'supplier_open_dues'],
+
+      actorId: admin.id,
+
+      appVersion: 'supplier-credit-financial-test',
+    });
+
+    const restoredSupplier = db
+      .prepare(
+        `
+      SELECT
+        id,
+        balance
+
+      FROM suppliers
+
+      WHERE name =
+        'Supplier With Credit'
+
+      LIMIT 1
+      `,
+      )
+      .get() as {
+      id: number;
+      balance: number;
+    };
+
+    /*
+     * أهم نقطة:
+     * الرصيد الدائن لازم يفضل موجود.
+     */
+    expect(Number(restoredSupplier.balance)).toBe(-300);
+
+    const variant = getVariantByBarcode('SUPPLIER-CREDIT-BACKUP');
+
+    expect(variant).toBeTruthy();
+
+    /*
+     * ونتأكد إنه مش مجرد رقم
+     * في suppliers.balance:
+     *
+     * لازم Payment Engine نفسه
+     * يعرف يستخدمه بعد الـRestore.
+     */
+    const newPurchase = createPurchaseInvoice({
+      supplier_id: restoredSupplier.id,
+
+      actor_id: admin.id,
+
+      paid_amount: 0,
+
+      items: [
+        {
+          variant_id: variant!.variant_id,
+
+          quantity: 1,
+
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(newPurchase.paid_amount).toBe(100);
+
+    expect(newPurchase.remaining_amount).toBe(0);
+
+    expect(newPurchase.supplier_credit_applied).toBe(100);
+
+    /*
+     * كان -300
+     * استخدمنا 100
+     * يفضل -200.
+     */
+    expect(
+      Number(
+        (
+          db
+            .prepare(
+              `
+          SELECT balance
+
+          FROM suppliers
+
+          WHERE id = ?
+          `,
+            )
+            .get(restoredSupplier.id) as {
+            balance: number;
+          }
+        ).balance,
+      ),
+    ).toBe(-200);
+  });
 });

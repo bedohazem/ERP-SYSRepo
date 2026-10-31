@@ -1174,23 +1174,56 @@ function validateSupplierDues(
   data: UnknownRecord,
   supplierIds: ReadonlySet<number>,
 ) {
-  const section = sectionRecord(data, 'supplier_open_dues', ['dues', 'counts']);
+  const section = sectionRecord(
+    data,
+
+    'supplier_open_dues',
+
+    ['dues', 'credits', 'counts'],
+  );
 
   const rows = asArray(
     section.dues,
+
     'قائمة مستحقات الموردين',
+
     MAX_FINANCIAL_ENTRIES,
   );
+
+  /*
+   * النسخ القديمة لا تحتوي credits.
+   */
+  const creditRows =
+    section.credits == null
+      ? []
+      : asArray(
+          section.credits,
+
+          'قائمة الأرصدة الدائنة للموردين',
+
+          MAX_FINANCIAL_ENTRIES,
+        );
+
+  if (rows.length + creditRows.length > MAX_FINANCIAL_ENTRIES) {
+    throw new Error('بيانات الموردين المالية تتجاوز الحد المسموح');
+  }
 
   const suppliers = new Set<number>();
 
   let totalAmount = 0;
 
+  let totalCredit = 0;
+
   for (const rawRow of rows) {
-    const row = asRecord(rawRow, 'بيانات مستحق المورد');
+    const row = asRecord(
+      rawRow,
+
+      'بيانات مستحق المورد',
+    );
 
     assertOnlyKeys(
       row,
+
       [
         'supplier_source_id',
         'remaining_amount',
@@ -1198,11 +1231,13 @@ function validateSupplierDues(
         'business_date',
         'created_at',
       ],
+
       'بيانات مستحق المورد',
     );
 
     const supplierId = positiveId(
       row.supplier_source_id,
+
       'رقم المورد في المستحق',
     );
 
@@ -1210,49 +1245,131 @@ function validateSupplierDues(
       throw new Error(`مستحق مرتبط بمورد غير موجود: ${supplierId}`);
     }
 
-    const amount = finiteNumber(row.remaining_amount, 'قيمة مستحق المورد', {
-      min: 0.000001,
-      max: MAX_MONEY,
-    });
+    const amount = finiteNumber(
+      row.remaining_amount,
 
-    nullableDate(row.due_date, 'تاريخ استحقاق المورد');
+      'قيمة مستحق المورد',
 
-    nullableDate(row.business_date, 'تاريخ عمل مستحق المورد');
+      {
+        min: 0.000001,
+        max: MAX_MONEY,
+      },
+    );
 
-    nullableTimestamp(row.created_at, 'تاريخ إنشاء مستحق المورد');
+    nullableDate(
+      row.due_date,
+
+      'تاريخ استحقاق المورد',
+    );
+
+    nullableDate(
+      row.business_date,
+
+      'تاريخ عمل مستحق المورد',
+    );
+
+    nullableTimestamp(
+      row.created_at,
+
+      'تاريخ إنشاء مستحق المورد',
+    );
 
     suppliers.add(supplierId);
 
     totalAmount += amount;
   }
 
+  for (const rawCredit of creditRows) {
+    const credit = asRecord(
+      rawCredit,
+
+      'بيانات الرصيد الدائن للمورد',
+    );
+
+    assertOnlyKeys(
+      credit,
+
+      ['supplier_source_id', 'credit_amount', 'created_at'],
+
+      'بيانات الرصيد الدائن للمورد',
+    );
+
+    const supplierId = positiveId(
+      credit.supplier_source_id,
+
+      'رقم المورد في الرصيد الدائن',
+    );
+
+    if (!supplierIds.has(supplierId)) {
+      throw new Error(`رصيد دائن مرتبط بمورد غير موجود: ${supplierId}`);
+    }
+
+    const amount = finiteNumber(
+      credit.credit_amount,
+
+      'قيمة الرصيد الدائن للمورد',
+
+      {
+        min: 0.000001,
+        max: MAX_MONEY,
+      },
+    );
+
+    nullableTimestamp(
+      credit.created_at,
+
+      'تاريخ الرصيد الدائن للمورد',
+    );
+
+    suppliers.add(supplierId);
+
+    totalCredit += amount;
+  }
+
   const counts = countsRecord(
     section.counts,
-    ['entries', 'suppliers', 'total_amount'],
+
+    ['entries', 'suppliers', 'total_amount', 'total_credit'],
+
     'عدادات مستحقات الموردين',
   );
 
   if (
-    integerNumber(counts.entries, 'عدد مستحقات الموردين', {
-      min: 0,
-      max: MAX_FINANCIAL_ENTRIES,
-    }) !== rows.length
+    integerNumber(
+      counts.entries,
+
+      'عدد قيود الموردين المالية',
+
+      {
+        min: 0,
+        max: MAX_FINANCIAL_ENTRIES,
+      },
+    ) !==
+    rows.length + creditRows.length
   ) {
-    throw new Error('عدد مستحقات الموردين لا يطابق محتوى النسخة');
+    throw new Error('عدد قيود الموردين المالية لا يطابق محتوى النسخة');
   }
 
   if (
-    integerNumber(counts.suppliers, 'عدد الموردين أصحاب المستحقات', {
-      min: 0,
-      max: MAX_SUPPLIERS,
-    }) !== suppliers.size
+    integerNumber(
+      counts.suppliers,
+
+      'عدد الموردين أصحاب الأرصدة',
+
+      {
+        min: 0,
+        max: MAX_SUPPLIERS,
+      },
+    ) !== suppliers.size
   ) {
-    throw new Error('عدد الموردين أصحاب المستحقات لا يطابق محتوى النسخة');
+    throw new Error('عدد الموردين أصحاب الأرصدة لا يطابق محتوى النسخة');
   }
 
   const declaredTotal = finiteNumber(
     counts.total_amount,
+
     'إجمالي مستحقات الموردين',
+
     {
       min: 0,
       max: MAX_MONEY,
@@ -1263,7 +1380,33 @@ function validateSupplierDues(
     throw new Error('إجمالي مستحقات الموردين لا يطابق محتوى النسخة');
   }
 
-  return rows.length;
+  /*
+   * Backward compatibility:
+   * النسخ القديمة لا تحتوي
+   * total_credit ولا credits.
+   */
+  if (counts.total_credit == null) {
+    if (totalCredit > 0.000001) {
+      throw new Error('إجمالي الرصيد الدائن للموردين غير موجود داخل النسخة');
+    }
+  } else {
+    const declaredCredit = finiteNumber(
+      counts.total_credit,
+
+      'إجمالي الرصيد الدائن للموردين',
+
+      {
+        min: 0,
+        max: MAX_MONEY,
+      },
+    );
+
+    if (!approximatelyEqual(declaredCredit, totalCredit)) {
+      throw new Error('إجمالي الرصيد الدائن للموردين لا يطابق محتوى النسخة');
+    }
+  }
+
+  return rows.length + creditRows.length;
 }
 
 function validateLiabilities(data: UnknownRecord) {

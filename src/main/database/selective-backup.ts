@@ -1133,52 +1133,80 @@ export type SupplierOpenDueBackupRowV1 = {
   created_at: string | null;
 };
 
+export type SupplierOpenCreditBackupRowV1 = {
+  supplier_source_id: number;
+
+  credit_amount: number;
+
+  created_at: string | null;
+};
+
 export type SupplierOpenDuesBackupSectionV1 = {
   section: 'supplier_open_dues';
 
   dues: SupplierOpenDueBackupRowV1[];
 
+  /*
+   * Optional للحفاظ على توافق
+   * النسخ الانتقائية القديمة.
+   */
+  credits?: SupplierOpenCreditBackupRowV1[];
+
   counts: {
+    /*
+     * dues + credits
+     */
     entries: number;
 
     suppliers: number;
 
+    /*
+     * إجمالي المديونية المفتوحة
+     * قبل خصم الرصيد الدائن.
+     */
     total_amount: number;
+
+    /*
+     * Optional للنسخ القديمة.
+     */
+    total_credit?: number;
   };
 };
 
 export function buildSupplierOpenDuesBackupSection(): SupplierOpenDuesBackupSectionV1 {
-  const rows = getDb()
+  const db = getDb();
+
+  const dueRows = db
     .prepare(
       `
-        SELECT
-          supplier_id,
-          remaining_amount,
-          due_date,
-          business_date,
-          created_at
+      SELECT
+        supplier_id,
+        remaining_amount,
+        due_date,
+        business_date,
+        created_at
 
-        FROM purchase_invoices
+      FROM purchase_invoices
 
-        WHERE
-          cancelled_at
-            IS NULL
+      WHERE
+        cancelled_at
+          IS NULL
 
-          AND IFNULL(
-            status,
-            'active'
-          ) != 'cancelled'
+        AND IFNULL(
+          status,
+          'active'
+        ) != 'cancelled'
 
-          AND remaining_amount > 0
+        AND remaining_amount > 0.000000001
 
-        ORDER BY
-          supplier_id ASC,
-          id ASC
-        `,
+      ORDER BY
+        supplier_id ASC,
+        id ASC
+      `,
     )
     .all() as Array<any>;
 
-  const dues = rows.map((row): SupplierOpenDueBackupRowV1 => ({
+  const dues = dueRows.map((row): SupplierOpenDueBackupRowV1 => ({
     supplier_source_id: Number(row.supplier_id),
 
     remaining_amount: Number(row.remaining_amount || 0),
@@ -1190,22 +1218,118 @@ export function buildSupplierOpenDuesBackupSection(): SupplierOpenDuesBackupSect
     created_at: row.created_at ?? null,
   }));
 
-  const suppliers = new Set(dues.map((row) => row.supplier_source_id));
+  /*
+   * نصدر فقط الجزء المتاح فعليًا
+   * من Credit المورد.
+   *
+   * أي جزء سبق استخدامه في
+   * supplier_credit_allocations
+   * لا يتم تصديره مرة ثانية.
+   */
+  const creditRows = db
+    .prepare(
+      `
+      SELECT
+        supplier_id,
+        credit_amount,
+        created_at
+
+      FROM (
+        SELECT
+          pr.id,
+          pr.supplier_id,
+          pr.created_at,
+
+          MAX(
+            0,
+
+            IFNULL(
+              pr.credit_amount,
+              0
+            )
+
+            -
+
+            IFNULL(
+              (
+                SELECT SUM(
+                  sca.amount
+                )
+
+                FROM supplier_credit_allocations sca
+
+                WHERE
+                  sca.return_id = pr.id
+
+                  AND sca.cancelled_at
+                    IS NULL
+              ),
+              0
+            )
+          ) AS credit_amount
+
+        FROM purchase_returns pr
+
+        WHERE pr.cancelled_at
+          IS NULL
+      )
+
+      WHERE credit_amount >
+        0.000000001
+
+      ORDER BY
+        supplier_id ASC,
+        datetime(created_at) ASC,
+        id ASC
+      `,
+    )
+    .all() as Array<any>;
+
+  const credits = creditRows.map((row): SupplierOpenCreditBackupRowV1 => ({
+    supplier_source_id: Number(row.supplier_id),
+
+    credit_amount: Number(row.credit_amount || 0),
+
+    created_at: row.created_at ?? null,
+  }));
+
+  const suppliers = new Set<number>();
+
+  for (const row of dues) {
+    suppliers.add(row.supplier_source_id);
+  }
+
+  for (const row of credits) {
+    suppliers.add(row.supplier_source_id);
+  }
+
+  const totalAmount = dues.reduce(
+    (sum, row) => sum + Number(row.remaining_amount || 0),
+
+    0,
+  );
+
+  const totalCredit = credits.reduce(
+    (sum, row) => sum + Number(row.credit_amount || 0),
+
+    0,
+  );
 
   return {
     section: 'supplier_open_dues',
 
     dues,
 
+    credits,
+
     counts: {
-      entries: dues.length,
+      entries: dues.length + credits.length,
 
       suppliers: suppliers.size,
 
-      total_amount: dues.reduce(
-        (sum, row) => sum + Number(row.remaining_amount || 0),
-        0,
-      ),
+      total_amount: totalAmount,
+
+      total_credit: totalCredit,
     },
   };
 }

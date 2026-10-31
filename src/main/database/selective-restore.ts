@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import { getDb } from './db';
+import { getDb, repairLegacySupplierCreditAllocations } from './db';
 
 import { receiveStockAtCost } from './inventory-cost';
 
@@ -1221,12 +1221,21 @@ function restoreSupplierOpenDues(backup: SelectiveBackupPackageV1) {
 
   const db = getDb();
 
-  const totals = new Map<number, number>();
+  const affectedSuppliers = new Set<number>();
 
   let restored = 0;
 
+  /*
+   * أولًا:
+   * نسترجع المديونيات المفتوحة
+   * كأرصدة افتتاحية.
+   */
   for (const due of section.dues) {
-    const supplierId = requirePositiveId(due.supplier_source_id, 'رقم المورد');
+    const supplierId = requirePositiveId(
+      due.supplier_source_id,
+
+      'رقم المورد',
+    );
 
     const supplier = db
       .prepare(
@@ -1267,6 +1276,7 @@ function restoreSupplierOpenDues(backup: SelectiveBackupPackageV1) {
         supplier_id,
 
         total_amount,
+        exact_total_amount,
         sub_total,
 
         discount_type,
@@ -1292,7 +1302,7 @@ function restoreSupplierOpenDues(backup: SelectiveBackupPackageV1) {
       VALUES (
         ?,
 
-        ?, ?,
+        ?, ?, ?,
 
         'amount',
         0,
@@ -1319,6 +1329,7 @@ function restoreSupplierOpenDues(backup: SelectiveBackupPackageV1) {
 
       amount,
       amount,
+      amount,
 
       amount,
 
@@ -1331,22 +1342,304 @@ function restoreSupplierOpenDues(backup: SelectiveBackupPackageV1) {
       createdAt,
     );
 
-    totals.set(
-      supplierId,
-
-      moneyValue(
-        (totals.get(supplierId) ?? 0) + amount,
-
-        'إجمالي مستحق المورد',
-      ),
-    );
+    affectedSuppliers.add(supplierId);
 
     restored += 1;
   }
 
-  for (const [supplierId, balance] of totals) {
+  /*
+   * ثانيًا:
+   * نسترجع Credit المورد كمصدر
+   * محاسبي حقيقي وليس مجرد رقم
+   * سالب داخل suppliers.balance.
+   *
+   * نستخدم فاتورة افتتاحية مدفوعة
+   * بالكامل + مرتجع Credit افتتاحي.
+   *
+   * وبالتالي Purchase Engine نفسه
+   * يستطيع استهلاك الرصيد لاحقًا.
+   */
+  for (const credit of section.credits ?? []) {
+    const supplierId = requirePositiveId(
+      credit.supplier_source_id,
+
+      'رقم المورد في الرصيد الدائن',
+    );
+
+    const supplier = db
+      .prepare(
+        `
+        SELECT id
+
+        FROM suppliers
+
+        WHERE id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(supplierId);
+
+    if (!supplier) {
+      throw new Error(
+        `المورد رقم ${supplierId} غير موجود أثناء استرجاع الرصيد الدائن`,
+      );
+    }
+
+    const amount = nonNegativeMoney(
+      credit.credit_amount,
+
+      'قيمة الرصيد الدائن للمورد',
+    );
+
+    if (amount <= 0) {
+      continue;
+    }
+
+    const createdAt =
+      String(credit.created_at || '').trim() || new Date().toISOString();
+
+    const sourcePurchaseResult = db
+      .prepare(
+        `
+        INSERT INTO purchase_invoices (
+          supplier_id,
+
+          total_amount,
+          exact_total_amount,
+          sub_total,
+
+          discount_type,
+          discount_input,
+          discount_value,
+
+          paid_amount,
+          remaining_amount,
+
+          payment_status,
+          payment_method,
+
+          notes,
+
+          status,
+
+          created_at
+        )
+
+        VALUES (
+          ?,
+
+          ?, ?, ?,
+
+          'amount',
+          0,
+          0,
+
+          ?,
+          0,
+
+          'paid',
+          'opening_balance',
+
+          ?,
+
+          'opening_balance',
+
+          ?
+        )
+        `,
+      )
+      .run(
+        supplierId,
+
+        amount,
+        amount,
+        amount,
+
+        amount,
+
+        'مصدر رصيد دائن افتتاحي من نسخة انتقائية',
+
+        createdAt,
+      );
+
+    const sourcePurchaseId = Number(sourcePurchaseResult.lastInsertRowid);
+
     db.prepare(
       `
+      INSERT INTO purchase_returns (
+        purchase_id,
+        supplier_id,
+
+        total_amount,
+        exact_total_amount,
+
+        debt_reduction_amount,
+        cash_refund_amount,
+        credit_amount,
+
+        refund_payment_method,
+        refund_mode,
+
+        rounding_adjustment,
+        settle_cash_refund,
+
+        notes,
+
+        created_by,
+        shift_id,
+
+        created_at
+      )
+
+      VALUES (
+        ?,
+        ?,
+
+        ?,
+        ?,
+
+        0,
+        0,
+        ?,
+
+        NULL,
+        'credit',
+
+        0,
+        0,
+
+        ?,
+
+        NULL,
+        NULL,
+
+        ?
+      )
+      `,
+    ).run(
+      sourcePurchaseId,
+
+      supplierId,
+
+      amount,
+      amount,
+
+      amount,
+
+      'رصيد دائن افتتاحي من نسخة انتقائية',
+
+      createdAt,
+    );
+
+    affectedSuppliers.add(supplierId);
+
+    restored += 1;
+  }
+
+  /*
+   * لو Restore فيه:
+   *
+   * دين 500
+   * Credit 300
+   *
+   * لازم يتحول فورًا إلى:
+   *
+   * remaining = 200
+   * available credit = 0
+   *
+   * بدل الاحتفاظ بالدين والـCredit
+   * منفصلين في نفس اللحظة.
+   */
+  repairLegacySupplierCreditAllocations(db);
+
+  /*
+   * نعيد حساب Balance من مصادره
+   * الحقيقية بعد المقاصة.
+   *
+   * ده مهم خصوصًا لحالة:
+   * Credit فقط بدون أي دين مفتوح.
+   */
+  const getBalanceState = db.prepare(
+    `
+      SELECT
+        IFNULL(
+          (
+            SELECT SUM(
+              CASE
+                WHEN
+                  IFNULL(
+                    pi.status,
+                    'active'
+                  ) != 'cancelled'
+
+                  AND IFNULL(
+                    pi.remaining_amount,
+                    0
+                  ) > 0.000000001
+
+                THEN
+                  pi.remaining_amount
+
+                ELSE 0
+              END
+            )
+
+            FROM purchase_invoices pi
+
+            WHERE
+              pi.supplier_id = ?
+          ),
+          0
+        ) AS open_debt,
+
+        IFNULL(
+          (
+            SELECT SUM(
+              MAX(
+                0,
+
+                IFNULL(
+                  pr.credit_amount,
+                  0
+                )
+
+                -
+
+                IFNULL(
+                  (
+                    SELECT SUM(
+                      sca.amount
+                    )
+
+                    FROM supplier_credit_allocations sca
+
+                    WHERE
+                      sca.return_id = pr.id
+
+                      AND sca.cancelled_at
+                        IS NULL
+                  ),
+                  0
+                )
+              )
+            )
+
+            FROM purchase_returns pr
+
+            WHERE
+              pr.supplier_id = ?
+
+              AND pr.cancelled_at
+                IS NULL
+          ),
+          0
+        ) AS available_credit
+      `,
+  );
+
+  const updateSupplier = db.prepare(
+    `
       UPDATE suppliers
 
       SET
@@ -1359,7 +1652,22 @@ function restoreSupplierOpenDues(backup: SelectiveBackupPackageV1) {
 
       WHERE id = ?
       `,
-    ).run(balance, supplierId);
+  );
+
+  for (const supplierId of affectedSuppliers) {
+    const state = getBalanceState.get(supplierId, supplierId) as {
+      open_debt: number;
+      available_credit: number;
+    };
+
+    const balance =
+      Number(state.open_debt || 0) - Number(state.available_credit || 0);
+
+    updateSupplier.run(
+      Math.abs(balance) <= 0.000000001 ? 0 : balance,
+
+      supplierId,
+    );
   }
 
   return restored;
