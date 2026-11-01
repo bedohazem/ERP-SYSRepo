@@ -54,6 +54,7 @@ type SaleRow = {
   returned_quantity: number;
   return_count: number;
   customer_payment_history_count?: number;
+  update_count?: number;
   cancelled_return_count?: number;
   total_return_amount: number;
   cancelled_at?: string | null;
@@ -1877,7 +1878,51 @@ export default function InvoicesPage() {
                 >
                   <td style={tdStyle}>
                     <div style={{ display: 'grid', gap: '4px' }}>
-                      <strong>#{sale.id}</strong>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <strong
+                          style={{
+                            color:
+                              Number(sale.update_count || 0) > 0
+                                ? '#fbbf24'
+                                : '#f8fafc',
+                          }}
+                          title={
+                            Number(sale.update_count || 0) > 0
+                              ? `تم تعديل الفاتورة ${Number(
+                                  sale.update_count,
+                                )} مرة`
+                              : undefined
+                          }
+                        >
+                          #{sale.id}
+                        </strong>
+
+                        {Number(sale.update_count || 0) > 0 && (
+                          <span
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: '999px',
+                              background: 'rgba(245,158,11,0.12)',
+                              border: '1px solid rgba(245,158,11,0.30)',
+                              color: '#fcd34d',
+                              fontSize: '10px',
+                              fontWeight: 900,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {Number(sale.update_count || 0) > 1
+                              ? `معدلة ×${Number(sale.update_count)}`
+                              : 'معدلة'}
+                          </span>
+                        )}
+                      </div>
 
                       <span
                         style={{
@@ -2245,21 +2290,23 @@ export default function InvoicesPage() {
                         عرض
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => void openSaleAuditTrail(sale.id)}
-                        style={{
-                          ...smallButtonStyle,
+                      {Number(sale.update_count || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => void openSaleAuditTrail(sale.id)}
+                          style={{
+                            ...smallButtonStyle,
 
-                          borderColor: '#a855f7',
+                            borderColor: '#f59e0b',
 
-                          color: '#d8b4fe',
+                            color: '#fcd34d',
 
-                          background: 'rgba(168,85,247,0.10)',
-                        }}
-                      >
-                        سجل التعديلات
-                      </button>
+                            background: 'rgba(245,158,11,0.10)',
+                          }}
+                        >
+                          سجل التعديلات ({Number(sale.update_count)})
+                        </button>
+                      )}
 
                       {!sale.cancelled_at &&
                         Number(sale.promotion_discount_value || 0) === 0 &&

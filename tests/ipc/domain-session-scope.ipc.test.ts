@@ -1675,4 +1675,335 @@ describe('domain IPC session scope', () => {
       }),
     ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
   });
+
+  it('keeps sale create update and cancel audit visible in the shift timeline', async () => {
+    const admin = findUserByUsername('admin')!;
+
+    const shift = openCashShift({
+      opening_counted_amount: 0,
+
+      opened_by: admin.id,
+    });
+
+    createProduct({
+      name: 'Shift Audit Product',
+
+      category_id: null,
+
+      image_path: null,
+
+      description: null,
+
+      variants: [
+        {
+          barcode: 'SHIFT-AUDIT-001',
+
+          size: 'M',
+
+          color: 'Black',
+
+          buy_price: 40,
+
+          sell_price: 100,
+
+          min_stock: 1,
+
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const variant = getVariantByBarcode('SHIFT-AUDIT-001') as any;
+
+    expect(variant).toBeTruthy();
+
+    const { event } = makeClient();
+
+    startAuthSession(event, admin.id);
+
+    /*
+     * إنشاء فاتورة.
+     */
+    const created = await invoke(
+      event,
+
+      'sales:create',
+
+      {
+        customer_id: null,
+
+        promotion_ids: [],
+
+        sub_total: 100,
+
+        discount_value: 0,
+
+        grand_total: 100,
+
+        paid: 100,
+
+        remaining_amount: 0,
+
+        payment_status: 'paid',
+
+        change_amount: 0,
+
+        payment_method: 'cash',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity: 1,
+
+            unit_price: 100,
+          },
+        ],
+      },
+    );
+
+    expect(created.success).toBe(true);
+
+    expect(created.shift_id).toBe(shift.id);
+
+    const saleId = Number(created.saleId);
+
+    /*
+     * تعديل نفس الفاتورة:
+     * 100 -> 200
+     */
+    const updated = await invoke(
+      event,
+
+      'sales:update',
+
+      {
+        sale_id: saleId,
+
+        reason: 'تصحيح كمية الفاتورة للاختبار',
+
+        customer_id: null,
+
+        promotion_ids: [],
+
+        sub_total: 200,
+
+        discount_value: 0,
+
+        grand_total: 200,
+
+        paid: 200,
+
+        remaining_amount: 0,
+
+        payment_status: 'paid',
+
+        change_amount: 0,
+
+        payment_method: 'cash',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity: 2,
+
+            unit_price: 100,
+          },
+        ],
+      },
+    );
+
+    expect(updated.success).toBe(true);
+
+    expect(updated.shift_id).toBe(shift.id);
+
+    const invoiceListAfterUpdate = await invoke(
+      event,
+
+      'sales:list',
+
+      {
+        limit: 50,
+        offset: 0,
+      },
+    );
+
+    const editedInvoiceRow = invoiceListAfterUpdate.rows.find(
+      (row: any) => Number(row.id) === saleId,
+    );
+
+    expect(editedInvoiceRow).toBeTruthy();
+
+    expect(Number(editedInvoiceRow.update_count || 0)).toBe(1);
+
+    /*
+     * Audit Trail بعد التعديل.
+     */
+    let audit = await invoke(
+      event,
+
+      'sales:audit-trail',
+
+      saleId,
+    );
+
+    expect(Array.isArray(audit)).toBe(true);
+
+    const createdAudit = audit.find(
+      (row: any) => row.action === 'sale_created',
+    );
+
+    const updatedAudit = audit.find(
+      (row: any) => row.action === 'sale_updated',
+    );
+
+    expect(createdAudit).toBeTruthy();
+
+    expect(updatedAudit).toBeTruthy();
+
+    /*
+     * مين نفذ العملية.
+     */
+    expect(Number(createdAudit.entity_id)).toBe(saleId);
+
+    expect(createdAudit.user_name).toBe(admin.name);
+
+    expect(updatedAudit.user_name).toBe(admin.name);
+
+    /*
+     * التوقيت محفوظ.
+     */
+    expect(String(createdAudit.created_at || '')).not.toBe('');
+
+    expect(String(updatedAudit.created_at || '')).not.toBe('');
+
+    /*
+     * سبب التعديل محفوظ.
+     */
+    expect(updatedAudit.details.reason).toBe('تصحيح كمية الفاتورة للاختبار');
+
+    /*
+     * Before / After محفوظين بالكامل.
+     */
+    expect(Number(updatedAudit.details.before?.sale?.grand_total)).toBe(100);
+
+    expect(Number(updatedAudit.details.after?.sale?.grand_total)).toBe(200);
+
+    expect(updatedAudit.details.before?.items).toHaveLength(1);
+
+    expect(updatedAudit.details.after?.items).toHaveLength(1);
+
+    expect(Number(updatedAudit.details.before?.items?.[0]?.quantity)).toBe(1);
+
+    expect(Number(updatedAudit.details.after?.items?.[0]?.quantity)).toBe(2);
+
+    /*
+     * إلغاء الفاتورة.
+     */
+    const cancelled = await invoke(
+      event,
+
+      'sales:cancel',
+
+      {
+        sale_id: saleId,
+
+        reason: 'إلغاء فاتورة اختبار الـAudit',
+      },
+    );
+
+    expect(cancelled.success).toBe(true);
+
+    expect(cancelled.cancelled_shift_id).toBe(shift.id);
+
+    /*
+     * Audit Trail بعد الإلغاء.
+     */
+    audit = await invoke(
+      event,
+
+      'sales:audit-trail',
+
+      saleId,
+    );
+
+    const cancelledAudit = audit.find(
+      (row: any) => row.action === 'sale_cancelled',
+    );
+
+    expect(cancelledAudit).toBeTruthy();
+
+    expect(cancelledAudit.user_name).toBe(admin.name);
+
+    expect(cancelledAudit.details.reason).toBe('إلغاء فاتورة اختبار الـAudit');
+
+    expect(Number(cancelledAudit.details.shift_id)).toBe(shift.id);
+
+    expect(Number(cancelledAudit.details.refunded_amount)).toBe(200);
+
+    /*
+     * تفاصيل الشفت نفسها لازم ترى
+     * إنشاء + تعديل + إلغاء الفاتورة.
+     */
+    const details = await invoke(
+      event,
+
+      'cash-shifts:details',
+
+      shift.id,
+    );
+
+    const saleTimeline = details.timeline.filter(
+      (row: any) => row.entity === 'sales' && Number(row.entity_id) === saleId,
+    );
+
+    const timelineActions = saleTimeline.map((row: any) => row.action);
+
+    expect(timelineActions).toContain('sale_created');
+
+    expect(timelineActions).toContain('sale_updated');
+
+    expect(timelineActions).toContain('sale_cancelled');
+
+    const timelineUpdate = saleTimeline.find(
+      (row: any) => row.action === 'sale_updated',
+    );
+
+    expect(timelineUpdate).toBeTruthy();
+
+    expect(timelineUpdate.user_name).toBe(admin.name);
+
+    expect(timelineUpdate.details.reason).toBe('تصحيح كمية الفاتورة للاختبار');
+
+    expect(Number(timelineUpdate.details.before?.sale?.grand_total)).toBe(100);
+
+    expect(Number(timelineUpdate.details.after?.sale?.grand_total)).toBe(200);
+
+    const timelineCancel = saleTimeline.find(
+      (row: any) => row.action === 'sale_cancelled',
+    );
+
+    expect(timelineCancel).toBeTruthy();
+
+    expect(timelineCancel.user_name).toBe(admin.name);
+
+    expect(timelineCancel.details.reason).toBe('إلغاء فاتورة اختبار الـAudit');
+  });
 });

@@ -2267,6 +2267,22 @@ export function listSales(input?: {
         ), 0)
           AS customer_payment_history_count,
 
+        IFNULL(
+          (
+            SELECT COUNT(*)
+
+            FROM activity_logs al
+
+            WHERE
+              al.entity = 'sales'
+
+              AND al.entity_id = s.id
+
+              AND al.action = 'sale_updated'
+          ),
+          0
+        ) AS update_count,
+
         IFNULL((
           SELECT COUNT(*)
 

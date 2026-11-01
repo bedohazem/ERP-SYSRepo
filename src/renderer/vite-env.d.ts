@@ -966,7 +966,7 @@ declare global {
           requires_admin_password?: number | boolean;
           original_sub_total?: number;
           original_grand_total?: number;
-
+          update_count?: number;
           total_discount_value?: number;
 
           current_net_total?: number;
@@ -1926,7 +1926,8 @@ declare global {
           returns_count: number;
           cancelled_returns_count: number;
           returns_total: number;
-
+          return_cash_refund: number;
+          return_debt_reduction: number;
           exchanges_count: number;
           cancelled_exchanges_count: number;
           exchange_adjustment: number;
@@ -3226,7 +3227,7 @@ declare global {
           cancelled_invoices_count: number;
 
           invoice_sales: number;
-
+          net_sales: number;
           discounts_total: number;
 
           paid_total: number;
@@ -3258,6 +3259,14 @@ declare global {
           exchange_cash_refund: number;
 
           exchange_debt_reduction: number;
+
+          cancelled_customer_payments_count: number;
+
+          cancelled_expenses_count: number;
+
+          cancelled_returns_count: number;
+
+          cancelled_exchanges_count: number;
 
           exchange_difference: number;
         };

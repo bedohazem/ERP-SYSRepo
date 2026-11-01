@@ -98,7 +98,8 @@ type CashierDashboardSummary = {
     returns_count: number;
     cancelled_returns_count: number;
     returns_total: number;
-
+    return_cash_refund: number;
+    return_debt_reduction: number;
     exchanges_count: number;
     cancelled_exchanges_count: number;
     exchange_adjustment: number;
@@ -146,7 +147,8 @@ const emptyCashierDashboard: CashierDashboardSummary = {
     returns_count: 0,
     cancelled_returns_count: 0,
     returns_total: 0,
-
+    return_cash_refund: 0,
+    return_debt_reduction: 0,
     exchanges_count: 0,
     cancelled_exchanges_count: 0,
     exchange_adjustment: 0,
@@ -1710,9 +1712,12 @@ function CashierRevenueView({
           <CashierMiniCard
             title="المرتجعات"
             value={money(summary.sales.returns_total)}
-            subtitle={`${summary.sales.returns_count} عملية • ملغاة: ${
-              summary.sales.cancelled_returns_count
-            }`}
+            subtitle={
+              `${summary.sales.returns_count} عملية` +
+              ` • رد نقدي: ${money(summary.sales.return_cash_refund)}` +
+              ` • خفض مديونية: ${money(summary.sales.return_debt_reduction)}` +
+              ` • ملغاة: ${summary.sales.cancelled_returns_count}`
+            }
             tone="red"
           />
 
@@ -1730,7 +1735,7 @@ function CashierRevenueView({
             value={signedMoney(summary.sales.exchange_cash_difference)}
             subtitle={
               `${summary.sales.exchanges_count} عملية` +
-              ` • تخفيض مديونية: ${money(
+              ` • خفض مديونية: ${money(
                 summary.sales.exchange_debt_reduction,
               )}` +
               ` • تعديل قيمة البيع: ${signedMoney(

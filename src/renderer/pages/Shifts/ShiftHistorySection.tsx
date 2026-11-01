@@ -108,7 +108,7 @@ type ShiftDetails = {
     cancelled_invoices_count: number;
 
     invoice_sales: number;
-
+    net_sales: number;
     discounts_total: number;
 
     paid_total: number;
@@ -140,6 +140,13 @@ type ShiftDetails = {
     exchange_cash_refund: number;
 
     exchange_debt_reduction: number;
+    cancelled_customer_payments_count: number;
+
+    cancelled_expenses_count: number;
+
+    cancelled_returns_count: number;
+
+    cancelled_exchanges_count: number;
 
     exchange_difference: number;
   };
@@ -1452,13 +1459,23 @@ function ShiftDetailsModal({
           }}
         >
           <InfoCard
-            title="عدد الفواتير"
-            value={String(details.sales_summary.invoices_count)}
+            title="الفواتير الفعالة"
+            value={String(details.sales_summary.active_invoices_count)}
+          />
+
+          <InfoCard
+            title="الفواتير الملغاة"
+            value={String(details.sales_summary.cancelled_invoices_count)}
           />
 
           <InfoCard
             title="مبيعات الفواتير"
             value={money(details.sales_summary.invoice_sales)}
+          />
+
+          <InfoCard
+            title="صافي المبيعات"
+            value={money(details.sales_summary.net_sales)}
           />
 
           <InfoCard
@@ -1601,6 +1618,26 @@ function ShiftDetailsModal({
           <InfoCard
             title="صافي فرق الاستبدالات"
             value={money(details.operations_summary.exchange_difference)}
+          />
+
+          <InfoCard
+            title="دفعات عملاء ملغاة"
+            value={`${details.operations_summary.cancelled_customer_payments_count} عملية`}
+          />
+
+          <InfoCard
+            title="مصروفات ملغاة"
+            value={`${details.operations_summary.cancelled_expenses_count} عملية`}
+          />
+
+          <InfoCard
+            title="مرتجعات ملغاة"
+            value={`${details.operations_summary.cancelled_returns_count} عملية`}
+          />
+
+          <InfoCard
+            title="استبدالات ملغاة"
+            value={`${details.operations_summary.cancelled_exchanges_count} عملية`}
           />
         </div>
 

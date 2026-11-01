@@ -6,11 +6,17 @@ import {
   getVariantByBarcode,
 } from '../../src/main/database/repositories/product.repo';
 import {
+  cancelSaleInvoice,
   createSale,
   createSaleReturn,
   getSaleReceipt,
+  updateSaleInvoice,
 } from '../../src/main/database/repositories/sales.repo';
-import { createExpense } from '../../src/main/database/repositories/expense.repo';
+import {
+  cancelExpense,
+  createExpense,
+  updateExpense,
+} from '../../src/main/database/repositories/expense.repo';
 import {
   createLiability,
   recordLiabilityPayment,
@@ -44,7 +50,11 @@ import {
   createSaleExchange,
   getSaleExchangeState,
 } from '../../src/main/database/repositories/sales-exchange.repo';
-import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo';
+import {
+  cancelCustomerPaymentBatch,
+  recordCustomerPayment,
+  updateCustomerPaymentBatch,
+} from '../../src/main/database/repositories/customers.repo';
 
 type ReportVariantTestRow = {
   variant_id: number;
@@ -1233,6 +1243,10 @@ describe('reports repository', () => {
 
     expect(dashboard.sales.returns_total).toBe(150);
 
+    expect(dashboard.sales.return_cash_refund).toBe(150);
+
+    expect(dashboard.sales.return_debt_reduction).toBe(0);
+
     expect(dashboard.sales.net_sales).toBe(0);
 
     expect(dashboard.discounts.normal).toBe(0);
@@ -1240,6 +1254,214 @@ describe('reports repository', () => {
     expect(dashboard.discounts.total).toBe(0);
 
     expect(dashboard.sales.returns_count).toBe(1);
+  });
+
+  it('separates sale return debt reduction from cash refund on cashier dashboard', () => {
+    const returnedVariant = seedReportProduct({
+      name: 'Return Debt Product',
+
+      barcode: 'RETURN-DEBT-300',
+
+      openingQty: 10,
+
+      buyPrice: 100,
+
+      sellPrice: 300,
+    });
+
+    const keptVariant = seedReportProduct({
+      name: 'Return Kept Product',
+
+      barcode: 'RETURN-DEBT-200',
+
+      openingQty: 10,
+
+      buyPrice: 80,
+
+      sellPrice: 200,
+    });
+
+    const customer = createTestCustomer(
+      'Return Debt Customer',
+
+      '01077778888',
+    );
+
+    /*
+     * فاتورة 500:
+     *
+     * المدفوع = 300
+     * المديونية = 200
+     */
+    const sale = createSale({
+      user_id: 1,
+
+      customer_id: customer.id,
+
+      sub_total: 500,
+
+      discount_value: 0,
+
+      grand_total: 500,
+
+      paid: 300,
+
+      remaining_amount: 200,
+
+      payment_status: 'partial',
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: returnedVariant.variant_id,
+
+          product_name: returnedVariant.product_name,
+
+          barcode: returnedVariant.barcode,
+
+          size: returnedVariant.size,
+
+          color: returnedVariant.color,
+
+          quantity: 1,
+
+          unit_price: 300,
+        },
+
+        {
+          variant_id: keptVariant.variant_id,
+
+          product_name: keptVariant.product_name,
+
+          barcode: keptVariant.barcode,
+
+          size: keptVariant.size,
+
+          color: keptVariant.color,
+
+          quantity: 1,
+
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const returnedItem = receipt.items.find(
+      (item: any) =>
+        Number(item.variant_id) === Number(returnedVariant.variant_id),
+    );
+
+    expect(returnedItem).toBeTruthy();
+
+    /*
+     * نرجع الصنف قيمته 300.
+     *
+     * النظام لازم:
+     * - يلغي المديونية 200 أولًا.
+     * - ويرد للعميل كاش 100 فقط.
+     */
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: 1,
+
+      reason: 'Return with debt reduction',
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          sale_item_id: Number(returnedItem.id),
+
+          variant_id: returnedVariant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.return_value).toBe(300);
+
+    expect(saleReturn.debt_reduction_amount).toBe(200);
+
+    expect(saleReturn.refundAmount).toBe(100);
+
+    /*
+     * الرئيسية لازم تعرض التقسيم
+     * بشكل مستقل وواضح.
+     */
+    const dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(dashboard.sales.returns_count).toBe(1);
+
+    expect(dashboard.sales.returns_total).toBe(300);
+
+    expect(dashboard.sales.return_debt_reduction).toBe(200);
+
+    expect(dashboard.sales.return_cash_refund).toBe(100);
+
+    /*
+     * بعد المرتجع:
+     *
+     * صافي البيع = 500 - 300 = 200
+     * المديونية أصبحت صفر.
+     * الصافي المحصل = 200.
+     */
+    expect(dashboard.sales.outstanding_debt_total).toBe(0);
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(0);
+
+    expect(dashboard.sales.paid_sales_total).toBe(200);
+
+    expect(dashboard.sales.net_sales).toBe(200);
+
+    /*
+     * ونتأكد إن الخارج من الدرج
+     * هو 100 فقط، مش قيمة المرتجع كلها.
+     */
+    const db = getDb();
+
+    const returnCashMovement = db
+      .prepare(
+        `
+      SELECT
+        amount,
+        direction,
+        payment_method,
+        shift_id
+
+      FROM cash_movements
+
+      WHERE
+        type = 'sale_return'
+
+        AND reference_type = 'sale_return'
+
+        AND reference_id = ?
+
+      LIMIT 1
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(returnCashMovement).toBeTruthy();
+
+    expect(returnCashMovement.direction).toBe('out');
+
+    expect(Number(returnCashMovement.amount)).toBe(100);
+
+    expect(returnCashMovement.payment_method).toBe('store_cash');
+
+    expect(Number(returnCashMovement.shift_id)).toBe(
+      Number(saleReturn.shift_id),
+    );
   });
 
   it('separates exchange invoice adjustment from cash refund when the sale has debt', () => {
@@ -1954,6 +2176,1259 @@ describe('reports repository', () => {
     expect(Number(creditInvoice.remaining_amount)).toBe(300);
 
     expect(creditInvoice.payment_status).toBe('unpaid');
+  });
+
+  it('attributes every admin payment method and credit sale to the open cashier shift', () => {
+    const currentShift = getOpenCashShift();
+
+    expect(currentShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: currentShift!.id,
+
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: 1,
+    });
+
+    const cashier = createUser(
+      'Payment Matrix Cashier',
+      'payment_matrix_cashier',
+      '1234',
+      'cashier',
+    );
+
+    const shift = openCashShift({
+      opening_counted_amount: 0,
+
+      opened_by: cashier.id,
+    });
+
+    const variant = seedReportProduct({
+      name: 'Payment Matrix Product',
+
+      barcode: 'PAYMENT-MATRIX-PRODUCT',
+
+      openingQty: 50,
+
+      buyPrice: 40,
+
+      sellPrice: 100,
+    });
+
+    const customer = createTestCustomer(
+      'Payment Matrix Customer',
+      '01055554444',
+    );
+
+    const paymentMethods = [
+      'store_cash',
+      'owner_cash',
+      'owner_bank',
+      'owner_vodafone',
+      'fawry_machine',
+      'store_safe',
+    ];
+
+    const createdSaleIds: number[] = [];
+
+    /*
+     * بيع مسدد بالكامل بكل حساب مالي.
+     */
+    for (const paymentMethod of paymentMethods) {
+      const sale = createSale({
+        user_id: 1,
+
+        customer_id: null,
+
+        sub_total: 100,
+
+        discount_value: 0,
+
+        grand_total: 100,
+
+        paid: 100,
+
+        remaining_amount: 0,
+
+        payment_status: 'paid',
+
+        change_amount: 0,
+
+        payment_method: paymentMethod,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity: 1,
+
+            unit_price: 100,
+          },
+        ],
+      });
+
+      expect(sale.shift_id).toBe(shift.id);
+
+      createdSaleIds.push(sale.saleId);
+    }
+
+    /*
+     * بيع آجل بالكامل بكل حساب مالي.
+     *
+     * حتى لو المدفوع صفر، الفاتورة نفسها
+     * لازم تفضل منسوبة للشفت المفتوح.
+     */
+    for (const paymentMethod of paymentMethods) {
+      const sale = createSale({
+        user_id: 1,
+
+        customer_id: customer.id,
+
+        sub_total: 80,
+
+        discount_value: 0,
+
+        grand_total: 80,
+
+        paid: 0,
+
+        remaining_amount: 80,
+
+        payment_status: 'unpaid',
+
+        change_amount: 0,
+
+        payment_method: paymentMethod,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity: 1,
+
+            unit_price: 80,
+          },
+        ],
+      });
+
+      expect(sale.shift_id).toBe(shift.id);
+
+      createdSaleIds.push(sale.saleId);
+    }
+
+    /*
+     * دفع متعدد.
+     */
+    const splitSale = createSale({
+      user_id: 1,
+
+      customer_id: null,
+
+      sub_total: 100,
+
+      discount_value: 0,
+
+      grand_total: 100,
+
+      paid: 100,
+
+      remaining_amount: 0,
+
+      payment_status: 'paid',
+
+      change_amount: 0,
+
+      payment_method: 'split',
+
+      payments: [
+        {
+          payment_method: 'owner_bank',
+
+          amount: 40,
+        },
+
+        {
+          payment_method: 'owner_vodafone',
+
+          amount: 60,
+        },
+      ],
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 100,
+        },
+      ],
+    });
+
+    expect(splitSale.shift_id).toBe(shift.id);
+
+    createdSaleIds.push(splitSale.saleId);
+
+    /*
+     * كل الفواتير فعليًا مربوطة
+     * بشفت الكاشير رغم أن منفذها الأدمن.
+     */
+    const db = getDb();
+
+    const storedSales = db
+      .prepare(
+        `
+      SELECT
+        id,
+        user_id,
+        shift_id,
+        payment_status,
+        payment_method,
+        remaining_amount
+
+      FROM sales
+
+      WHERE id IN (
+        ${createdSaleIds.map(() => '?').join(', ')}
+      )
+
+      ORDER BY id ASC
+      `,
+      )
+      .all(...createdSaleIds) as any[];
+
+    expect(storedSales).toHaveLength(13);
+
+    expect(
+      storedSales.every(
+        (sale) =>
+          Number(sale.user_id) === 1 && Number(sale.shift_id) === shift.id,
+      ),
+    ).toBe(true);
+
+    const paidInvoices = storedSales.filter(
+      (sale) => sale.payment_status === 'paid',
+    );
+
+    const unpaidInvoices = storedSales.filter(
+      (sale) => sale.payment_status === 'unpaid',
+    );
+
+    expect(paidInvoices).toHaveLength(7);
+
+    expect(unpaidInvoices).toHaveLength(6);
+
+    expect(
+      unpaidInvoices.every((sale) => Number(sale.remaining_amount) === 80),
+    ).toBe(true);
+
+    /*
+     * الرئيسية.
+     *
+     * 6 مسدد × 100 = 600
+     * + دفع متعدد = 100
+     * + 6 آجل × 80 = 480
+     *
+     * الإجمالي = 1180
+     * المحصل = 700
+     * الآجل = 480
+     */
+    const dashboard = getCashierDashboardSummary({
+      user_id: cashier.id,
+    });
+
+    expect(dashboard.shift?.id).toBe(shift.id);
+
+    expect(dashboard.sales.invoices_count).toBe(13);
+
+    expect(dashboard.sales.cancelled_invoices_count).toBe(0);
+
+    expect(dashboard.sales.invoice_sales).toBe(1180);
+
+    expect(dashboard.sales.paid_sales_total).toBe(700);
+
+    expect(dashboard.sales.outstanding_debt_total).toBe(480);
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(6);
+
+    expect(dashboard.sales.net_sales).toBe(1180);
+
+    /*
+     * تفاصيل الشفت لازم تطابق الرئيسية.
+     */
+    const details = getCashShiftDetails(shift.id);
+
+    expect(details.sales).toHaveLength(13);
+
+    expect(details.sales_summary.invoices_count).toBe(13);
+
+    expect(details.sales_summary.active_invoices_count).toBe(13);
+
+    expect(details.sales_summary.cancelled_invoices_count).toBe(0);
+
+    expect(details.sales_summary.invoice_sales).toBe(1180);
+
+    expect(details.sales_summary.net_sales).toBe(1180);
+
+    expect(details.sales_summary.paid_total).toBe(700);
+
+    expect(details.sales_summary.remaining_total).toBe(480);
+
+    /*
+     * أهم مقارنة مباشرة:
+     * الرئيسية = تفاصيل الشفت.
+     */
+    expect(details.sales_summary.active_invoices_count).toBe(
+      dashboard.sales.invoices_count,
+    );
+
+    expect(details.sales_summary.invoice_sales).toBe(
+      dashboard.sales.invoice_sales,
+    );
+
+    expect(details.sales_summary.net_sales).toBe(dashboard.sales.net_sales);
+
+    expect(details.sales_summary.paid_total).toBe(
+      dashboard.sales.paid_sales_total,
+    );
+
+    expect(details.sales_summary.remaining_total).toBe(
+      dashboard.sales.outstanding_debt_total,
+    );
+  });
+
+  it('keeps cashier and admin full shift workflow consistent between dashboard and shift details', () => {
+    const initialShift = getOpenCashShift();
+
+    expect(initialShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: initialShift!.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    const cashier = createUser(
+      'Full Cycle Cashier',
+      'full_cycle_cashier',
+      '1234',
+      'cashier',
+    );
+
+    const shift = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: cashier.id,
+    });
+
+    const baseVariant = seedReportProduct({
+      name: 'Full Cycle Base',
+      barcode: 'FULL-CYCLE-BASE',
+      openingQty: 100,
+      buyPrice: 40,
+      sellPrice: 100,
+    });
+
+    const samePriceVariant = seedReportProduct({
+      name: 'Full Cycle Same Price',
+      barcode: 'FULL-CYCLE-SAME',
+      openingQty: 30,
+      buyPrice: 45,
+      sellPrice: 100,
+    });
+
+    const plus30Variant = seedReportProduct({
+      name: 'Full Cycle Plus 30',
+      barcode: 'FULL-CYCLE-PLUS30',
+      openingQty: 30,
+      buyPrice: 55,
+      sellPrice: 130,
+    });
+
+    const plus20Variant = seedReportProduct({
+      name: 'Full Cycle Plus 20',
+      barcode: 'FULL-CYCLE-PLUS20',
+      openingQty: 30,
+      buyPrice: 50,
+      sellPrice: 120,
+    });
+
+    const cashierCustomer = createTestCustomer(
+      'Full Cycle Cashier Customer',
+      '01011112222',
+    );
+
+    const adminCustomer = createTestCustomer(
+      'Full Cycle Admin Customer',
+      '01033334444',
+    );
+
+    function createSimpleSale(input: {
+      actorId: number;
+      quantity?: number;
+      customerId?: number | null;
+      paid?: number;
+    }) {
+      const quantity = input.quantity ?? 1;
+
+      const total = quantity * 100;
+
+      const paid = input.paid === undefined ? total : input.paid;
+
+      return createSale({
+        user_id: input.actorId,
+
+        customer_id: input.customerId ?? null,
+
+        sub_total: total,
+
+        discount_value: 0,
+
+        grand_total: total,
+
+        paid,
+
+        remaining_amount: total - paid,
+
+        payment_status:
+          paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
+
+        change_amount: 0,
+
+        payment_method: 'store_cash',
+
+        items: [
+          {
+            variant_id: baseVariant.variant_id,
+
+            product_name: baseVariant.product_name,
+
+            barcode: baseVariant.barcode,
+
+            size: baseVariant.size,
+
+            color: baseVariant.color,
+
+            quantity,
+
+            unit_price: 100,
+          },
+        ],
+      });
+    }
+
+    function returnOne(saleId: number, actorId: number) {
+      const receipt = getSaleReceipt(saleId) as any;
+
+      return createSaleReturn({
+        original_sale_id: saleId,
+
+        user_id: actorId,
+
+        reason: 'Full cycle return',
+
+        refund_payment_method: 'store_cash',
+
+        items: [
+          {
+            sale_item_id: Number(receipt.items[0].id),
+
+            variant_id: baseVariant.variant_id,
+
+            quantity: 1,
+          },
+        ],
+      });
+    }
+
+    function exchangeOne(
+      saleId: number,
+      actorId: number,
+      newVariantId: number,
+    ) {
+      const state = getSaleExchangeState(saleId);
+
+      const group = state.groups.find(
+        (item: any) =>
+          item.group_kind === 'regular' &&
+          item.units.some((unit: any) => Number(unit.is_returned || 0) === 0),
+      );
+
+      expect(group).toBeTruthy();
+
+      const unit = group!.units.find(
+        (item: any) => Number(item.is_returned || 0) === 0,
+      );
+
+      expect(unit).toBeTruthy();
+
+      return createSaleExchange({
+        original_sale_id: saleId,
+
+        user_id: actorId,
+
+        payment_method: 'store_cash',
+
+        reason: 'Full cycle exchange',
+
+        items: [
+          {
+            promotion_unit_id: Number(unit.id),
+
+            new_variant_id: newVariantId,
+          },
+        ],
+      });
+    }
+
+    /*
+     * =================================
+     * الكاشير
+     * =================================
+     */
+
+    /*
+     * 1) بيع ثم تعديل ثم إلغاء.
+     */
+    const cashierEditCancelSale = createSimpleSale({
+      actorId: cashier.id,
+    });
+
+    expect(cashierEditCancelSale.shift_id).toBe(shift.id);
+
+    const updatedCashierSale = updateSaleInvoice({
+      sale_id: cashierEditCancelSale.saleId,
+
+      actor_id: cashier.id,
+
+      reason: 'Full cycle cashier edit',
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 0,
+
+      grand_total: 200,
+
+      paid: 200,
+
+      remaining_amount: 0,
+
+      payment_status: 'paid',
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: baseVariant.variant_id,
+
+          product_name: baseVariant.product_name,
+
+          barcode: baseVariant.barcode,
+
+          size: baseVariant.size,
+
+          color: baseVariant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    });
+
+    expect(updatedCashierSale.shift_id).toBe(shift.id);
+
+    const cancelledCashierSale = cancelSaleInvoice({
+      sale_id: cashierEditCancelSale.saleId,
+
+      reason: 'Full cycle cashier cancel',
+
+      actor_id: cashier.id,
+    });
+
+    expect(cancelledCashierSale.cancelled_shift_id).toBe(shift.id);
+
+    /*
+     * 2) بيع 200 ومرتجع 100.
+     */
+    const cashierReturnSale = createSimpleSale({
+      actorId: cashier.id,
+
+      quantity: 2,
+    });
+
+    const cashierReturn = returnOne(cashierReturnSale.saleId, cashier.id);
+
+    expect(cashierReturn.shift_id).toBe(shift.id);
+
+    /*
+     * 3) استبدال بدون فرق.
+     */
+    const cashierNoDiffSale = createSimpleSale({
+      actorId: cashier.id,
+    });
+
+    const cashierNoDiffExchange = exchangeOne(
+      cashierNoDiffSale.saleId,
+      cashier.id,
+      samePriceVariant.variant_id,
+    );
+
+    expect(cashierNoDiffExchange.shift_id).toBe(shift.id);
+
+    expect(cashierNoDiffExchange.difference_amount).toBe(0);
+
+    /*
+     * 4) استبدال بفرق +30.
+     */
+    const cashierDiffSale = createSimpleSale({
+      actorId: cashier.id,
+    });
+
+    const cashierDiffExchange = exchangeOne(
+      cashierDiffSale.saleId,
+      cashier.id,
+      plus30Variant.variant_id,
+    );
+
+    expect(cashierDiffExchange.shift_id).toBe(shift.id);
+
+    expect(cashierDiffExchange.difference_amount).toBe(30);
+
+    expect(cashierDiffExchange.amount_to_collect).toBe(30);
+
+    /*
+     * 5) فاتورة جزئي 300:
+     * دفع 100 وقت البيع
+     * ثم دفعة 60
+     * ثم تعديلها إلى 40
+     * ثم إلغاء الـ40.
+     *
+     * النتيجة النهائية:
+     * المدفوع = 100
+     * الباقي = 200
+     */
+    const cashierPaymentSale = createSimpleSale({
+      actorId: cashier.id,
+
+      quantity: 3,
+
+      customerId: cashierCustomer.id,
+
+      paid: 100,
+    });
+
+    const cashierPayment = recordCustomerPayment({
+      customer_id: cashierCustomer.id,
+
+      sale_id: cashierPaymentSale.saleId,
+
+      amount: 60,
+
+      payment_method: 'store_cash',
+
+      actor_id: cashier.id,
+    });
+
+    expect(cashierPayment.shift_id).toBe(shift.id);
+
+    const updatedCashierPayment = updateCustomerPaymentBatch({
+      batch_id: cashierPayment.payment_batch_id,
+
+      amount: 40,
+
+      payment_method: 'store_cash',
+
+      notes: 'Full cycle cashier payment edit',
+
+      actor_id: cashier.id,
+    });
+
+    expect(updatedCashierPayment.shift_id).toBe(shift.id);
+
+    const cancelledCashierPayment = cancelCustomerPaymentBatch({
+      batch_id: Number(updatedCashierPayment.batch_id),
+
+      reason: 'Full cycle cashier payment cancel',
+
+      actor_id: cashier.id,
+    });
+
+    expect(cancelledCashierPayment.cancelled_shift_id).toBe(shift.id);
+
+    /*
+     * 6) مصروف 50
+     * تعديل إلى 70
+     * ثم إلغاء.
+     */
+    const cashierExpense = createExpense({
+      title: 'Cashier Full Cycle Expense',
+
+      amount: 50,
+
+      payment_method: 'store_cash',
+
+      created_by: cashier.id,
+    });
+
+    expect(cashierExpense.shift_id).toBe(shift.id);
+
+    const updatedCashierExpense = updateExpense({
+      id: cashierExpense.id,
+
+      title: 'Cashier Full Cycle Expense Updated',
+
+      amount: 70,
+
+      payment_method: 'store_cash',
+
+      actor_id: cashier.id,
+    });
+
+    expect(updatedCashierExpense.updated_shift_id).toBe(shift.id);
+
+    const cancelledCashierExpense = cancelExpense({
+      id: cashierExpense.id,
+
+      reason: 'Full cycle cashier expense cancel',
+
+      actor_id: cashier.id,
+    });
+
+    expect(cancelledCashierExpense.cancelled_shift_id).toBe(shift.id);
+
+    /*
+     * =================================
+     * الأدمن داخل نفس شفت الكاشير
+     * =================================
+     */
+
+    /*
+     * 7) بيع ثم تعديل ثم إلغاء.
+     */
+    const adminEditCancelSale = createSimpleSale({
+      actorId: 1,
+    });
+
+    expect(adminEditCancelSale.shift_id).toBe(shift.id);
+
+    const updatedAdminSale = updateSaleInvoice({
+      sale_id: adminEditCancelSale.saleId,
+
+      actor_id: 1,
+
+      reason: 'Full cycle admin edit',
+
+      customer_id: null,
+
+      sub_total: 200,
+
+      discount_value: 0,
+
+      grand_total: 200,
+
+      paid: 200,
+
+      remaining_amount: 0,
+
+      payment_status: 'paid',
+
+      change_amount: 0,
+
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: baseVariant.variant_id,
+
+          product_name: baseVariant.product_name,
+
+          barcode: baseVariant.barcode,
+
+          size: baseVariant.size,
+
+          color: baseVariant.color,
+
+          quantity: 2,
+
+          unit_price: 100,
+        },
+      ],
+    });
+
+    expect(updatedAdminSale.shift_id).toBe(shift.id);
+
+    const cancelledAdminSale = cancelSaleInvoice({
+      sale_id: adminEditCancelSale.saleId,
+
+      reason: 'Full cycle admin cancel',
+
+      actor_id: 1,
+    });
+
+    expect(cancelledAdminSale.cancelled_shift_id).toBe(shift.id);
+
+    /*
+     * 8) بيع أدمن مسدد عادي.
+     */
+    const adminPaidSale = createSimpleSale({
+      actorId: 1,
+    });
+
+    expect(adminPaidSale.shift_id).toBe(shift.id);
+
+    /*
+     * 9) بيع أدمن آجل بالكامل.
+     */
+    const adminCreditSale = createSimpleSale({
+      actorId: 1,
+
+      quantity: 2,
+
+      customerId: adminCustomer.id,
+
+      paid: 0,
+    });
+
+    expect(adminCreditSale.shift_id).toBe(shift.id);
+
+    /*
+     * 10) بيع 200 ومرتجع 100.
+     */
+    const adminReturnSale = createSimpleSale({
+      actorId: 1,
+
+      quantity: 2,
+    });
+
+    const adminReturn = returnOne(adminReturnSale.saleId, 1);
+
+    expect(adminReturn.shift_id).toBe(shift.id);
+
+    /*
+     * 11) استبدال بدون فرق.
+     */
+    const adminNoDiffSale = createSimpleSale({
+      actorId: 1,
+    });
+
+    const adminNoDiffExchange = exchangeOne(
+      adminNoDiffSale.saleId,
+      1,
+      samePriceVariant.variant_id,
+    );
+
+    expect(adminNoDiffExchange.shift_id).toBe(shift.id);
+
+    expect(adminNoDiffExchange.difference_amount).toBe(0);
+
+    /*
+     * 12) استبدال بفرق +20.
+     */
+    const adminDiffSale = createSimpleSale({
+      actorId: 1,
+    });
+
+    const adminDiffExchange = exchangeOne(
+      adminDiffSale.saleId,
+      1,
+      plus20Variant.variant_id,
+    );
+
+    expect(adminDiffExchange.shift_id).toBe(shift.id);
+
+    expect(adminDiffExchange.difference_amount).toBe(20);
+
+    expect(adminDiffExchange.amount_to_collect).toBe(20);
+
+    /*
+     * 13) دفعة عميل للأدمن:
+     * فاتورة 300 / دفع أولي 100
+     * دفعة 60 -> تعديل 40 -> إلغاء.
+     */
+    const adminPaymentSale = createSimpleSale({
+      actorId: 1,
+
+      quantity: 3,
+
+      customerId: adminCustomer.id,
+
+      paid: 100,
+    });
+
+    const adminPayment = recordCustomerPayment({
+      customer_id: adminCustomer.id,
+
+      sale_id: adminPaymentSale.saleId,
+
+      amount: 60,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    });
+
+    expect(adminPayment.shift_id).toBe(shift.id);
+
+    const updatedAdminPayment = updateCustomerPaymentBatch({
+      batch_id: adminPayment.payment_batch_id,
+
+      amount: 40,
+
+      payment_method: 'store_cash',
+
+      notes: 'Full cycle admin payment edit',
+
+      actor_id: 1,
+    });
+
+    expect(updatedAdminPayment.shift_id).toBe(shift.id);
+
+    const cancelledAdminPayment = cancelCustomerPaymentBatch({
+      batch_id: Number(updatedAdminPayment.batch_id),
+
+      reason: 'Full cycle admin payment cancel',
+
+      actor_id: 1,
+    });
+
+    expect(cancelledAdminPayment.cancelled_shift_id).toBe(shift.id);
+
+    /*
+     * 14) مصروف أدمن 80
+     * تعديل 90
+     * ثم إلغاء.
+     */
+    const adminExpense = createExpense({
+      title: 'Admin Full Cycle Expense',
+
+      amount: 80,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+    });
+
+    expect(adminExpense.shift_id).toBe(shift.id);
+
+    const updatedAdminExpense = updateExpense({
+      id: adminExpense.id,
+
+      title: 'Admin Full Cycle Expense Updated',
+
+      amount: 90,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    });
+
+    expect(updatedAdminExpense.updated_shift_id).toBe(shift.id);
+
+    const cancelledAdminExpense = cancelExpense({
+      id: adminExpense.id,
+
+      reason: 'Full cycle admin expense cancel',
+
+      actor_id: 1,
+    });
+
+    expect(cancelledAdminExpense.cancelled_shift_id).toBe(shift.id);
+
+    /*
+     * =================================
+     * النتيجة المتوقعة النهائية
+     * =================================
+     *
+     * الفواتير الفعالة:
+     *
+     * كاشير:
+     * 200 return sale
+     * 100 exchange no diff
+     * 100 exchange +30
+     * 300 partial
+     *
+     * أدمن:
+     * 100 paid
+     * 200 credit
+     * 200 return sale
+     * 100 exchange no diff
+     * 100 exchange +20
+     * 300 partial
+     *
+     * = 10 فواتير فعالة
+     *
+     * الفواتير الملغاة:
+     * 2
+     *
+     * إجمالي الفواتير الأصلية:
+     * 1700
+     *
+     * المرتجعات:
+     * 200
+     *
+     * فرق الاستبدالات:
+     * +50
+     *
+     * صافي المبيعات:
+     * 1700 + 50 - 200 = 1550
+     *
+     * المحصل الحالي:
+     * 950
+     *
+     * المديونية:
+     * 600
+     */
+
+    const dashboard = getCashierDashboardSummary({
+      user_id: cashier.id,
+    });
+
+    expect(dashboard.shift?.id).toBe(shift.id);
+
+    expect(dashboard.sales.invoices_count).toBe(10);
+
+    expect(dashboard.sales.cancelled_invoices_count).toBe(2);
+
+    expect(dashboard.sales.invoice_sales).toBe(1700);
+
+    expect(dashboard.sales.returns_count).toBe(2);
+
+    expect(dashboard.sales.returns_total).toBe(200);
+
+    expect(dashboard.sales.exchanges_count).toBe(4);
+
+    expect(dashboard.sales.exchange_adjustment).toBe(50);
+
+    expect(dashboard.sales.exchange_cash_collection).toBe(50);
+
+    expect(dashboard.sales.exchange_cash_refund).toBe(0);
+
+    expect(dashboard.sales.exchange_debt_reduction).toBe(0);
+
+    expect(dashboard.sales.net_sales).toBe(1550);
+
+    expect(dashboard.sales.paid_sales_total).toBe(950);
+
+    expect(dashboard.sales.outstanding_debt_total).toBe(600);
+
+    expect(dashboard.sales.outstanding_debt_invoices_count).toBe(3);
+
+    /*
+     * دفعات العملاء كلها اتعدلت ثم اتلغت.
+     *
+     * لكل مستخدم:
+     * - الـBatch القديم اتلغى بسبب التعديل
+     * - الـBatch البديل اتلغى يدويًا
+     *
+     * إذن 4 Batches ملغاة.
+     */
+    expect(dashboard.operations.customer_payments_count).toBe(0);
+
+    expect(dashboard.operations.customer_payments_total).toBe(0);
+
+    expect(dashboard.operations.cancelled_customer_payments_count).toBe(4);
+
+    /*
+     * المصروفان اتلغوا بالكامل.
+     */
+    expect(dashboard.operations.expenses_count).toBe(0);
+
+    expect(dashboard.operations.expenses_total).toBe(0);
+
+    expect(dashboard.operations.cancelled_expenses_count).toBe(2);
+
+    /*
+     * =================================
+     * تفاصيل الشفت
+     * =================================
+     */
+
+    const details = getCashShiftDetails(shift.id);
+
+    expect(details.sales_summary.invoices_count).toBe(12);
+
+    expect(details.sales_summary.active_invoices_count).toBe(10);
+
+    expect(details.sales_summary.cancelled_invoices_count).toBe(2);
+
+    expect(details.sales_summary.invoice_sales).toBe(1700);
+
+    expect(details.sales_summary.net_sales).toBe(1550);
+
+    expect(details.sales_summary.paid_total).toBe(950);
+
+    expect(details.sales_summary.remaining_total).toBe(600);
+
+    expect(details.operations_summary.returns_count).toBe(2);
+
+    expect(details.operations_summary.returns_total).toBe(200);
+
+    expect(details.operations_summary.exchanges_count).toBe(4);
+
+    expect(details.operations_summary.exchange_difference).toBe(50);
+
+    expect(details.operations_summary.exchange_cash_collection).toBe(50);
+
+    expect(details.operations_summary.exchange_cash_refund).toBe(0);
+
+    expect(details.operations_summary.exchange_debt_reduction).toBe(0);
+
+    expect(details.operations_summary.customer_payments_count).toBe(0);
+
+    expect(details.operations_summary.customer_payments_total).toBe(0);
+
+    expect(details.operations_summary.cancelled_customer_payments_count).toBe(
+      4,
+    );
+
+    expect(details.operations_summary.expenses_count).toBe(0);
+
+    expect(details.operations_summary.expenses_total).toBe(0);
+
+    expect(details.operations_summary.cancelled_expenses_count).toBe(2);
+
+    /*
+     * =================================
+     * المطابقة المباشرة
+     * الرئيسية === تفاصيل الشفت
+     * =================================
+     */
+
+    expect(details.sales_summary.active_invoices_count).toBe(
+      dashboard.sales.invoices_count,
+    );
+
+    expect(details.sales_summary.cancelled_invoices_count).toBe(
+      dashboard.sales.cancelled_invoices_count,
+    );
+
+    expect(details.sales_summary.invoice_sales).toBe(
+      dashboard.sales.invoice_sales,
+    );
+
+    expect(details.sales_summary.net_sales).toBe(dashboard.sales.net_sales);
+
+    expect(details.sales_summary.paid_total).toBe(
+      dashboard.sales.paid_sales_total,
+    );
+
+    expect(details.sales_summary.remaining_total).toBe(
+      dashboard.sales.outstanding_debt_total,
+    );
+
+    expect(details.operations_summary.returns_count).toBe(
+      dashboard.sales.returns_count,
+    );
+
+    expect(details.operations_summary.returns_total).toBe(
+      dashboard.sales.returns_total,
+    );
+
+    expect(details.operations_summary.exchanges_count).toBe(
+      dashboard.sales.exchanges_count,
+    );
+
+    expect(details.operations_summary.exchange_difference).toBe(
+      dashboard.sales.exchange_adjustment,
+    );
+
+    expect(details.operations_summary.exchange_cash_collection).toBe(
+      dashboard.sales.exchange_cash_collection,
+    );
+
+    expect(details.operations_summary.customer_payments_count).toBe(
+      dashboard.operations.customer_payments_count,
+    );
+
+    expect(details.operations_summary.customer_payments_total).toBe(
+      dashboard.operations.customer_payments_total,
+    );
+
+    expect(details.operations_summary.cancelled_customer_payments_count).toBe(
+      dashboard.operations.cancelled_customer_payments_count,
+    );
+
+    expect(details.operations_summary.expenses_count).toBe(
+      dashboard.operations.expenses_count,
+    );
+
+    expect(details.operations_summary.expenses_total).toBe(
+      dashboard.operations.expenses_total,
+    );
+
+    expect(details.operations_summary.cancelled_expenses_count).toBe(
+      dashboard.operations.cancelled_expenses_count,
+    );
+
+    /*
+     * نتأكد كمان إن الأدمن لم يسرق
+     * ملكية الفواتير من الكاشير والعكس.
+     *
+     * كل Invoice محتفظ بمن أنشأها،
+     * مع أن الجميع داخل نفس shift_id.
+     */
+    const db = getDb();
+
+    const actors = db
+      .prepare(
+        `
+      SELECT
+        user_id,
+        COUNT(*) AS count
+
+      FROM sales
+
+      WHERE shift_id = ?
+
+      GROUP BY user_id
+      `,
+      )
+      .all(shift.id) as Array<{
+      user_id: number;
+      count: number;
+    }>;
+
+    const cashierInvoices = actors.find(
+      (row) => Number(row.user_id) === Number(cashier.id),
+    );
+
+    const adminInvoices = actors.find((row) => Number(row.user_id) === 1);
+
+    expect(Number(cashierInvoices?.count || 0)).toBe(5);
+
+    expect(Number(adminInvoices?.count || 0)).toBe(7);
   });
 
   it('keeps shift operations on the shift opening business date', () => {

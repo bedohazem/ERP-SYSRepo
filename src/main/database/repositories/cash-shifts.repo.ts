@@ -1561,25 +1561,13 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
   const preview = getCashShiftExpectedBalance(shiftId);
 
-  const sales = db
+  const rawSales = db
     .prepare(
       `
     SELECT
       s.id,
 
       s.grand_total,
-
-      MAX(
-        0,
-        s.grand_total -
-        MAX(
-          0,
-          IFNULL(
-            s.remaining_amount,
-            0
-          )
-        )
-      ) AS paid_amount,
 
       MAX(
         0,
@@ -1614,6 +1602,34 @@ export function getCashShiftDetails(shiftIdInput: number) {
         )
       ) AS discount_total,
 
+      IFNULL(
+        (
+          SELECT SUM(sr.refund_amount)
+
+          FROM sale_returns sr
+
+          WHERE
+            sr.original_sale_id = s.id
+
+            AND sr.cancelled_at IS NULL
+        ),
+        0
+      ) AS total_return_amount,
+
+      IFNULL(
+        (
+          SELECT SUM(se.difference_amount)
+
+          FROM sale_exchanges se
+
+          WHERE
+            se.original_sale_id = s.id
+
+            AND se.cancelled_at IS NULL
+        ),
+        0
+      ) AS exchange_difference_total,
+
       s.cancelled_at,
       s.cancel_reason,
 
@@ -1647,6 +1663,34 @@ export function getCashShiftDetails(shiftIdInput: number) {
     )
     .all(shiftId) as any[];
 
+  const sales = rawSales.map((sale) => {
+    const remainingAmount = roundFinancial(
+      Math.max(0, Number(sale.remaining_amount || 0)),
+    );
+
+    const currentNetTotal = roundFinancial(
+      Math.max(
+        0,
+
+        Number(sale.grand_total || 0) +
+          Number(sale.exchange_difference_total || 0) -
+          Number(sale.total_return_amount || 0),
+      ),
+    );
+
+    return {
+      ...sale,
+
+      remaining_amount: remainingAmount,
+
+      current_net_total: currentNetTotal,
+
+      paid_amount: roundFinancial(
+        Math.max(0, currentNetTotal - remainingAmount),
+      ),
+    };
+  });
+
   const salesSummary = sales.reduce(
     (summary, sale) => {
       const cancelled = Boolean(sale.cancelled_at);
@@ -1663,6 +1707,10 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
       summary.invoice_sales = roundFinancial(
         summary.invoice_sales + Number(sale.grand_total || 0),
+      );
+
+      summary.net_sales = roundFinancial(
+        summary.net_sales + Number(sale.current_net_total || 0),
       );
 
       summary.discounts_total = roundFinancial(
@@ -1687,7 +1735,7 @@ export function getCashShiftDetails(shiftIdInput: number) {
       cancelled_invoices_count: 0,
 
       invoice_sales: 0,
-
+      net_sales: 0,
       discounts_total: 0,
 
       paid_total: 0,
@@ -1785,6 +1833,34 @@ export function getCashShiftDetails(shiftIdInput: number) {
       ) AS exchange_debt_reduction,
 
       (
+        SELECT COUNT(*)
+        FROM customer_payment_batches cpb
+        WHERE cpb.cancelled_shift_id = ?
+          AND cpb.cancelled_at IS NOT NULL
+      ) AS cancelled_customer_payments_count,
+
+      (
+        SELECT COUNT(*)
+        FROM expenses e
+        WHERE e.cancelled_shift_id = ?
+          AND e.cancelled_at IS NOT NULL
+      ) AS cancelled_expenses_count,
+
+      (
+        SELECT COUNT(*)
+        FROM sale_returns sr
+        WHERE sr.cancelled_shift_id = ?
+          AND sr.cancelled_at IS NOT NULL
+      ) AS cancelled_returns_count,
+
+      (
+        SELECT COUNT(*)
+        FROM sale_exchanges se
+        WHERE se.cancelled_shift_id = ?
+          AND se.cancelled_at IS NOT NULL
+      ) AS cancelled_exchanges_count,
+
+      (
         SELECT IFNULL(SUM(se.difference_amount), 0)
         FROM sale_exchanges se
         WHERE se.shift_id = ?
@@ -1804,6 +1880,10 @@ export function getCashShiftDetails(shiftIdInput: number) {
       shiftId,
       shiftId,
 
+      shiftId,
+      shiftId,
+      shiftId,
+      shiftId,
       shiftId,
       shiftId,
       shiftId,
@@ -1852,6 +1932,22 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
     exchange_debt_reduction: roundFinancial(
       Number(operationsSummaryRow?.exchange_debt_reduction || 0),
+    ),
+
+    cancelled_customer_payments_count: Number(
+      operationsSummaryRow?.cancelled_customer_payments_count || 0,
+    ),
+
+    cancelled_expenses_count: Number(
+      operationsSummaryRow?.cancelled_expenses_count || 0,
+    ),
+
+    cancelled_returns_count: Number(
+      operationsSummaryRow?.cancelled_returns_count || 0,
+    ),
+
+    cancelled_exchanges_count: Number(
+      operationsSummaryRow?.cancelled_exchanges_count || 0,
     ),
 
     exchange_difference: roundFinancial(

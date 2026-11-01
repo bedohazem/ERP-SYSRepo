@@ -2695,7 +2695,9 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         cancelled_returns_count: 0,
 
         returns_total: 0,
+        return_cash_refund: 0,
 
+        return_debt_reduction: 0,
         exchanges_count: 0,
 
         cancelled_exchanges_count: 0,
@@ -2956,6 +2958,26 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           ),
           0
         ) AS returns_total,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              sr.cash_refund_amount,
+              0
+            )
+          ),
+          0
+        ) AS return_cash_refund,
+
+        IFNULL(
+          SUM(
+            IFNULL(
+              sr.debt_reduction_amount,
+              0
+            )
+          ),
+          0
+        ) AS return_debt_reduction,
 
         IFNULL(
           SUM(
@@ -3332,7 +3354,9 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
   const invoiceSales = reportMoney(sales?.invoice_sales);
 
   const returnsTotal = reportMoney(returns?.returns_total);
+  const returnCashRefund = reportMoney(returns?.return_cash_refund);
 
+  const returnDebtReduction = reportMoney(returns?.return_debt_reduction);
   const exchangeAdjustment = reportMoney(exchanges?.exchange_adjustment);
 
   const exchangeCashCollection = reportMoney(
@@ -3432,7 +3456,9 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       cancelled_returns_count: Number(cancelledReturns?.count || 0),
 
       returns_total: returnsTotal,
+      return_cash_refund: returnCashRefund,
 
+      return_debt_reduction: returnDebtReduction,
       exchanges_count: Number(exchanges?.exchanges_count || 0),
 
       cancelled_exchanges_count: Number(cancelledExchanges?.count || 0),
