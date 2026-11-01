@@ -60,7 +60,7 @@ describe('user repository', () => {
     const user = createUser(
       'Cashier One',
       'cashier1',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
@@ -72,7 +72,7 @@ describe('user repository', () => {
     expect(user.password).toBeUndefined();
 
     const raw = getUserRawById(user.id);
-    expect(raw.password).not.toBe('1234');
+    expect(raw.password).not.toBe('User1234');
     expect(raw.password.length).toBeGreaterThan(10);
   });
 
@@ -80,7 +80,7 @@ describe('user repository', () => {
     const user = createUser(
       'Second Admin',
       'admin2',
-      '1234',
+      'User1234',
       'admin',
     ) as PublicUserTestRow;
 
@@ -92,7 +92,7 @@ describe('user repository', () => {
     const user = createUser(
       'Unknown Role',
       'unknown_role',
-      '1234',
+      'User1234',
       'manager',
     ) as PublicUserTestRow;
 
@@ -100,33 +100,33 @@ describe('user repository', () => {
   });
 
   it('rejects empty name', () => {
-    expect(() => createUser('   ', 'user1', '1234', 'cashier')).toThrow(
+    expect(() => createUser('   ', 'user1', 'User1234', 'cashier')).toThrow(
       'اسم المستخدم مطلوب',
     );
   });
 
   it('rejects empty username', () => {
-    expect(() => createUser('User One', '   ', '1234', 'cashier')).toThrow(
+    expect(() => createUser('User One', '   ', 'User1234', 'cashier')).toThrow(
       'اسم الدخول مطلوب',
     );
   });
 
   it('rejects short password', () => {
     expect(() => createUser('User One', 'user1', '123', 'cashier')).toThrow(
-      'كلمة المرور يجب ألا تقل عن 4 أحرف',
+      'كلمة المرور يجب ألا تقل عن 8 أحرف',
     );
   });
 
   it('rejects duplicate username', () => {
-    createUser('Cashier One', 'duplicate_user', '1234', 'cashier');
+    createUser('Cashier One', 'duplicate_user', 'User1234', 'cashier');
 
     expect(() =>
-      createUser('Cashier Two', 'duplicate_user', '1234', 'cashier'),
+      createUser('Cashier Two', 'duplicate_user', 'User1234', 'cashier'),
     ).toThrow('اسم المستخدم مستخدم بالفعل');
   });
 
   it('lists users and searches by name username and role', () => {
-    createUser('Search Cashier', 'search_cashier', '1234', 'cashier');
+    createUser('Search Cashier', 'search_cashier', 'User1234', 'cashier');
 
     const allUsers = listUsers() as PublicUserTestRow[];
     const byName = listUsers('Search') as PublicUserTestRow[];
@@ -149,7 +149,7 @@ describe('user repository', () => {
     const user = createUser(
       'Old Name',
       'old_username',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
@@ -185,13 +185,13 @@ describe('user repository', () => {
     const user1 = createUser(
       'User One',
       'user_one',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
     const user2 = createUser(
       'User Two',
       'user_two',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
@@ -210,7 +210,7 @@ describe('user repository', () => {
     const user = createUser(
       'Cashier',
       'cashier_toggle',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
@@ -237,7 +237,7 @@ describe('user repository', () => {
   it('allows deactivating one admin when another active admin exists', () => {
     const admin = findUserByUsername('admin') as any;
 
-    createUser('Second Admin', 'admin_second', '1234', 'admin');
+    createUser('Second Admin', 'admin_second', 'User1234', 'admin');
 
     const inactive = setUserActive(admin.id, 0) as PublicUserTestRow;
 
@@ -262,12 +262,15 @@ describe('user repository', () => {
     const user = createUser(
       'Password User',
       'password_user',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
     const oldRaw = getUserRawById(user.id);
 
-    const updated = resetUserPassword(user.id, '5678') as PublicUserTestRow;
+    const updated = resetUserPassword(
+      user.id,
+      'Reset5678',
+    ) as PublicUserTestRow;
 
     expect(updated.id).toBe(user.id);
     expect(updated.password).toBeUndefined();
@@ -275,19 +278,19 @@ describe('user repository', () => {
     const newRaw = getUserRawById(user.id);
 
     expect(newRaw.password).not.toBe(oldRaw.password);
-    expect(newRaw.password).not.toBe('5678');
+    expect(newRaw.password).not.toBe('Reset5678');
   });
 
   it('rejects reset password with short password', () => {
     const user = createUser(
       'Password User',
       'short_password_user',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
     expect(() => resetUserPassword(user.id, '123')).toThrow(
-      'كلمة المرور يجب ألا تقل عن 4 أحرف',
+      'كلمة المرور يجب ألا تقل عن 8 أحرف',
     );
   });
 
@@ -295,7 +298,7 @@ describe('user repository', () => {
     const user = createUser(
       'Find User',
       'find_user',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
@@ -310,7 +313,7 @@ describe('user repository', () => {
     const user = createUser(
       'Upgrade User',
       'upgrade_user',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
     const before = getUserRawById(user.id);
@@ -327,21 +330,21 @@ describe('user repository', () => {
     const first = createUser(
       'Paged User 1',
       'paged_user_1',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
     const second = createUser(
       'Paged User 2',
       'paged_user_2',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
     const third = createUser(
       'Paged User 3',
       'paged_user_3',
-      '1234',
+      'User1234',
       'cashier',
     ) as PublicUserTestRow;
 
@@ -377,7 +380,7 @@ describe('user repository', () => {
     const user = createUser(
       'Permission Cashier',
       'permission_cashier',
-      '1234',
+      'User1234',
       'cashier',
     );
 
@@ -400,7 +403,7 @@ describe('user repository', () => {
     const user = createUser(
       'Custom Cashier',
       'custom_cashier',
-      '1234',
+      'User1234',
       'cashier',
     );
 
@@ -434,12 +437,12 @@ describe('user repository', () => {
   });
 
   it('clears custom overrides when role changes', () => {
-    createUser('Second Admin', 'permission_admin_2', '1234', 'admin');
+    createUser('Second Admin', 'permission_admin_2', 'User1234', 'admin');
 
     const user = createUser(
       'Role Change Cashier',
       'role_change_cashier',
-      '1234',
+      'User1234',
       'cashier',
     );
 
@@ -471,7 +474,7 @@ describe('user repository', () => {
     const user = createUser(
       'Permission Dependency User',
       'permission_dependency',
-      '1234',
+      'User1234',
       'cashier',
     );
 

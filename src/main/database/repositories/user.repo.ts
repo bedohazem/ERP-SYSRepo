@@ -7,6 +7,7 @@ import {
   normalizePermissions,
   type PermissionKey,
 } from '../../../shared/permissions';
+import { assertPasswordPolicy } from '../../../shared/password-policy';
 
 export type UserRow = {
   id: number;
@@ -405,7 +406,7 @@ export function createUser(
   /*
    * لا نعمل trim للباسورد.
    */
-  const rawPassword = String(password ?? '');
+  const rawPassword = assertPasswordPolicy(password);
 
   const cleanRole = normalizeRole(role);
 
@@ -415,15 +416,6 @@ export function createUser(
 
   if (!cleanUsername) {
     throw new Error('اسم الدخول مطلوب');
-  }
-
-  /*
-   * Repository fallback فقط.
-   * الـIPC يطبق السياسة
-   * الأقوى 8 + حرف + رقم.
-   */
-  if (rawPassword.length < 4) {
-    throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف');
   }
 
   ensureUsernameAvailable(cleanUsername);
@@ -550,11 +542,7 @@ export function resetUserPassword(
 ): PublicUserRow {
   const db = getDb();
 
-  const rawPassword = String(password ?? '');
-
-  if (rawPassword.length < 4) {
-    throw new Error('كلمة المرور يجب ألا تقل عن 4 أحرف');
-  }
+  const rawPassword = assertPasswordPolicy(password);
 
   const current = getUserByIdInternal(userId);
 

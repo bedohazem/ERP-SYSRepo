@@ -111,7 +111,7 @@ describe('financial IPC session scope', () => {
     const cashier = createUser(
       'Scoped Cashier',
       'scoped_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -160,7 +160,7 @@ describe('financial IPC session scope', () => {
 
       'report_cashier',
 
-      '5678',
+      'Cashier5678',
 
       'cashier',
     );
@@ -264,7 +264,7 @@ describe('financial IPC session scope', () => {
     const cashier = createUser(
       'Blocked Cashier',
       'blocked_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -301,7 +301,7 @@ describe('financial IPC session scope', () => {
     const cashier = createUser(
       'Blind Cashier',
       'blind_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -360,7 +360,7 @@ describe('financial IPC session scope', () => {
     const cashier = createUser(
       'Blind Reconciliation Cashier',
       'blind_reconciliation_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -455,7 +455,7 @@ describe('financial IPC session scope', () => {
     const cashier = createUser(
       'Cash Manager',
       'cash_manager',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -504,7 +504,7 @@ describe('financial IPC session scope', () => {
     const cashier = createUser(
       'Shift Manager',
       'shift_manager',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 

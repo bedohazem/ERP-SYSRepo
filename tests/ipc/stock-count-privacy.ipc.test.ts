@@ -155,7 +155,7 @@ describe('stock count cashier privacy', () => {
 
       'blind_count_cashier',
 
-      '5678',
+      'Cashier5678',
 
       'cashier',
     );

@@ -148,7 +148,7 @@ describe('IPC security hardening', () => {
     const cashier = createUser(
       'Security Cashier',
       'security_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -498,7 +498,7 @@ describe('IPC security hardening', () => {
     const cashier = createUser(
       'Cash Flow Cashier',
       'cash_flow_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -595,7 +595,7 @@ describe('IPC security hardening', () => {
     const cashier = createUser(
       'Promotion Manager',
       'promotion_manager',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 

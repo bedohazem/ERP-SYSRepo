@@ -132,7 +132,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Sales Cashier',
       'sales_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -213,7 +213,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Customer Cashier',
       'customer_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -230,7 +230,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Blocked Domain Cashier',
       'blocked_domain_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -308,7 +308,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Write Blocked Cashier',
       'write_blocked_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -1042,7 +1042,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Cost Hidden Cashier',
       'cost_hidden_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -1142,7 +1142,7 @@ describe('domain IPC session scope', () => {
     const costCashier = createUser(
       'Cost Permission Cashier',
       'cost_permission_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -1194,7 +1194,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Custom Permission Cashier',
       'custom_permission_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -1311,7 +1311,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Restricted Sales Cashier',
       'restricted_sales_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -1338,7 +1338,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Credit Cashier',
       'credit_cashier',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -1596,7 +1596,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Movement Viewer',
       'movement_viewer',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 
@@ -1639,7 +1639,7 @@ describe('domain IPC session scope', () => {
     const cashier = createUser(
       'Purchase Manager',
       'purchase_manager',
-      '5678',
+      'Cashier5678',
       'cashier',
     );
 

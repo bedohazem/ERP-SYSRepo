@@ -467,7 +467,7 @@ describe('auth IPC authorization', () => {
       } else if (change === 'active') {
         setUserActive(user.id, 0);
       } else {
-        resetUserPassword(user.id, '9012');
+        resetUserPassword(user.id, 'Reset9012');
       }
 
       expect((await invoke(event, 'users:list', {})).success).toBe(false);
