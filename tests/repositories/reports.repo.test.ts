@@ -924,7 +924,7 @@ describe('reports repository', () => {
 
       'second_cashier_report',
 
-      '1234',
+      'Report1234',
 
       /*
        * Admin هنا فقط لتسهيل
@@ -1212,7 +1212,7 @@ describe('reports repository', () => {
 
       'return_admin',
 
-      '1234',
+      'Report1234',
 
       'admin',
     );
@@ -1799,7 +1799,7 @@ describe('reports repository', () => {
 
       'second_shift_cashier',
 
-      '1234',
+      'Report1234',
 
       /*
        * Admin في التست فقط
@@ -2011,7 +2011,7 @@ describe('reports repository', () => {
 
       'shift_sales_cashier',
 
-      '1234',
+      'Report1234',
 
       'cashier',
     );
@@ -2196,7 +2196,7 @@ describe('reports repository', () => {
     const cashier = createUser(
       'Payment Matrix Cashier',
       'payment_matrix_cashier',
-      '1234',
+      'Report1234',
       'cashier',
     );
 
@@ -2539,7 +2539,7 @@ describe('reports repository', () => {
     const cashier = createUser(
       'Full Cycle Cashier',
       'full_cycle_cashier',
-      '1234',
+      'Report1234',
       'cashier',
     );
 
@@ -3429,6 +3429,377 @@ describe('reports repository', () => {
     expect(Number(cashierInvoices?.count || 0)).toBe(5);
 
     expect(Number(adminInvoices?.count || 0)).toBe(7);
+  });
+
+  it('keeps historical shift details immutable when later-shift operations touch old records', () => {
+    const shift1 = getOpenCashShift();
+
+    expect(shift1).toBeTruthy();
+
+    const baseVariant = seedReportProduct({
+      name: 'Cross Shift Historical Base',
+      barcode: 'CROSS-SHIFT-HISTORICAL-BASE',
+      openingQty: 50,
+      buyPrice: 40,
+      sellPrice: 100,
+    });
+
+    const exchangeVariant = seedReportProduct({
+      name: 'Cross Shift Historical Exchange',
+      barcode: 'CROSS-SHIFT-HISTORICAL-EXCHANGE',
+      openingQty: 20,
+      buyPrice: 55,
+      sellPrice: 130,
+    });
+
+    const customer = createTestCustomer(
+      'Cross Shift Historical Customer',
+      '01077778888',
+    );
+
+    function createShiftOneSale(input?: {
+      quantity?: number;
+      customerId?: number | null;
+      paid?: number;
+    }) {
+      const quantity = input?.quantity ?? 1;
+
+      const total = quantity * 100;
+
+      const paid = input?.paid === undefined ? total : input.paid;
+
+      return createSale({
+        user_id: 1,
+
+        customer_id: input?.customerId ?? null,
+
+        sub_total: total,
+
+        discount_value: 0,
+
+        grand_total: total,
+
+        paid,
+
+        remaining_amount: total - paid,
+
+        payment_status:
+          paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
+
+        change_amount: 0,
+
+        payment_method: 'store_cash',
+
+        items: [
+          {
+            variant_id: baseVariant.variant_id,
+
+            product_name: baseVariant.product_name,
+
+            barcode: baseVariant.barcode,
+
+            size: baseVariant.size,
+
+            color: baseVariant.color,
+
+            quantity,
+
+            unit_price: 100,
+          },
+        ],
+      });
+    }
+
+    /*
+     * =================================
+     * Shift 1
+     * =================================
+     *
+     * 1) فاتورة جزئي:
+     *    300 / مدفوع 100 / باقي 200
+     *
+     * 2) فاتورة 200 سنعمل عليها
+     *    مرتجع لاحقًا في Shift 2
+     *
+     * 3) فاتورة 100 سنعمل عليها
+     *    استبدال +30 لاحقًا في Shift 2
+     *
+     * 4) فاتورة 100 سنلغيها
+     *    لاحقًا في Shift 2
+     *
+     * 5) مصروف 40 سنعدله
+     *    لاحقًا في Shift 2
+     */
+
+    const creditSale = createShiftOneSale({
+      quantity: 3,
+      customerId: customer.id,
+      paid: 100,
+    });
+
+    const returnSale = createShiftOneSale({
+      quantity: 2,
+    });
+
+    const exchangeSale = createShiftOneSale();
+
+    const cancelSale = createShiftOneSale();
+
+    const expense = createExpense({
+      title: 'Cross Shift Historical Expense',
+
+      amount: 40,
+
+      payment_method: 'store_cash',
+
+      created_by: 1,
+    });
+
+    expect(creditSale.shift_id).toBe(shift1!.id);
+
+    expect(returnSale.shift_id).toBe(shift1!.id);
+
+    expect(exchangeSale.shift_id).toBe(shift1!.id);
+
+    expect(cancelSale.shift_id).toBe(shift1!.id);
+
+    expect(expense.shift_id).toBe(shift1!.id);
+
+    /*
+     * صورة Shift 1 قبل أي عملية لاحقة.
+     */
+    const shift1Before = getCashShiftDetails(shift1!.id);
+
+    expect(shift1Before.sales_summary.invoices_count).toBe(4);
+
+    expect(shift1Before.sales_summary.active_invoices_count).toBe(4);
+
+    expect(shift1Before.sales_summary.cancelled_invoices_count).toBe(0);
+
+    expect(shift1Before.sales_summary.invoice_sales).toBe(700);
+
+    expect(shift1Before.sales_summary.net_sales).toBe(700);
+
+    expect(shift1Before.sales_summary.paid_total).toBe(500);
+
+    expect(shift1Before.sales_summary.remaining_total).toBe(200);
+
+    expect(shift1Before.operations_summary.customer_payments_count).toBe(0);
+
+    expect(shift1Before.operations_summary.returns_count).toBe(0);
+
+    expect(shift1Before.operations_summary.exchanges_count).toBe(0);
+
+    expect(shift1Before.operations_summary.expenses_count).toBe(1);
+
+    expect(shift1Before.operations_summary.expenses_total).toBe(40);
+
+    /*
+     * نقفل Shift 1 على الرصيد المتوقع
+     * بالضبط، ونرحل نفس الرصيد.
+     */
+    const shift1ClosingAmount = Number(
+      shift1Before.preview.expected_closing_amount,
+    );
+
+    closeCashShift({
+      shift_id: shift1!.id,
+
+      closing_counted_amount: shift1ClosingAmount,
+
+      left_for_next_shift: shift1ClosingAmount,
+
+      closed_by: 1,
+    });
+
+    /*
+     * =================================
+     * Shift 2
+     * =================================
+     */
+    const shift2 = openCashShift({
+      opening_counted_amount: shift1ClosingAmount,
+
+      opened_by: 1,
+    });
+
+    /*
+     * دفعة على فاتورة Shift 1.
+     */
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+
+      sale_id: creditSale.saleId,
+
+      amount: 50,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    });
+
+    expect(payment.shift_id).toBe(shift2.id);
+
+    /*
+     * مرتجع على فاتورة Shift 1.
+     */
+    const returnReceipt = getSaleReceipt(returnSale.saleId) as any;
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: returnSale.saleId,
+
+      user_id: 1,
+
+      reason: 'Cross shift historical return',
+
+      refund_payment_method: 'store_cash',
+
+      items: [
+        {
+          sale_item_id: Number(returnReceipt.items[0].id),
+
+          variant_id: baseVariant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.shift_id).toBe(shift2.id);
+
+    expect(saleReturn.return_value).toBe(100);
+
+    /*
+     * استبدال +30 على فاتورة Shift 1.
+     */
+    const exchangeState = getSaleExchangeState(exchangeSale.saleId);
+
+    const regularGroup = exchangeState.groups.find(
+      (group: any) =>
+        group.group_kind === 'regular' &&
+        group.units.some((unit: any) => Number(unit.is_returned || 0) === 0),
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    const exchangeUnit = regularGroup!.units.find(
+      (unit: any) => Number(unit.is_returned || 0) === 0,
+    );
+
+    expect(exchangeUnit).toBeTruthy();
+
+    const exchange = createSaleExchange({
+      original_sale_id: exchangeSale.saleId,
+
+      user_id: 1,
+
+      payment_method: 'store_cash',
+
+      reason: 'Cross shift historical exchange',
+
+      items: [
+        {
+          promotion_unit_id: Number(exchangeUnit.id),
+
+          new_variant_id: exchangeVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.shift_id).toBe(shift2.id);
+
+    expect(exchange.difference_amount).toBe(30);
+
+    /*
+     * إلغاء فاتورة من Shift 1
+     * داخل Shift 2.
+     */
+    const cancelledSale = cancelSaleInvoice({
+      sale_id: cancelSale.saleId,
+
+      reason: 'Cross shift historical cancellation',
+
+      actor_id: 1,
+    });
+
+    expect(cancelledSale.cancelled_shift_id).toBe(shift2.id);
+
+    /*
+     * تعديل مصروف Shift 1
+     * داخل Shift 2.
+     */
+    const updatedExpense = updateExpense({
+      id: expense.id,
+
+      title: 'Cross Shift Historical Expense Updated',
+
+      amount: 60,
+
+      payment_method: 'store_cash',
+
+      actor_id: 1,
+    });
+
+    expect(updatedExpense.updated_shift_id).toBe(shift2.id);
+
+    /*
+     * =================================
+     * أهم Assertion في الاختبار:
+     *
+     * Shift 1 يجب أن يظل كما كان
+     * وقت إغلاقه.
+     * =================================
+     */
+    const shift1After = getCashShiftDetails(shift1!.id);
+
+    expect(shift1After.sales_summary).toEqual(shift1Before.sales_summary);
+
+    expect(shift1After.operations_summary).toEqual(
+      shift1Before.operations_summary,
+    );
+
+    expect(shift1After.preview).toEqual(shift1Before.preview);
+
+    /*
+     * =================================
+     * Shift 2 يحمل العمليات الجديدة.
+     * =================================
+     */
+    const shift2Details = getCashShiftDetails(shift2.id);
+
+    /*
+     * مفيش فواتير جديدة اتعملت في Shift 2.
+     */
+    expect(shift2Details.sales_summary.active_invoices_count).toBe(0);
+
+    expect(shift2Details.sales_summary.invoice_sales).toBe(0);
+
+    /*
+     * لكن إلغاء الفاتورة القديمة
+     * حصل فعلًا داخل Shift 2.
+     */
+    expect(shift2Details.sales_summary.cancelled_invoices_count).toBe(1);
+
+    /*
+     * دفعة العميل القديمة تمت هنا.
+     */
+    expect(shift2Details.operations_summary.customer_payments_count).toBe(1);
+
+    expect(shift2Details.operations_summary.customer_payments_total).toBe(50);
+
+    /*
+     * المرتجع تم هنا.
+     */
+    expect(shift2Details.operations_summary.returns_count).toBe(1);
+
+    expect(shift2Details.operations_summary.returns_total).toBe(100);
+
+    /*
+     * والاستبدال تم هنا.
+     */
+    expect(shift2Details.operations_summary.exchanges_count).toBe(1);
+
+    expect(shift2Details.operations_summary.exchange_difference).toBe(30);
   });
 
   it('keeps shift operations on the shift opening business date', () => {

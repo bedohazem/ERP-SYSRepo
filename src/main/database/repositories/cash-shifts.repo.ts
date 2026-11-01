@@ -1569,14 +1569,6 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
       s.grand_total,
 
-      MAX(
-        0,
-        IFNULL(
-          s.remaining_amount,
-          0
-        )
-      ) AS remaining_amount,
-
       s.payment_status,
       s.payment_method,
 
@@ -1602,6 +1594,69 @@ export function getCashShiftDetails(shiftIdInput: number) {
         )
       ) AS discount_total,
 
+      /*
+       * المدفوع وقت إنشاء/تعديل الفاتورة نفسها.
+       *
+       * لا نعتمد على s.paid لأنه يتغير
+       * لاحقًا مع دفعات العملاء.
+       */
+      IFNULL(
+        (
+          SELECT SUM(sp.amount)
+
+          FROM sale_payments sp
+
+          WHERE
+            sp.sale_id = s.id
+
+            AND sp.payment_method <> 'split'
+
+            AND sp.amount > 0
+        ),
+        0
+      ) AS invoice_paid_amount,
+
+      /*
+       * دفعات العميل التي حدثت داخل
+       * نفس شفت الفاتورة فقط.
+       *
+       * لو الدفعة اتلغت في شفت لاحق،
+       * تظل جزءًا من التاريخ القديم.
+       *
+       * لو اتلغت داخل نفس الشفت،
+       * لا تدخل في أرقام نهاية الشفت.
+       */
+      IFNULL(
+        (
+          SELECT SUM(cp.amount)
+
+          FROM customer_payments cp
+
+          JOIN customer_payment_batches cpb
+            ON cpb.id = cp.batch_id
+
+          WHERE
+            cp.sale_id = s.id
+
+            AND cpb.shift_id = s.shift_id
+
+            AND (
+              cpb.cancelled_at IS NULL
+
+              OR (
+                cpb.cancelled_shift_id IS NOT NULL
+
+                AND cpb.cancelled_shift_id <> cpb.shift_id
+              )
+            )
+        ),
+        0
+      ) AS same_shift_customer_payments,
+
+      /*
+       * المرتجعات المنفذة داخل
+       * نفس شفت الفاتورة فقط.
+       */
       IFNULL(
         (
           SELECT SUM(sr.refund_amount)
@@ -1611,11 +1666,49 @@ export function getCashShiftDetails(shiftIdInput: number) {
           WHERE
             sr.original_sale_id = s.id
 
-            AND sr.cancelled_at IS NULL
+            AND sr.shift_id = s.shift_id
+
+            AND (
+              sr.cancelled_at IS NULL
+
+              OR (
+                sr.cancelled_shift_id IS NOT NULL
+
+                AND sr.cancelled_shift_id <> sr.shift_id
+              )
+            )
         ),
         0
       ) AS total_return_amount,
 
+      IFNULL(
+        (
+          SELECT SUM(sr.cash_refund_amount)
+
+          FROM sale_returns sr
+
+          WHERE
+            sr.original_sale_id = s.id
+
+            AND sr.shift_id = s.shift_id
+
+            AND (
+              sr.cancelled_at IS NULL
+
+              OR (
+                sr.cancelled_shift_id IS NOT NULL
+
+                AND sr.cancelled_shift_id <> sr.shift_id
+              )
+            )
+        ),
+        0
+      ) AS return_cash_refund,
+
+      /*
+       * الاستبدالات المنفذة داخل
+       * نفس شفت الفاتورة فقط.
+       */
       IFNULL(
         (
           SELECT SUM(se.difference_amount)
@@ -1625,13 +1718,105 @@ export function getCashShiftDetails(shiftIdInput: number) {
           WHERE
             se.original_sale_id = s.id
 
-            AND se.cancelled_at IS NULL
+            AND se.shift_id = s.shift_id
+
+            AND (
+              se.cancelled_at IS NULL
+
+              OR (
+                se.cancelled_shift_id IS NOT NULL
+
+                AND se.cancelled_shift_id <> se.shift_id
+              )
+            )
         ),
         0
       ) AS exchange_difference_total,
 
-      s.cancelled_at,
-      s.cancel_reason,
+      IFNULL(
+        (
+          SELECT SUM(se.cash_collection_amount)
+
+          FROM sale_exchanges se
+
+          WHERE
+            se.original_sale_id = s.id
+
+            AND se.shift_id = s.shift_id
+
+            AND (
+              se.cancelled_at IS NULL
+
+              OR (
+                se.cancelled_shift_id IS NOT NULL
+
+                AND se.cancelled_shift_id <> se.shift_id
+              )
+            )
+        ),
+        0
+      ) AS exchange_cash_collection,
+
+      IFNULL(
+        (
+          SELECT SUM(se.cash_refund_amount)
+
+          FROM sale_exchanges se
+
+          WHERE
+            se.original_sale_id = s.id
+
+            AND se.shift_id = s.shift_id
+
+            AND (
+              se.cancelled_at IS NULL
+
+              OR (
+                se.cancelled_shift_id IS NOT NULL
+
+                AND se.cancelled_shift_id <> se.shift_id
+              )
+            )
+        ),
+        0
+      ) AS exchange_cash_refund,
+
+      /*
+       * إلغاء الفاتورة يعتبر جزءًا من
+       * الشفت الأصلي فقط لو الإلغاء
+       * حصل داخل نفس الشفت.
+       *
+       * Legacy:
+       * لو مفيش cancelled_shift_id
+       * نحافظ على السلوك القديم.
+       */
+      CASE
+        WHEN
+          s.cancelled_at IS NOT NULL
+
+          AND (
+            s.cancelled_shift_id IS NULL
+            OR s.cancelled_shift_id = s.shift_id
+          )
+
+        THEN s.cancelled_at
+
+        ELSE NULL
+      END AS cancelled_at,
+
+      CASE
+        WHEN
+          s.cancelled_at IS NOT NULL
+
+          AND (
+            s.cancelled_shift_id IS NULL
+            OR s.cancelled_shift_id = s.shift_id
+          )
+
+        THEN s.cancel_reason
+
+        ELSE NULL
+      END AS cancel_reason,
 
       s.created_at,
 
@@ -1664,10 +1849,13 @@ export function getCashShiftDetails(shiftIdInput: number) {
     .all(shiftId) as any[];
 
   const sales = rawSales.map((sale) => {
-    const remainingAmount = roundFinancial(
-      Math.max(0, Number(sale.remaining_amount || 0)),
-    );
-
+    /*
+     * صافي قيمة الفاتورة داخل هذا الشفت
+     * فقط.
+     *
+     * أي مرتجع أو استبدال حصل في
+     * شفت لاحق لا يعدل التاريخ القديم.
+     */
     const currentNetTotal = roundFinancial(
       Math.max(
         0,
@@ -1678,6 +1866,36 @@ export function getCashShiftDetails(shiftIdInput: number) {
       ),
     );
 
+    /*
+     * المبلغ الذي كان محصلًا بنهاية
+     * نفس الشفت:
+     *
+     * + دفع الفاتورة
+     * + دفعات العميل داخل الشفت
+     * + تحصيل فرق الاستبدال
+     * - رد المرتجع النقدي
+     * - رد فرق الاستبدال
+     */
+    const paidAmount = roundFinancial(
+      Math.max(
+        0,
+
+        Number(sale.invoice_paid_amount || 0) +
+          Number(sale.same_shift_customer_payments || 0) +
+          Number(sale.exchange_cash_collection || 0) -
+          Number(sale.return_cash_refund || 0) -
+          Number(sale.exchange_cash_refund || 0),
+      ),
+    );
+
+    const remainingAmount = roundFinancial(
+      Math.max(
+        0,
+
+        currentNetTotal - paidAmount,
+      ),
+    );
+
     return {
       ...sale,
 
@@ -1685,11 +1903,44 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
       current_net_total: currentNetTotal,
 
-      paid_amount: roundFinancial(
-        Math.max(0, currentNetTotal - remainingAmount),
-      ),
+      paid_amount: Math.min(currentNetTotal, paidAmount),
     };
   });
+
+  const cancelledSalesCountRow = db
+    .prepare(
+      `
+      SELECT
+        COUNT(*) AS count
+
+      FROM sales s
+
+      WHERE
+        IFNULL(
+          s.type,
+          'sale'
+        ) = 'sale'
+
+        AND s.cancelled_at IS NOT NULL
+
+        AND (
+          s.cancelled_shift_id = ?
+
+          OR (
+            s.cancelled_shift_id IS NULL
+
+            AND s.shift_id = ?
+          )
+        )
+      `,
+    )
+    .get(shiftId, shiftId) as
+    | {
+        count: number;
+      }
+    | undefined;
+
+  const cancelledSalesCount = Number(cancelledSalesCountRow?.count || 0);
 
   const salesSummary = sales.reduce(
     (summary, sale) => {
@@ -1698,8 +1949,6 @@ export function getCashShiftDetails(shiftIdInput: number) {
       summary.invoices_count += 1;
 
       if (cancelled) {
-        summary.cancelled_invoices_count += 1;
-
         return summary;
       }
 
@@ -1732,7 +1981,7 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
       active_invoices_count: 0,
 
-      cancelled_invoices_count: 0,
+      cancelled_invoices_count: cancelledSalesCount,
 
       invoice_sales: 0,
       net_sales: 0,
@@ -1752,84 +2001,217 @@ export function getCashShiftDetails(shiftIdInput: number) {
         SELECT COUNT(*)
         FROM customer_payment_batches cpb
         WHERE cpb.shift_id = ?
-          AND cpb.cancelled_at IS NULL
+          AND (
+            cpb.cancelled_at IS NULL
+
+            OR (
+              cpb.cancelled_shift_id IS NOT NULL
+
+              AND cpb.cancelled_shift_id <> cpb.shift_id
+            )
+          )
       ) AS customer_payments_count,
 
       (
         SELECT IFNULL(SUM(cpb.amount), 0)
         FROM customer_payment_batches cpb
         WHERE cpb.shift_id = ?
-          AND cpb.cancelled_at IS NULL
+          AND (
+            cpb.cancelled_at IS NULL
+
+            OR (
+              cpb.cancelled_shift_id IS NOT NULL
+
+              AND cpb.cancelled_shift_id <> cpb.shift_id
+            )
+          )
       ) AS customer_payments_total,
 
       (
         SELECT COUNT(*)
         FROM expenses e
         WHERE e.shift_id = ?
-          AND e.cancelled_at IS NULL
+          AND (
+            e.cancelled_at IS NULL
+
+            OR (
+              e.cancelled_shift_id IS NOT NULL
+
+              AND e.cancelled_shift_id <> e.shift_id
+            )
+          )
       ) AS expenses_count,
 
       (
-        SELECT IFNULL(SUM(e.amount), 0)
+        SELECT
+          IFNULL(
+            SUM(
+              COALESCE(
+                (
+                  SELECT
+                    cm.amount
+
+                  FROM cash_movements cm
+
+                  WHERE
+                    cm.type = 'expense'
+
+                    AND cm.direction = 'out'
+
+                    AND cm.reference_type = 'expense'
+
+                    AND cm.reference_id = e.id
+
+                    AND cm.shift_id = e.shift_id
+
+                    AND cm.cancelled_at IS NULL
+
+                  ORDER BY
+                    cm.id DESC
+
+                  LIMIT 1
+                ),
+
+                e.amount
+              )
+            ),
+            0
+          )
+
         FROM expenses e
-        WHERE e.shift_id = ?
-          AND e.cancelled_at IS NULL
+
+        WHERE
+          e.shift_id = ?
+
+          AND (
+            e.cancelled_at IS NULL
+
+            OR (
+              e.cancelled_shift_id IS NOT NULL
+
+              AND e.cancelled_shift_id <> e.shift_id
+            )
+          )
       ) AS expenses_total,
 
       (
         SELECT COUNT(*)
         FROM sale_returns sr
         WHERE sr.shift_id = ?
-          AND sr.cancelled_at IS NULL
+          AND (
+          sr.cancelled_at IS NULL
+
+          OR (
+            sr.cancelled_shift_id IS NOT NULL
+
+            AND sr.cancelled_shift_id <> sr.shift_id
+          )
+        )
       ) AS returns_count,
 
       (
         SELECT IFNULL(SUM(sr.refund_amount), 0)
         FROM sale_returns sr
         WHERE sr.shift_id = ?
-          AND sr.cancelled_at IS NULL
+          AND (
+            sr.cancelled_at IS NULL
+
+            OR (
+              sr.cancelled_shift_id IS NOT NULL
+
+              AND sr.cancelled_shift_id <> sr.shift_id
+            )
+          )
       ) AS returns_total,
 
       (
         SELECT IFNULL(SUM(sr.cash_refund_amount), 0)
         FROM sale_returns sr
         WHERE sr.shift_id = ?
-          AND sr.cancelled_at IS NULL
+          AND (
+            sr.cancelled_at IS NULL
+
+            OR (
+              sr.cancelled_shift_id IS NOT NULL
+
+              AND sr.cancelled_shift_id <> sr.shift_id
+            )
+          )
       ) AS returns_cash_refund,
 
       (
         SELECT IFNULL(SUM(sr.debt_reduction_amount), 0)
         FROM sale_returns sr
         WHERE sr.shift_id = ?
-          AND sr.cancelled_at IS NULL
+          AND (
+            sr.cancelled_at IS NULL
+
+            OR (
+              sr.cancelled_shift_id IS NOT NULL
+
+              AND sr.cancelled_shift_id <> sr.shift_id
+            )
+          )
       ) AS returns_debt_reduction,
 
       (
         SELECT COUNT(*)
         FROM sale_exchanges se
         WHERE se.shift_id = ?
-          AND se.cancelled_at IS NULL
+          AND (
+            se.cancelled_at IS NULL
+
+            OR (
+              se.cancelled_shift_id IS NOT NULL
+
+              AND se.cancelled_shift_id <> se.shift_id
+            )
+          )
       ) AS exchanges_count,
 
       (
         SELECT IFNULL(SUM(se.cash_collection_amount), 0)
         FROM sale_exchanges se
         WHERE se.shift_id = ?
-          AND se.cancelled_at IS NULL
+          AND (
+            se.cancelled_at IS NULL
+
+            OR (
+              se.cancelled_shift_id IS NOT NULL
+
+              AND se.cancelled_shift_id <> se.shift_id
+            )
+          )
       ) AS exchange_cash_collection,
 
       (
         SELECT IFNULL(SUM(se.cash_refund_amount), 0)
         FROM sale_exchanges se
         WHERE se.shift_id = ?
-          AND se.cancelled_at IS NULL
+          AND (
+            se.cancelled_at IS NULL
+
+            OR (
+              se.cancelled_shift_id IS NOT NULL
+
+              AND se.cancelled_shift_id <> se.shift_id
+            )
+          )
       ) AS exchange_cash_refund,
 
       (
         SELECT IFNULL(SUM(se.debt_reduction_amount), 0)
         FROM sale_exchanges se
         WHERE se.shift_id = ?
-          AND se.cancelled_at IS NULL
+          AND (
+            se.cancelled_at IS NULL
+
+            OR (
+              se.cancelled_shift_id IS NOT NULL
+
+              AND se.cancelled_shift_id <> se.shift_id
+            )
+          )
       ) AS exchange_debt_reduction,
 
       (
@@ -1864,7 +2246,15 @@ export function getCashShiftDetails(shiftIdInput: number) {
         SELECT IFNULL(SUM(se.difference_amount), 0)
         FROM sale_exchanges se
         WHERE se.shift_id = ?
-          AND se.cancelled_at IS NULL
+          AND (
+            se.cancelled_at IS NULL
+
+            OR (
+              se.cancelled_shift_id IS NOT NULL
+
+              AND se.cancelled_shift_id <> se.shift_id
+            )
+          )
       ) AS exchange_difference
     `,
     )
