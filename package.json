@@ -21,7 +21,7 @@
     "electron:prepare": "electron-rebuild -f -w better-sqlite3",
     "dev:ready": "npm run electron:prepare && npm run dev",
     "dist:dir": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win dir --x64",
-    "dist:win": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win nsis --x64",
+    "dist:win": "npm run typecheck && npm run build:renderer && npm run build:main && npm run electron:prepare && electron-builder --win nsis --x64 --publish never",
     "build:main": "node scripts/build-main.mjs",
     "support:generator": "electron ./tools/support-generator",
     "support:build": "electron-packager ./tools/support-generator \"ERP Support Generator\" --platform=win32 --arch=x64 --out=tools/release --overwrite --asar --electron-version=44.4.4 && node scripts/harden-support-generator.mjs",
