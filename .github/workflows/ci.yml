@@ -108,6 +108,50 @@ jobs:
       - name: Electron E2E smoke
         run: npm run test:e2e
 
+  windows-installer:
+    name: Windows Installer Build
+
+    runs-on: windows-latest
+
+    timeout-minutes: 30
+
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Verify installer assets
+        shell: powershell
+        run: |
+          $requiredFiles = @(
+            'build/icon.ico',
+            'build/installer-sidebar.bmp',
+            'build/installer-header.bmp'
+          )
+
+          foreach ($file in $requiredFiles) {
+            if (-not (Test-Path $file)) {
+              Write-Error "Missing required installer asset: $file"
+              exit 1
+            }
+
+            Write-Host "Found: $file"
+          }
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Build Windows installer
+        run: npm run dist:win
+
   verify:
     name: Tests and Electron E2E
 
@@ -117,6 +161,7 @@ jobs:
       - quality
       - tests
       - electron-e2e
+      - windows-installer
 
     runs-on: ubuntu-latest
 
@@ -129,6 +174,7 @@ jobs:
           echo "Quality: ${{ needs.quality.result }}"
           echo "Tests: ${{ needs.tests.result }}"
           echo "Electron E2E: ${{ needs.electron-e2e.result }}"
+          echo "Windows Installer: ${{ needs.windows-installer.result }}"
 
           if [ "${{ needs.quality.result }}" != "success" ]; then
             echo "Code quality failed."
@@ -145,4 +191,9 @@ jobs:
             exit 1
           fi
 
-          echo "All ERP CI checks passed."
+          if [ "${{ needs.windows-installer.result }}" != "success" ]; then
+            echo "Windows installer build failed."
+            exit 1
+          fi
+
+          echo "All ERP CI checks and Windows installer build passed."

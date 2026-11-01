@@ -3683,6 +3683,15 @@ function getPurchaseReturnMutationContext(returnIdInput: number) {
     );
   }
 
+  /*
+   * الرصيد الدائن الافتتاحي الناتج
+   * عن Selective Restore قيد تقني،
+   * وليس مرتجع شراء تشغيلي.
+   */
+  if (purchaseReturn.purchase_status === 'opening_balance') {
+    throw new Error('لا يمكن تعديل أو إلغاء الرصيد الدائن الافتتاحي للمورد');
+  }
+
   const latestActiveReturn = db
     .prepare(
       `
@@ -4347,7 +4356,15 @@ export function listPurchaseReturns(input?: {
   const limit = Math.min(Math.max(Number(input?.limit || 100), 1), 300);
   const offset = Math.max(Number(input?.offset || 0), 0);
 
-  const where: string[] = [];
+  const where: string[] = [
+    `
+    IFNULL(
+      pi.status,
+      'active'
+    ) <> 'opening_balance'
+    `,
+  ];
+
   const params: any[] = [];
 
   if (dateFrom) {
@@ -4419,8 +4436,15 @@ export function listPurchaseReturns(input?: {
           ELSE 0
         END AS is_latest_active_return
       FROM purchase_returns pr
-      JOIN suppliers s ON s.id = pr.supplier_id
-      LEFT JOIN purchase_return_items pri ON pri.return_id = pr.id
+
+      JOIN suppliers s
+        ON s.id = pr.supplier_id
+
+      JOIN purchase_invoices pi
+        ON pi.id = pr.purchase_id
+
+      LEFT JOIN purchase_return_items pri
+        ON pri.return_id = pr.id
       ${whereSql}
       GROUP BY pr.id
       ORDER BY pr.id DESC
@@ -4435,7 +4459,13 @@ export function listPurchaseReturns(input?: {
       `
       SELECT COUNT(*) AS total
       FROM purchase_returns pr
-      JOIN suppliers s ON s.id = pr.supplier_id
+
+      JOIN suppliers s
+        ON s.id = pr.supplier_id
+
+      JOIN purchase_invoices pi
+        ON pi.id = pr.purchase_id
+
       ${whereSql}
     `,
     )
@@ -6339,21 +6369,61 @@ export function getSupplierStatement(
   const purchases = db
     .prepare(
       `
-      SELECT *
+    SELECT
+      pi.*,
 
-      FROM purchase_invoices
+      CASE
+        WHEN
+          IFNULL(
+            pi.status,
+            'active'
+          ) = 'opening_balance'
 
-      WHERE supplier_id = ?
+          AND EXISTS (
+            SELECT 1
 
-        AND IFNULL(
-          status,
-          'active'
-        ) != 'cancelled'
+            FROM purchase_returns pr
 
-      ORDER BY
-        created_at DESC,
-        id DESC
-      `,
+            WHERE
+              pr.purchase_id = pi.id
+
+              AND pr.cancelled_at
+                IS NULL
+
+              AND IFNULL(
+                pr.credit_amount,
+                0
+              ) > ${PRECISE_MONEY_EPSILON}
+
+              AND NOT EXISTS (
+                SELECT 1
+
+                FROM purchase_return_items pri
+
+                WHERE
+                  pri.return_id = pr.id
+              )
+          )
+
+        THEN 1
+
+        ELSE 0
+      END AS is_opening_credit_source
+
+    FROM purchase_invoices pi
+
+    WHERE
+      pi.supplier_id = ?
+
+      AND IFNULL(
+        pi.status,
+        'active'
+      ) != 'cancelled'
+
+    ORDER BY
+      pi.created_at DESC,
+      pi.id DESC
+    `,
     )
     .all(id) as any[];
 
@@ -6517,15 +6587,24 @@ export function getSupplierStatement(
   const returns = db
     .prepare(
       `
-      SELECT *
+      SELECT
+        pr.*,
 
-      FROM purchase_returns
+        IFNULL(
+          pi.status,
+          'active'
+        ) AS purchase_status
 
-      WHERE supplier_id = ?
+      FROM purchase_returns pr
+
+      JOIN purchase_invoices pi
+        ON pi.id = pr.purchase_id
+
+      WHERE pr.supplier_id = ?
 
       ORDER BY
-        created_at DESC,
-        id DESC
+        pr.created_at DESC,
+        pr.id DESC
       `,
     )
     .all(id) as any[];
@@ -6680,33 +6759,39 @@ export function getSupplierStatement(
   const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries];
 
   const entries = [
-    ...purchases.map((purchase) => ({
-      id: `purchase-${purchase.id}`,
+    ...purchases
+      .filter(
+        (purchase) => Number(purchase.is_opening_credit_source || 0) !== 1,
+      )
+      .map((purchase) => ({
+        id: `purchase-${purchase.id}`,
 
-      type: 'purchase',
+        type: 'purchase',
 
-      title:
-        purchase.status === 'opening_balance'
-          ? `رصيد افتتاحي مستحق #${purchase.id}`
-          : `فاتورة شراء #${purchase.id}`,
+        title:
+          purchase.status === 'opening_balance'
+            ? `رصيد افتتاحي مستحق #${purchase.id}`
+            : `فاتورة شراء #${purchase.id}`,
 
-      debit: Number(purchase.total_amount || 0),
+        debit: Number(purchase.total_amount || 0),
 
-      credit: 0,
+        credit: 0,
 
-      purchase_id: purchase.id,
+        purchase_id: purchase.id,
 
-      payment_status: purchase.payment_status,
-      due_date: purchase.due_date ?? null,
-      notes: purchase.notes,
+        payment_status: purchase.payment_status,
+        due_date: purchase.due_date ?? null,
+        notes: purchase.notes,
 
-      created_at: purchase.created_at,
-    })),
+        created_at: purchase.created_at,
+      })),
 
     ...returns.map((purchaseReturn) => {
       const cancelled = Boolean(purchaseReturn.cancelled_at);
 
       const replaced = Boolean(purchaseReturn.replacement_return_id);
+      const openingSupplierCredit =
+        purchaseReturn.purchase_status === 'opening_balance';
 
       const supplierAccountCredit = preciseAdd(
         Number(purchaseReturn.debt_reduction_amount || 0),
@@ -6716,13 +6801,17 @@ export function getSupplierStatement(
       return {
         id: `purchase-return-${purchaseReturn.id}`,
 
-        type: 'purchase_return',
+        type: openingSupplierCredit
+          ? 'opening_supplier_credit'
+          : 'purchase_return',
 
-        title: replaced
-          ? `مرتجع شراء #${purchaseReturn.id} - تم تعديله`
-          : cancelled
-            ? `مرتجع شراء #${purchaseReturn.id} - ملغي`
-            : `مرتجع شراء #${purchaseReturn.id} على فاتورة #${purchaseReturn.purchase_id}`,
+        title: openingSupplierCredit
+          ? 'رصيد دائن افتتاحي للمورد'
+          : replaced
+            ? `مرتجع شراء #${purchaseReturn.id} - تم تعديله`
+            : cancelled
+              ? `مرتجع شراء #${purchaseReturn.id} - ملغي`
+              : `مرتجع شراء #${purchaseReturn.id} على فاتورة #${purchaseReturn.purchase_id}`,
 
         debit: 0,
 
@@ -6785,7 +6874,11 @@ export function getSupplierStatement(
 
       total_returns: preciseSum(
         returns
-          .filter((purchaseReturn) => !purchaseReturn.cancelled_at)
+          .filter(
+            (purchaseReturn) =>
+              !purchaseReturn.cancelled_at &&
+              purchaseReturn.purchase_status !== 'opening_balance',
+          )
           .map((purchaseReturn) => Number(purchaseReturn.total_amount || 0)),
       ),
 

@@ -1,7 +1,10 @@
 # TypeScript / Node.js
 node_modules/
 dist/
-build/
+build/*
+!build/icon.ico
+!build/installer-sidebar.bmp
+!build/installer-header.bmp
 .npm
 *.log
 

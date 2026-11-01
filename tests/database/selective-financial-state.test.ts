@@ -11,8 +11,11 @@ import {
 import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo';
 
 import {
+  cancelPurchaseReturn,
   createPurchaseInvoice,
+  getSupplierStatement,
   listPurchaseInvoices,
+  listPurchaseReturns,
   recordSupplierPayment,
 } from '../../src/main/database/repositories/purchases.repo';
 
@@ -1024,6 +1027,107 @@ describe('selective financial state', () => {
      */
     expect(Number(restoredSupplier.balance)).toBe(-300);
 
+    /*
+     * الـOpening Credit قيد محاسبي
+     * وليس مرتجع شراء تشغيلي.
+     */
+    const visibleReturns = listPurchaseReturns({
+      limit: 100,
+      offset: 0,
+    });
+
+    expect(visibleReturns.total).toBe(0);
+
+    const statementBeforePurchase = getSupplierStatement(
+      restoredSupplier.id,
+      admin.id,
+    );
+
+    expect(statementBeforePurchase.summary.balance).toBeCloseTo(-300, 8);
+
+    expect(statementBeforePurchase.summary.total_returns).toBeCloseTo(0, 8);
+
+    const openingCreditEntries = statementBeforePurchase.entries.filter(
+      (entry: any) => entry.type === 'opening_supplier_credit',
+    );
+
+    expect(openingCreditEntries).toHaveLength(1);
+
+    expect(openingCreditEntries[0].debit).toBeCloseTo(0, 8);
+
+    expect(openingCreditEntries[0].credit).toBeCloseTo(300, 8);
+
+    /*
+     * فاتورة المصدر الصناعية
+     * ممنوع تظهر كمديونية افتتاحية.
+     */
+    expect(
+      statementBeforePurchase.entries.some(
+        (entry: any) =>
+          entry.type === 'purchase' &&
+          Number(entry.purchase_id) ===
+            Number(openingCreditEntries[0].purchase_id),
+      ),
+    ).toBe(false);
+
+    /*
+     * مجموع حركات الكشف نفسه
+     * لازم يساوي الرصيد الحالي.
+     *
+     * مدين - دائن = -300.
+     */
+    const statementNetBefore = statementBeforePurchase.entries.reduce(
+      (total: number, entry: any) =>
+        total + Number(entry.debit || 0) - Number(entry.credit || 0),
+
+      0,
+    );
+
+    expect(statementNetBefore).toBeCloseTo(-300, 8);
+
+    /*
+     * حتى لو حد وصل للـID مباشرة،
+     * ممنوع تعديل/إلغاء القيد
+     * الافتتاحي الصناعي.
+     */
+    const openingCreditReturn = db
+      .prepare(
+        `
+    SELECT pr.id
+
+    FROM purchase_returns pr
+
+    JOIN purchase_invoices pi
+      ON pi.id = pr.purchase_id
+
+    WHERE
+      pr.supplier_id = ?
+
+      AND IFNULL(
+        pi.status,
+        'active'
+      ) = 'opening_balance'
+
+      AND pr.cancelled_at
+        IS NULL
+
+    LIMIT 1
+    `,
+      )
+      .get(restoredSupplier.id) as {
+      id: number;
+    };
+
+    expect(() =>
+      cancelPurchaseReturn({
+        return_id: openingCreditReturn.id,
+
+        actor_id: admin.id,
+
+        reason: 'Must not cancel opening supplier credit',
+      }),
+    ).toThrow('لا يمكن تعديل أو إلغاء الرصيد الدائن الافتتاحي للمورد');
+
     const variant = getVariantByBarcode('SUPPLIER-CREDIT-BACKUP');
 
     expect(variant).toBeTruthy();
@@ -1083,5 +1187,30 @@ describe('selective financial state', () => {
         ).balance,
       ),
     ).toBe(-200);
+
+    const statementAfterPurchase = getSupplierStatement(
+      restoredSupplier.id,
+      admin.id,
+    );
+
+    expect(statementAfterPurchase.summary.balance).toBeCloseTo(-200, 8);
+
+    expect(statementAfterPurchase.summary.total_returns).toBeCloseTo(0, 8);
+
+    const statementNetAfter = statementAfterPurchase.entries.reduce(
+      (total: number, entry: any) =>
+        total + Number(entry.debit || 0) - Number(entry.credit || 0),
+
+      0,
+    );
+
+    expect(statementNetAfter).toBeCloseTo(-200, 8);
+
+    expect(
+      listPurchaseReturns({
+        limit: 100,
+        offset: 0,
+      }).total,
+    ).toBe(0);
   });
 });
