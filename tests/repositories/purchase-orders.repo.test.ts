@@ -16,6 +16,7 @@ import { getVariantStock } from '../../src/main/database/repositories/inventory.
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 
 import {
+  cancelPurchaseOrder,
   createPurchaseOrder,
   getPurchaseOrder,
   getSmartReorderSuggestions,
@@ -572,5 +573,222 @@ describe('purchase orders repository', () => {
       .get(received.purchaseId) as any;
 
     expect(Number(movement.amount)).toBe(982);
+  });
+
+  it('enforces the complete purchase order lifecycle without financial side effects', () => {
+    const db = getDb();
+
+    const supplier = createSupplier({
+      name: 'Purchase Order Lifecycle Supplier',
+    }) as any;
+
+    const variant = seedVariant({
+      name: 'Purchase Order Lifecycle Product',
+
+      barcode: 'PO-LIFECYCLE',
+
+      openingQty: 0,
+
+      minStock: 1,
+
+      buyPrice: 50,
+    });
+
+    /*
+     * 1) إنشاء Draft.
+     */
+    const created = createPurchaseOrder({
+      supplier_id: supplier.id,
+
+      actor_id: 1,
+
+      notes: 'Initial draft',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 2,
+
+          unit_cost: 75,
+        },
+      ],
+    });
+
+    expect(created.status).toBe('draft');
+
+    /*
+     * 2) تعديل الـDraft مسموح.
+     */
+    const updated = updatePurchaseOrder({
+      purchase_order_id: created.purchase_order_id,
+
+      supplier_id: supplier.id,
+
+      notes: 'Updated draft',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          quantity: 3,
+
+          unit_cost: 80,
+        },
+      ],
+    }) as any;
+
+    expect(updated.order.status).toBe('draft');
+
+    expect(updated.order.notes).toBe('Updated draft');
+
+    expect(updated.items).toHaveLength(1);
+
+    expect(Number(updated.items[0].quantity)).toBe(3);
+
+    expect(Number(updated.items[0].unit_cost)).toBe(80);
+
+    expect(Number(updated.items[0].line_total)).toBe(240);
+
+    /*
+     * مجرد أمر شراء:
+     * لا مخزون ولا دين مورد.
+     */
+    expect(getVariantStock(variant.variant_id)).toBe(0);
+
+    let supplierState = db
+      .prepare(
+        `
+      SELECT balance
+
+      FROM suppliers
+
+      WHERE id = ?
+      `,
+      )
+      .get(supplier.id) as {
+      balance: number;
+    };
+
+    expect(Number(supplierState.balance)).toBe(0);
+
+    /*
+     * 3) اعتماد الأمر.
+     */
+    const ordered = markPurchaseOrderOrdered({
+      purchase_order_id: created.purchase_order_id,
+
+      actor_id: 1,
+    });
+
+    expect(ordered.order.status).toBe('ordered');
+
+    /*
+     * 4) بعد الاعتماد ممنوع التعديل.
+     */
+    expect(() =>
+      updatePurchaseOrder({
+        purchase_order_id: created.purchase_order_id,
+
+        supplier_id: supplier.id,
+
+        notes: 'Must not update',
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            quantity: 4,
+
+            unit_cost: 90,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن تعديل أمر شراء بعد اعتماده');
+
+    /*
+     * وممنوع اعتماده مرتين.
+     */
+    expect(() =>
+      markPurchaseOrderOrdered({
+        purchase_order_id: created.purchase_order_id,
+
+        actor_id: 1,
+      }),
+    ).toThrow('يمكن اعتماد أمر الشراء من المسودة فقط');
+
+    /*
+     * 5) إلغاء أمر Ordered مسموح.
+     */
+    const cancelled = cancelPurchaseOrder({
+      purchase_order_id: created.purchase_order_id,
+
+      actor_id: 1,
+
+      reason: 'Lifecycle cancellation',
+    });
+
+    expect(cancelled.success).toBe(true);
+
+    const cancelledSnapshot = getPurchaseOrder(
+      created.purchase_order_id,
+    ) as any;
+
+    expect(cancelledSnapshot.order.status).toBe('cancelled');
+
+    expect(cancelledSnapshot.order.cancel_reason).toBe(
+      'Lifecycle cancellation',
+    );
+
+    /*
+     * 6) ممنوع استلام أمر ملغي.
+     */
+    expect(() =>
+      receivePurchaseOrder({
+        purchase_order_id: created.purchase_order_id,
+
+        actor_id: 1,
+
+        paid_amount: 0,
+      }),
+    ).toThrow('لا يمكن استلام أمر شراء ملغى');
+
+    /*
+     * الإلغاء لم يعمل أي أثر مالي
+     * أو مخزني.
+     */
+    expect(getVariantStock(variant.variant_id)).toBe(0);
+
+    const invoiceCount = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+
+      FROM purchase_invoices
+
+      WHERE supplier_id = ?
+      `,
+      )
+      .get(supplier.id) as {
+      count: number;
+    };
+
+    expect(Number(invoiceCount.count)).toBe(0);
+
+    supplierState = db
+      .prepare(
+        `
+      SELECT balance
+
+      FROM suppliers
+
+      WHERE id = ?
+      `,
+      )
+      .get(supplier.id) as {
+      balance: number;
+    };
+
+    expect(Number(supplierState.balance)).toBe(0);
   });
 });
