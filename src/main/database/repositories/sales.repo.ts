@@ -6,6 +6,7 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo';
 import {
+  getAttributableOpenCashShift,
   getCashShiftById,
   getOpenCashShift,
   resolveFinancialOperationShift,
@@ -3405,11 +3406,13 @@ export function createSaleReturn(input: {
       roundMoney(returnValue - debtReductionAmount),
     );
 
-    const openShift = resolveFinancialOperationShift(
+    const financialShift = resolveFinancialOperationShift(
       userId,
       [refundPaymentMethod],
       'لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح',
     );
+
+    const openShift = financialShift ?? getAttributableOpenCashShift(userId);
 
     const returnBusinessDate = resolveFinancialBusinessDate(
       openShift?.id ?? null,
@@ -4518,7 +4521,7 @@ export function cancelSaleInvoice(input: {
       .filter((payment) => Number(payment.amount || 0) > 0)
       .map((payment) => payment.payment_method);
 
-    const openShift =
+    const financialShift =
       refundAccounts.length > 0
         ? resolveFinancialOperationShift(
             Number(input.actor_id || 0),
@@ -4526,6 +4529,10 @@ export function cancelSaleInvoice(input: {
             'لا يمكن إلغاء فاتورة بيع بدون شفت مفتوح',
           )
         : null;
+
+    const openShift =
+      financialShift ??
+      getAttributableOpenCashShift(Number(input.actor_id || 0));
 
     const cancellationBusinessDate = resolveFinancialBusinessDate(
       openShift?.id ?? null,
@@ -4902,7 +4909,7 @@ export function cancelSaleReturn(input: {
       saleReturn.payment_method || 'store_cash',
     );
 
-    const openShift =
+    const financialShift =
       cashRefundAmount > 0
         ? resolveFinancialOperationShift(
             Number(input.actor_id || 0),
@@ -4910,6 +4917,10 @@ export function cancelSaleReturn(input: {
             'لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح',
           )
         : null;
+
+    const openShift =
+      financialShift ??
+      getAttributableOpenCashShift(Number(input.actor_id || 0));
 
     const cancellationBusinessDate = resolveFinancialBusinessDate(
       openShift?.id ?? null,

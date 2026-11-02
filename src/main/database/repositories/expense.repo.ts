@@ -1,7 +1,10 @@
 import { getDb } from '../db';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import { createCriticalActivityLog } from './activity.repo';
-import { resolveFinancialOperationShift } from './cash-shifts.repo';
+import {
+  getAttributableOpenCashShift,
+  resolveFinancialOperationShift,
+} from './cash-shifts.repo';
 import { roundFinancial } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 
@@ -73,11 +76,13 @@ export function createExpense(input: CreateExpenseInput) {
 
   const paymentMethod = resolveCashAccount(input.payment_method || 'cash');
 
-  const openShift = resolveFinancialOperationShift(
+  const financialShift = resolveFinancialOperationShift(
     actorId,
     [paymentMethod],
     'لا يمكن تسجيل مصروف من درج المحل بدون شفت مفتوح',
   );
+
+  const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
@@ -488,11 +493,13 @@ export function updateExpense(input: UpdateExpenseInput) {
     input.payment_method || expense.payment_method || 'store_cash',
   );
 
-  const openShift = resolveFinancialOperationShift(
+  const financialShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method, paymentMethod],
     'لا يمكن تعديل مصروف يؤثر على درج المحل بدون شفت مفتوح',
   );
+
+  const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   const correctionBusinessDate = resolveFinancialBusinessDate(
     openShift?.id ?? null,
@@ -727,11 +734,13 @@ export function cancelExpense(input: CancelExpenseInput) {
     throw new Error('حركة الخزنة الخاصة بالمصروف ملغاة بالفعل');
   }
 
-  const openShift = resolveFinancialOperationShift(
+  const financialShift = resolveFinancialOperationShift(
     actorId,
     [cashMovement.payment_method],
     'لا يمكن إلغاء مصروف يؤثر على درج المحل بدون شفت مفتوح',
   );
+
+  const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   const cancellationBusinessDate = resolveFinancialBusinessDate(
     openShift?.id ?? null,

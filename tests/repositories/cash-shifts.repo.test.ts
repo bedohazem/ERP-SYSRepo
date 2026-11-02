@@ -6,6 +6,7 @@ import {
   closeCashShift,
   getCashShiftExpectedBalance,
   getOpenCashShift,
+  getAttributableOpenCashShift,
   openCashShift,
   getCashShiftOpeningPreview,
   requireOperationalCashShift,
@@ -1938,5 +1939,66 @@ describe('cash shifts repository', () => {
     expect(closed.closing_counted_amount).toBe(400.2);
 
     expect(closed.left_for_next_shift).toBe(400.2);
+  });
+
+  it('attributes an open shift only to its cashier or an admin', () => {
+    const db = getDb();
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, 'cashier', 1)
+    `,
+    ).run('Attribution Cashier One', 'attribution_cashier_one', 'x');
+
+    db.prepare(
+      `
+    INSERT INTO users (
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, 'cashier', 1)
+    `,
+    ).run('Attribution Cashier Two', 'attribution_cashier_two', 'x');
+
+    const firstCashier = db
+      .prepare(
+        `
+      SELECT id
+      FROM users
+      WHERE username = 'attribution_cashier_one'
+      `,
+      )
+      .get() as { id: number };
+
+    const secondCashier = db
+      .prepare(
+        `
+      SELECT id
+      FROM users
+      WHERE username = 'attribution_cashier_two'
+      `,
+      )
+      .get() as { id: number };
+
+    const shift = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: firstCashier.id,
+    });
+
+    expect(getAttributableOpenCashShift(firstCashier.id)?.id).toBe(shift.id);
+
+    expect(getAttributableOpenCashShift(1)?.id).toBe(shift.id);
+
+    expect(getAttributableOpenCashShift(secondCashier.id)).toBeNull();
   });
 });

@@ -1,6 +1,9 @@
 import { getDb } from '../db';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
-import { resolveFinancialOperationShift } from './cash-shifts.repo';
+import {
+  getAttributableOpenCashShift,
+  resolveFinancialOperationShift,
+} from './cash-shifts.repo';
 import { roundMoney } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 
@@ -1149,11 +1152,13 @@ export function recordCustomerPayment(input: {
 
   const paymentMethod = String(input.payment_method || 'cash').trim() || 'cash';
 
-  const openShift = resolveFinancialOperationShift(
+  const financialShift = resolveFinancialOperationShift(
     actorId,
     [paymentMethod],
     'لا يمكن تسجيل دفعة عميل من درج المحل بدون شفت مفتوح',
   );
+
+  const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   if (!customerId) {
     throw new Error('Customer ID is required');
@@ -1790,11 +1795,13 @@ export function cancelCustomerPaymentBatch(input: {
     cashMovement.payment_method || batch.payment_method || 'cash',
   );
 
-  const openShift = resolveFinancialOperationShift(
+  const financialShift = resolveFinancialOperationShift(
     actorId,
     [paymentAccount],
     'لا يمكن إلغاء دفعة عميل تؤثر على درج المحل بدون شفت مفتوح',
   );
+
+  const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   const cancellationBusinessDate = resolveFinancialBusinessDate(
     openShift?.id ?? null,
@@ -2142,11 +2149,13 @@ export function updateCustomerPaymentBatch(input: {
 
   const newAccount = resolveCashAccount(newPaymentMethod);
 
-  const openShift = resolveFinancialOperationShift(
+  const financialShift = resolveFinancialOperationShift(
     actorId,
     Array.from(new Set([oldAccount, newAccount])),
     'لا يمكن تعديل دفعة عميل تؤثر على درج المحل بدون شفت مفتوح',
   );
+
+  const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   const correctionBusinessDate = resolveFinancialBusinessDate(
     openShift?.id ?? null,

@@ -5,7 +5,10 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo';
 import { syncCustomerTotalSpent } from './sales.repo';
-import { resolveFinancialOperationShift } from './cash-shifts.repo';
+import {
+  getAttributableOpenCashShift,
+  resolveFinancialOperationShift,
+} from './cash-shifts.repo';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 import {
   getInventoryCostState,
@@ -1262,11 +1265,13 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       cashRefundAmount = roundMoney(customerCredit - debtReductionAmount);
     }
 
-    const openShift = resolveFinancialOperationShift(
+    const financialShift = resolveFinancialOperationShift(
       userId,
       [paymentMethod],
       'لا يمكن تسجيل استبدال بدون شفت مفتوح',
     );
+
+    const openShift = financialShift ?? getAttributableOpenCashShift(userId);
 
     const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
@@ -2576,7 +2581,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       Number(exchange.debt_reduction_amount || 0),
     );
 
-    const openShift =
+    const financialShift =
       cashCollectionAmount > 0 || cashRefundAmount > 0
         ? resolveFinancialOperationShift(
             Number(input.actor_id || 0),
@@ -2584,6 +2589,10 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
             'لا يمكن إلغاء استبدال بدون شفت مفتوح',
           )
         : null;
+
+    const openShift =
+      financialShift ??
+      getAttributableOpenCashShift(Number(input.actor_id || 0));
 
     const cancelBusinessDate = resolveFinancialBusinessDate(
       openShift?.id ?? null,

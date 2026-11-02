@@ -862,4 +862,97 @@ describe('expense repository', () => {
 
     expect(movement.shift_id).toBeNull();
   });
+
+  it('attributes admin non-drawer expense create update and cancel to the open shift', () => {
+    const shift = getOpenCashShift();
+
+    expect(shift).toBeTruthy();
+
+    const db = getDb();
+
+    db.prepare(
+      `
+      INSERT INTO cash_movements (
+        type,
+        amount,
+        direction,
+        payment_method,
+        reference_id,
+        reference_type,
+        notes,
+        created_by
+      )
+      VALUES (?, ?, ?, ?, NULL, ?, ?, ?)
+      `,
+    ).run(
+      'deposit',
+      1000,
+      'in',
+      'owner_bank',
+      'test_seed',
+      'Seed owner bank balance for attribution test',
+      1,
+    );
+
+    const created = createExpense({
+      title: 'Owner Bank Expense',
+
+      amount: 100,
+
+      payment_method: 'owner_bank',
+
+      created_by: 1,
+    });
+
+    expect(created.shift_id).toBe(shift!.id);
+
+    const updated = updateExpense({
+      id: created.id,
+
+      title: 'Updated Owner Bank Expense',
+
+      amount: 120,
+
+      payment_method: 'owner_bank',
+
+      actor_id: 1,
+
+      can_manage_all: true,
+    });
+
+    expect(updated.updated_shift_id).toBe(shift!.id);
+
+    const cancelled = cancelExpense({
+      id: created.id,
+
+      reason: 'Cancel owner bank expense',
+
+      actor_id: 1,
+
+      can_manage_all: true,
+    });
+
+    expect(cancelled.cancelled_shift_id).toBe(shift!.id);
+
+    const row = db
+      .prepare(
+        `
+        SELECT
+          shift_id,
+          updated_shift_id,
+          cancelled_shift_id
+
+        FROM expenses
+
+        WHERE id = ?
+        `,
+      )
+      .get(created.id) as any;
+
+    expect(Number(row.shift_id)).toBe(shift!.id);
+
+    expect(Number(row.updated_shift_id)).toBe(shift!.id);
+
+    expect(Number(row.cancelled_shift_id)).toBe(shift!.id);
+  });
 });

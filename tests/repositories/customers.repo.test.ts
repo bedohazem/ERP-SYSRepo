@@ -2198,4 +2198,65 @@ describe('customers repository', () => {
       total_open: 1500,
     });
   });
+
+  it('attributes admin non-drawer customer payment create update and cancel to the open shift', () => {
+    const shift = getOpenCashShift();
+
+    expect(shift).toBeTruthy();
+
+    const customer = createTestCustomer('01099990001');
+
+    const sale = createPartialSale(customer.id, 100);
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+
+      amount: 50,
+
+      payment_method: 'owner_bank',
+
+      actor_id: 1,
+    });
+
+    expect(payment.shift_id).toBe(shift!.id);
+
+    const updated = updateCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+
+      amount: 40,
+
+      payment_method: 'owner_bank',
+
+      notes: 'Owner bank payment correction',
+
+      actor_id: 1,
+    });
+
+    expect(updated.shift_id).toBe(shift!.id);
+
+    const oldBatch = getDb()
+      .prepare(
+        `
+      SELECT cancelled_shift_id
+
+      FROM customer_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any;
+
+    expect(Number(oldBatch.cancelled_shift_id)).toBe(shift!.id);
+
+    const cancelled = cancelCustomerPaymentBatch({
+      batch_id: updated.batch_id,
+
+      reason: 'Cancel owner bank payment',
+
+      actor_id: 1,
+    });
+
+    expect(cancelled.cancelled_shift_id).toBe(shift!.id);
+  });
 });

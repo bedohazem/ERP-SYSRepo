@@ -748,6 +748,8 @@ describe('sale exchange cancellation', () => {
 
       user_id: 1,
 
+      payment_method: 'owner_bank',
+
       items: [
         {
           promotion_unit_id: Number(unit300.id),
@@ -760,6 +762,12 @@ describe('sale exchange cancellation', () => {
     expect(exchange.difference_amount).toBe(-100);
 
     expect(exchange.debt_reduction_amount).toBe(100);
+
+    const originalShift = getOpenCashShift();
+
+    expect(originalShift).toBeTruthy();
+
+    expect(exchange.shift_id).toBe(originalShift!.id);
 
     const afterExchange = getDb()
       .prepare(
@@ -777,6 +785,22 @@ describe('sale exchange cancellation', () => {
 
     expect(customerBalance(customerId)).toBe(50);
 
+    closeCashShift({
+      shift_id: originalShift!.id,
+
+      closing_counted_amount: 400,
+
+      left_for_next_shift: 400,
+
+      closed_by: 1,
+    });
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 400,
+
+      opened_by: 1,
+    });
+
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
 
@@ -786,6 +810,45 @@ describe('sale exchange cancellation', () => {
     });
 
     expect(cancelled.debt_restored).toBe(100);
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+
+    const exchangeRow = getDb()
+      .prepare(
+        `
+    SELECT
+      shift_id,
+      cancelled_shift_id
+
+    FROM sale_exchanges
+
+    WHERE id = ?
+    `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(Number(exchangeRow.shift_id)).toBe(originalShift!.id);
+
+    expect(Number(exchangeRow.cancelled_shift_id)).toBe(currentShift.id);
+
+    const reverseMovement = getDb()
+      .prepare(
+        `
+        SELECT id
+
+        FROM cash_movements
+
+        WHERE reference_type =
+          'sale_exchange_cancel'
+
+          AND reference_id = ?
+
+        LIMIT 1
+        `,
+      )
+      .get(exchange.exchangeId);
+
+    expect(reverseMovement).toBeUndefined();
 
     const restoredSale = getDb()
       .prepare(

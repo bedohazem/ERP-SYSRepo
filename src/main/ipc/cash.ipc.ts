@@ -59,6 +59,7 @@ import {
 } from '../database/repositories/user.repo';
 import { resolveFinancialBusinessDate } from '../database/financial-business-date';
 import { assertSystemClockStable } from '../database/system-clock-guard';
+import { protectSalesCostData } from './sales-cost-protection';
 
 const CASH_ACCOUNT_INPUT_VALUES = [
   'store_cash',
@@ -567,9 +568,13 @@ export function registerCashIpc(): void {
   });
 
   ipcMain.handle('cash-shifts:details', (event, shiftId) => {
-    requirePermission(event, 'shifts.manage');
+    const actor = requirePermission(event, 'shifts.manage');
 
-    return getCashShiftDetails(requirePositiveInteger(shiftId, 'رقم الشفت'));
+    const result = getCashShiftDetails(
+      requirePositiveInteger(shiftId, 'رقم الشفت'),
+    );
+
+    return protectSalesCostData(actor, result);
   });
 
   ipcMain.handle('cash-shifts:list-variances', (event, input) => {

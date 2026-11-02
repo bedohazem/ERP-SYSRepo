@@ -278,6 +278,61 @@ export function getOpenCashShift(): CashShiftRow | null {
   return row || null;
 }
 
+export function getAttributableOpenCashShift(
+  actorIdInput: number,
+): CashShiftRow | null {
+  const actorId = Number(actorIdInput || 0);
+
+  if (!Number.isInteger(actorId) || actorId <= 0) {
+    return null;
+  }
+
+  const db = getDb();
+
+  const actor = db
+    .prepare(
+      `
+      SELECT
+        id,
+        role,
+        is_active
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        id: number;
+        role: string;
+        is_active: number;
+      }
+    | undefined;
+
+  if (!actor || Number(actor.is_active) !== 1) {
+    return null;
+  }
+
+  const shift = getOpenCashShift();
+
+  if (!shift) {
+    return null;
+  }
+
+  /*
+   * الأدمن يقدر ينسب العملية للشفت
+   * المفتوح حتى لو الشفت لكاشير.
+   *
+   * الكاشير لا ننسب له عملية على
+   * شفت مستخدم آخر.
+   */
+  if (actor.role !== 'admin' && Number(shift.opened_by) !== actorId) {
+    return null;
+  }
+
+  return shift;
+}
+
 export function requireOperationalCashShift(
   actorIdInput: number,
   noShiftMessage = 'لا يوجد شفت مفتوح',

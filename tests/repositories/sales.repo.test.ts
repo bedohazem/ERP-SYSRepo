@@ -5673,4 +5673,217 @@ describe('sales repository', () => {
 
     expect(Number(editedSaleItem.cost_value)).toBe(100);
   });
+
+  it('attributes a no-cash cancellation of an unpaid previous-shift sale to the current shift', () => {
+    const db = getDb();
+
+    const variant = seedProduct();
+
+    const customerId = createTestCustomer();
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 0,
+      remaining_amount: 150,
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const originalShift = getOpenCashShift();
+
+    expect(originalShift).toBeTruthy();
+
+    expect(sale.shift_id).toBe(originalShift!.id);
+
+    closeCashShift({
+      shift_id: originalShift!.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    });
+
+    const cancelled = cancelSaleInvoice({
+      sale_id: sale.saleId,
+      actor_id: 1,
+      reason: 'Cancel unpaid sale in next shift',
+    });
+
+    expect(cancelled.refunded_amount).toBe(0);
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+
+    const row = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id
+      FROM sales
+      WHERE id = ?
+      `,
+      )
+      .get(sale.saleId) as any;
+
+    expect(Number(row.shift_id)).toBe(originalShift!.id);
+
+    expect(Number(row.cancelled_shift_id)).toBe(currentShift.id);
+
+    const refundMovement = db
+      .prepare(
+        `
+      SELECT id
+      FROM cash_movements
+      WHERE reference_type = 'sale_cancel'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(sale.saleId);
+
+    expect(refundMovement).toBeUndefined();
+  });
+
+  it('attributes debt-only return creation and cancellation to their actual shifts', () => {
+    const db = getDb();
+
+    const variant = seedProduct();
+
+    const customerId = createTestCustomer();
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 0,
+      remaining_amount: 150,
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const originalShift = getOpenCashShift();
+
+    expect(originalShift).toBeTruthy();
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+
+      refund_payment_method: 'owner_bank',
+
+      reason: 'Debt-only return',
+
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.refundAmount).toBe(0);
+
+    expect(saleReturn.debt_reduction_amount).toBe(150);
+
+    expect(saleReturn.shift_id).toBe(originalShift!.id);
+
+    closeCashShift({
+      shift_id: originalShift!.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 1,
+    });
+
+    const cancelled = cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Cancel debt-only return in next shift',
+    });
+
+    expect(cancelled.cash_restored).toBe(0);
+
+    expect(cancelled.debt_restored).toBe(150);
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+
+    const row = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id
+      FROM sale_returns
+      WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(Number(row.shift_id)).toBe(originalShift!.id);
+
+    expect(Number(row.cancelled_shift_id)).toBe(currentShift.id);
+
+    const reverseMovement = db
+      .prepare(
+        `
+      SELECT id
+      FROM cash_movements
+      WHERE reference_type = 'sale_return_cancel'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(saleReturn.returnId);
+
+    expect(reverseMovement).toBeUndefined();
+  });
 });

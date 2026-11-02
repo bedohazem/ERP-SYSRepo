@@ -2005,5 +2005,129 @@ describe('domain IPC session scope', () => {
     expect(timelineCancel.user_name).toBe(admin.name);
 
     expect(timelineCancel.details.reason).toBe('إلغاء فاتورة اختبار الـAudit');
+
+    /*
+     * الـAdmin لازم يظل شايف تكلفة الصنف الحقيقية
+     * داخل Audit Trail وداخل Shift Timeline.
+     */
+    expect(Number(updatedAudit.details.before?.items?.[0]?.unit_cost)).toBe(40);
+
+    expect(Number(updatedAudit.details.after?.items?.[0]?.unit_cost)).toBe(40);
+
+    expect(Number(timelineUpdate.details.before?.items?.[0]?.unit_cost)).toBe(
+      40,
+    );
+
+    expect(Number(timelineUpdate.details.after?.items?.[0]?.unit_cost)).toBe(
+      40,
+    );
+
+    /*
+     * مستخدم مسموح له بمراجعة سجل المبيعات
+     * وإدارة الشفتات، لكن بدون costs.view.
+     *
+     * لازم يقدر يشوف نفس الـAudit والـTimeline،
+     * لكن تكلفة الشراء لا تتسرب له.
+     */
+    const auditReviewer = createUser(
+      'Cost Protected Audit Reviewer',
+      'cost_protected_audit_reviewer',
+      'Reviewer5678',
+      'cashier',
+    );
+
+    const reviewerPermissions = getEffectiveUserPermissions(auditReviewer.id);
+
+    setUserPermissions(auditReviewer.id, [
+      ...new Set([...reviewerPermissions, 'sales.history', 'shifts.manage']),
+    ]);
+
+    expect(getEffectiveUserPermissions(auditReviewer.id)).not.toContain(
+      'costs.view',
+    );
+
+    const reviewerClient = makeClient();
+
+    startAuthSession(reviewerClient.event, auditReviewer.id);
+
+    /*
+     * Audit Trail:
+     * البيانات الإدارية تظل ظاهرة،
+     * لكن تكلفة الشراء تصبح 0.
+     */
+    const protectedAudit = await invoke(
+      reviewerClient.event,
+
+      'sales:audit-trail',
+
+      saleId,
+    );
+
+    const protectedUpdatedAudit = protectedAudit.find(
+      (row: any) => row.action === 'sale_updated',
+    );
+
+    expect(protectedUpdatedAudit).toBeTruthy();
+
+    expect(protectedUpdatedAudit.details.reason).toBe(
+      'تصحيح كمية الفاتورة للاختبار',
+    );
+
+    expect(
+      Number(protectedUpdatedAudit.details.before?.sale?.grand_total),
+    ).toBe(100);
+
+    expect(Number(protectedUpdatedAudit.details.after?.sale?.grand_total)).toBe(
+      200,
+    );
+
+    expect(
+      Number(protectedUpdatedAudit.details.before?.items?.[0]?.unit_cost),
+    ).toBe(0);
+
+    expect(
+      Number(protectedUpdatedAudit.details.after?.items?.[0]?.unit_cost),
+    ).toBe(0);
+
+    /*
+     * Shift Timeline:
+     * نفس الحماية لازم تنطبق عند فتح تفاصيل الشفت.
+     */
+    const protectedDetails = await invoke(
+      reviewerClient.event,
+
+      'cash-shifts:details',
+
+      shift.id,
+    );
+
+    const protectedTimelineUpdate = protectedDetails.timeline.find(
+      (row: any) =>
+        row.entity === 'sales' &&
+        Number(row.entity_id) === saleId &&
+        row.action === 'sale_updated',
+    );
+
+    expect(protectedTimelineUpdate).toBeTruthy();
+
+    expect(protectedTimelineUpdate.details.reason).toBe(
+      'تصحيح كمية الفاتورة للاختبار',
+    );
+
+    expect(
+      Number(protectedTimelineUpdate.details.before?.sale?.grand_total),
+    ).toBe(100);
+
+    expect(
+      Number(protectedTimelineUpdate.details.after?.sale?.grand_total),
+    ).toBe(200);
+
+    expect(
+      Number(protectedTimelineUpdate.details.before?.items?.[0]?.unit_cost),
+    ).toBe(0);
+
+    expect(
+      Number(protectedTimelineUpdate.details.after?.items?.[0]?.unit_cost),
+    ).toBe(0);
   });
 });
