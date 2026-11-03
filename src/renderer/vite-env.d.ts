@@ -1916,7 +1916,13 @@ declare global {
         sales: {
           invoices_count: number;
           cancelled_invoices_count: number;
+          cross_shift_cancelled_invoices_count: number;
 
+          cross_shift_cancelled_sales_total: number;
+
+          cross_shift_cancelled_refund_total: number;
+
+          cross_shift_cancelled_debt_reduction_total: number;
           invoice_sales: number;
           paid_sales_total: number;
 

@@ -90,7 +90,13 @@ type CashierDashboardSummary = {
   sales: {
     invoices_count: number;
     cancelled_invoices_count: number;
+    cross_shift_cancelled_invoices_count: number;
 
+    cross_shift_cancelled_sales_total: number;
+
+    cross_shift_cancelled_refund_total: number;
+
+    cross_shift_cancelled_debt_reduction_total: number;
     invoice_sales: number;
     paid_sales_total: number;
     outstanding_debt_total: number;
@@ -139,7 +145,13 @@ const emptyCashierDashboard: CashierDashboardSummary = {
   sales: {
     invoices_count: 0,
     cancelled_invoices_count: 0,
+    cross_shift_cancelled_invoices_count: 0,
 
+    cross_shift_cancelled_sales_total: 0,
+
+    cross_shift_cancelled_refund_total: 0,
+
+    cross_shift_cancelled_debt_reduction_total: 0,
     invoice_sales: 0,
     paid_sales_total: 0,
     outstanding_debt_total: 0,
@@ -1625,6 +1637,11 @@ function CashierRevenueView({
             />
 
             <ReconciliationCard
+              title="إلغاءات فواتير سابقة"
+              value={money(-summary.sales.cross_shift_cancelled_sales_total)}
+            />
+
+            <ReconciliationCard
               title="الناتج"
               value={money(summary.sales.net_sales)}
               strong
@@ -1647,6 +1664,8 @@ function CashierRevenueView({
             تعديل قيمة المبيعات بالاستبدال
             {' - '}
             المرتجعات
+            {' - '}
+            إلغاءات فواتير سابقة
             {' = '}
             صافي المبيعات
           </div>
@@ -1685,6 +1704,21 @@ function CashierRevenueView({
             value={String(summary.sales.invoices_count)}
             subtitle={`ملغاة: ${summary.sales.cancelled_invoices_count}`}
             tone="blue"
+          />
+
+          <CashierMiniCard
+            title="إلغاءات فواتير سابقة"
+            value={money(summary.sales.cross_shift_cancelled_sales_total)}
+            subtitle={
+              `${summary.sales.cross_shift_cancelled_invoices_count} فاتورة` +
+              ` • رد نقدي: ${money(
+                summary.sales.cross_shift_cancelled_refund_total,
+              )}` +
+              ` • إسقاط مديونية: ${money(
+                summary.sales.cross_shift_cancelled_debt_reduction_total,
+              )}`
+            }
+            tone="red"
           />
 
           <CashierMiniCard

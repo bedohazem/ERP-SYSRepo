@@ -2682,6 +2682,14 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
         cancelled_invoices_count: 0,
 
+        cross_shift_cancelled_invoices_count: 0,
+
+        cross_shift_cancelled_sales_total: 0,
+
+        cross_shift_cancelled_refund_total: 0,
+
+        cross_shift_cancelled_debt_reduction_total: 0,
+
         invoice_sales: 0,
 
         paid_sales_total: 0,
@@ -2918,27 +2926,75 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
     )
     .get(shiftId) as any;
 
-  /*
-   * الإلغاءات التي نفذها
-   * الكاشير في الشفت الحالي.
-   */
   const cancelledSales = db
     .prepare(
       `
       SELECT
-        COUNT(*) AS count
+        COUNT(*) AS count,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                IFNULL(s.shift_id, 0) <> s.cancelled_shift_id
+              THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_count,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                IFNULL(s.shift_id, 0) <> s.cancelled_shift_id
+              THEN s.grand_total
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_total,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN
+                IFNULL(s.shift_id, 0) <> s.cancelled_shift_id
+              THEN
+                IFNULL(
+                  (
+                    SELECT SUM(cm.amount)
+
+                    FROM cash_movements cm
+
+                    WHERE
+                      cm.reference_type = 'sale_cancel'
+
+                      AND cm.reference_id = s.id
+
+                      AND cm.shift_id = ?
+
+                      AND cm.cancelled_at IS NULL
+                  ),
+                  0
+                )
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_refund
 
       FROM sales s
 
       WHERE
-        s.cancelled_at
-        IS NOT NULL
+        s.cancelled_at IS NOT NULL
 
         AND
           s.cancelled_shift_id = ?
       `,
     )
-    .get(shiftId) as any;
+    .get(shiftId, shiftId) as any;
 
   /*
    * المرتجعات هنا مرتبطة
@@ -3353,6 +3409,22 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
   const invoiceSales = reportMoney(sales?.invoice_sales);
 
+  const crossShiftCancelledSalesTotal = reportMoney(
+    cancelledSales?.cross_shift_total,
+  );
+
+  const crossShiftCancelledRefundTotal = reportMoney(
+    cancelledSales?.cross_shift_refund,
+  );
+
+  const crossShiftCancelledDebtReductionTotal = reportMoney(
+    Math.max(
+      0,
+
+      crossShiftCancelledSalesTotal - crossShiftCancelledRefundTotal,
+    ),
+  );
+
   const returnsTotal = reportMoney(returns?.returns_total);
   const returnCashRefund = reportMoney(returns?.return_cash_refund);
 
@@ -3416,7 +3488,10 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
   );
 
   const netSales = reportMoney(
-    invoiceSales + exchangeAdjustment - returnsTotal,
+    invoiceSales +
+      exchangeAdjustment -
+      returnsTotal -
+      crossShiftCancelledSalesTotal,
   );
 
   return {
@@ -3442,6 +3517,17 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       invoices_count: Number(sales?.invoices_count || 0),
 
       cancelled_invoices_count: Number(cancelledSales?.count || 0),
+
+      cross_shift_cancelled_invoices_count: Number(
+        cancelledSales?.cross_shift_count || 0,
+      ),
+
+      cross_shift_cancelled_sales_total: crossShiftCancelledSalesTotal,
+
+      cross_shift_cancelled_refund_total: crossShiftCancelledRefundTotal,
+
+      cross_shift_cancelled_debt_reduction_total:
+        crossShiftCancelledDebtReductionTotal,
 
       invoice_sales: invoiceSales,
       paid_sales_total: reportMoney(sales?.paid_sales_total),

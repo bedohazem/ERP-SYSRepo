@@ -1965,37 +1965,113 @@ export function getCashShiftDetails(shiftIdInput: number) {
   const cancelledSalesCountRow = db
     .prepare(
       `
-      SELECT
-        COUNT(*) AS count
+    SELECT
+      COUNT(*) AS count,
 
-      FROM sales s
+      IFNULL(
+        SUM(
+          CASE
+            WHEN IFNULL(s.shift_id, 0) <> ?
+            THEN 1
+            ELSE 0
+          END
+        ),
+        0
+      ) AS cross_shift_count,
 
-      WHERE
-        IFNULL(
-          s.type,
-          'sale'
-        ) = 'sale'
+      IFNULL(
+        SUM(
+          CASE
+            WHEN IFNULL(s.shift_id, 0) <> ?
+            THEN s.grand_total
+            ELSE 0
+          END
+        ),
+        0
+      ) AS cross_shift_total,
 
-        AND s.cancelled_at IS NOT NULL
+      IFNULL(
+        SUM(
+          CASE
+            WHEN IFNULL(s.shift_id, 0) <> ?
+            THEN
+              IFNULL(
+                (
+                  SELECT SUM(cm.amount)
 
-        AND (
-          s.cancelled_shift_id = ?
+                  FROM cash_movements cm
 
-          OR (
-            s.cancelled_shift_id IS NULL
+                  WHERE
+                    cm.reference_type = 'sale_cancel'
 
-            AND s.shift_id = ?
-          )
+                    AND cm.reference_id = s.id
+
+                    AND cm.shift_id = ?
+
+                    AND cm.cancelled_at IS NULL
+                ),
+                0
+              )
+            ELSE 0
+          END
+        ),
+        0
+      ) AS cross_shift_refund
+
+    FROM sales s
+
+    WHERE
+      IFNULL(
+        s.type,
+        'sale'
+      ) = 'sale'
+
+      AND s.cancelled_at IS NOT NULL
+
+      AND (
+        s.cancelled_shift_id = ?
+
+        OR (
+          s.cancelled_shift_id IS NULL
+
+          AND s.shift_id = ?
         )
-      `,
+      )
+    `,
     )
-    .get(shiftId, shiftId) as
+    .get(shiftId, shiftId, shiftId, shiftId, shiftId, shiftId) as
     | {
         count: number;
+
+        cross_shift_count: number;
+
+        cross_shift_total: number;
+
+        cross_shift_refund: number;
       }
     | undefined;
 
   const cancelledSalesCount = Number(cancelledSalesCountRow?.count || 0);
+
+  const crossShiftCancelledSalesCount = Number(
+    cancelledSalesCountRow?.cross_shift_count || 0,
+  );
+
+  const crossShiftCancelledSalesTotal = roundFinancial(
+    Number(cancelledSalesCountRow?.cross_shift_total || 0),
+  );
+
+  const crossShiftCancelledRefundTotal = roundFinancial(
+    Number(cancelledSalesCountRow?.cross_shift_refund || 0),
+  );
+
+  const crossShiftCancelledDebtReductionTotal = roundFinancial(
+    Math.max(
+      0,
+
+      crossShiftCancelledSalesTotal - crossShiftCancelledRefundTotal,
+    ),
+  );
 
   const salesSummary = sales.reduce(
     (summary, sale) => {
@@ -2037,6 +2113,15 @@ export function getCashShiftDetails(shiftIdInput: number) {
       active_invoices_count: 0,
 
       cancelled_invoices_count: cancelledSalesCount,
+
+      cross_shift_cancelled_invoices_count: crossShiftCancelledSalesCount,
+
+      cross_shift_cancelled_sales_total: crossShiftCancelledSalesTotal,
+
+      cross_shift_cancelled_refund_total: crossShiftCancelledRefundTotal,
+
+      cross_shift_cancelled_debt_reduction_total:
+        crossShiftCancelledDebtReductionTotal,
 
       invoice_sales: 0,
       net_sales: 0,
@@ -2399,6 +2484,13 @@ export function getCashShiftDetails(shiftIdInput: number) {
       Number(operationsSummaryRow?.exchange_difference || 0),
     ),
   };
+
+  salesSummary.net_sales = roundFinancial(
+    Number(salesSummary.invoice_sales || 0) +
+      Number(operationsSummary.exchange_difference || 0) -
+      Number(operationsSummary.returns_total || 0) -
+      Number(salesSummary.cross_shift_cancelled_sales_total || 0),
+  );
 
   const activityRows = db
     .prepare(

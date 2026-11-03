@@ -3780,6 +3780,22 @@ describe('reports repository', () => {
      */
     expect(shift2Details.sales_summary.cancelled_invoices_count).toBe(1);
 
+    expect(
+      shift2Details.sales_summary.cross_shift_cancelled_invoices_count,
+    ).toBe(1);
+
+    expect(shift2Details.sales_summary.cross_shift_cancelled_sales_total).toBe(
+      100,
+    );
+
+    expect(shift2Details.sales_summary.cross_shift_cancelled_refund_total).toBe(
+      100,
+    );
+
+    expect(
+      shift2Details.sales_summary.cross_shift_cancelled_debt_reduction_total,
+    ).toBe(0);
+
     /*
      * دفعة العميل القديمة تمت هنا.
      */
@@ -3800,6 +3816,108 @@ describe('reports repository', () => {
     expect(shift2Details.operations_summary.exchanges_count).toBe(1);
 
     expect(shift2Details.operations_summary.exchange_difference).toBe(30);
+
+    /*
+     * =================================
+     * الرئيسية الخاصة بـ Shift 2
+     * =================================
+     *
+     * مفيش بيع جديد.
+     * مرتجع = -100
+     * استبدال = +30
+     *
+     * صافي مبيعات الشفت = -70
+     */
+    const shift2Dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(shift2Dashboard.shift?.id).toBe(shift2.id);
+
+    expect(shift2Dashboard.sales.invoices_count).toBe(0);
+
+    expect(shift2Dashboard.sales.invoice_sales).toBe(0);
+
+    expect(shift2Dashboard.sales.cancelled_invoices_count).toBe(1);
+
+    expect(shift2Dashboard.sales.returns_count).toBe(1);
+
+    expect(shift2Dashboard.sales.returns_total).toBe(100);
+
+    expect(shift2Dashboard.sales.exchanges_count).toBe(1);
+
+    expect(shift2Dashboard.sales.exchange_adjustment).toBe(30);
+
+    expect(shift2Dashboard.sales.cross_shift_cancelled_invoices_count).toBe(1);
+
+    expect(shift2Dashboard.sales.cross_shift_cancelled_sales_total).toBe(100);
+
+    expect(shift2Dashboard.sales.cross_shift_cancelled_refund_total).toBe(100);
+
+    expect(
+      shift2Dashboard.sales.cross_shift_cancelled_debt_reduction_total,
+    ).toBe(0);
+
+    expect(shift2Details.sales_summary.cross_shift_cancelled_sales_total).toBe(
+      shift2Dashboard.sales.cross_shift_cancelled_sales_total,
+    );
+
+    expect(shift2Details.sales_summary.cross_shift_cancelled_refund_total).toBe(
+      shift2Dashboard.sales.cross_shift_cancelled_refund_total,
+    );
+
+    expect(shift2Dashboard.sales.net_sales).toBe(-170);
+
+    /*
+     * تفاصيل الشفت لازم تحسب نفس
+     * صافي العمليات التي حدثت في Shift 2.
+     */
+    expect(shift2Details.sales_summary.net_sales).toBe(-170);
+
+    /*
+     * =================================
+     * Dashboard === Shift Details
+     * =================================
+     */
+    expect(shift2Details.sales_summary.active_invoices_count).toBe(
+      shift2Dashboard.sales.invoices_count,
+    );
+
+    expect(shift2Details.sales_summary.cancelled_invoices_count).toBe(
+      shift2Dashboard.sales.cancelled_invoices_count,
+    );
+
+    expect(shift2Details.sales_summary.invoice_sales).toBe(
+      shift2Dashboard.sales.invoice_sales,
+    );
+
+    expect(shift2Details.sales_summary.net_sales).toBe(
+      shift2Dashboard.sales.net_sales,
+    );
+
+    expect(shift2Details.operations_summary.returns_count).toBe(
+      shift2Dashboard.sales.returns_count,
+    );
+
+    expect(shift2Details.operations_summary.returns_total).toBe(
+      shift2Dashboard.sales.returns_total,
+    );
+
+    expect(shift2Details.operations_summary.exchanges_count).toBe(
+      shift2Dashboard.sales.exchanges_count,
+    );
+
+    expect(shift2Details.operations_summary.exchange_difference).toBe(
+      shift2Dashboard.sales.exchange_adjustment,
+    );
+
+    expect(shift2Details.operations_summary.customer_payments_count).toBe(
+      shift2Dashboard.operations.customer_payments_count,
+    );
+
+    expect(shift2Details.operations_summary.customer_payments_total).toBe(
+      shift2Dashboard.operations.customer_payments_total,
+    );
   });
 
   it('keeps shift operations on the shift opening business date', () => {
