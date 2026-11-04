@@ -260,6 +260,185 @@ describe('reports repository', () => {
     });
   }, 30_000);
 
+  it('includes admin sales in the open cashier shift across all payment methods', () => {
+    const shift = getOpenCashShift();
+
+    expect(shift).toBeTruthy();
+
+    const variant = seedReportProduct({
+      name: 'Shared Shift Sales Product',
+      barcode: 'SHARED-SHIFT-SALES',
+      openingQty: 100,
+      buyPrice: 40,
+      sellPrice: 100,
+    });
+
+    const admin = createUser(
+      'Shared Shift Admin',
+      'shared_shift_admin',
+      'Admin1234',
+      'admin',
+    );
+
+    function createShiftSale(input: {
+      userId: number;
+      total: number;
+      paymentMethod: string;
+    }) {
+      const quantity = input.total / 100;
+
+      return createSale({
+        user_id: input.userId,
+
+        customer_id: null,
+
+        sub_total: input.total,
+
+        discount_value: 0,
+
+        grand_total: input.total,
+
+        paid: input.total,
+
+        remaining_amount: 0,
+
+        payment_status: 'paid',
+
+        change_amount: 0,
+
+        payment_method: input.paymentMethod,
+
+        items: [
+          {
+            variant_id: variant.variant_id,
+
+            product_name: variant.product_name,
+
+            barcode: variant.barcode,
+
+            size: variant.size,
+
+            color: variant.color,
+
+            quantity,
+
+            unit_price: 100,
+          },
+        ],
+      });
+    }
+
+    /*
+     * الكاشير:
+     * 2000 كاش
+     */
+    const cashierSale = createShiftSale({
+      userId: 1,
+      total: 2000,
+      paymentMethod: 'store_cash',
+    });
+
+    /*
+     * الأدمن:
+     * 300 كاش
+     */
+    const adminCashSale = createShiftSale({
+      userId: admin.id,
+      total: 300,
+      paymentMethod: 'store_cash',
+    });
+
+    /*
+     * الأدمن:
+     * 500 بنك
+     */
+    const adminBankSale = createShiftSale({
+      userId: admin.id,
+      total: 500,
+      paymentMethod: 'owner_bank',
+    });
+
+    /*
+     * الأدمن:
+     * 400 فودافون
+     */
+    const adminVodafoneSale = createShiftSale({
+      userId: admin.id,
+      total: 400,
+      paymentMethod: 'owner_vodafone',
+    });
+
+    /*
+     * كل الفواتير حدثت أثناء نفس الشفت،
+     * لذلك كلها لازم تتنسب له
+     * بصرف النظر عن منفذ البيع
+     * أو وسيلة الدفع.
+     */
+    expect(cashierSale.shift_id).toBe(shift!.id);
+
+    expect(adminCashSale.shift_id).toBe(shift!.id);
+
+    expect(adminBankSale.shift_id).toBe(shift!.id);
+
+    expect(adminVodafoneSale.shift_id).toBe(shift!.id);
+
+    /*
+     * ================================
+     * Dashboard
+     * ================================
+     */
+    const dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(dashboard.shift?.id).toBe(shift!.id);
+
+    expect(dashboard.sales.invoices_count).toBe(4);
+
+    expect(dashboard.sales.invoice_sales).toBe(3200);
+
+    expect(dashboard.sales.net_sales).toBe(3200);
+
+    expect(dashboard.sales.paid_sales_total).toBe(3200);
+
+    /*
+     * ================================
+     * Shift Details
+     * ================================
+     */
+    const details = getCashShiftDetails(shift!.id);
+
+    expect(details.sales_summary.active_invoices_count).toBe(4);
+
+    expect(details.sales_summary.invoice_sales).toBe(3200);
+
+    expect(details.sales_summary.net_sales).toBe(3200);
+
+    expect(details.sales_summary.paid_total).toBe(3200);
+
+    /*
+     * الرئيسية وتفاصيل الشفت
+     * لازم يكونوا متطابقين.
+     */
+    expect(details.sales_summary.invoice_sales).toBe(
+      dashboard.sales.invoice_sales,
+    );
+
+    expect(details.sales_summary.net_sales).toBe(dashboard.sales.net_sales);
+
+    /*
+     * عهدة درج المحل فقط:
+     *
+     * 2000 كاشير كاش
+     * + 300 أدمن كاش
+     * = 2300
+     *
+     * البنك والفودافون لا يدخلوا
+     * في جرد درج المحل.
+     */
+    expect(details.preview.expected_closing_amount).toBe(2300);
+  });
+
   it('builds admin cash-flow alerts from customer and supplier due dates', () => {
     const db = getDb();
 

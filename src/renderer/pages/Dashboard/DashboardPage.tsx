@@ -1637,11 +1637,6 @@ function CashierRevenueView({
             />
 
             <ReconciliationCard
-              title="إلغاءات فواتير سابقة"
-              value={money(-summary.sales.cross_shift_cancelled_sales_total)}
-            />
-
-            <ReconciliationCard
               title="الناتج"
               value={money(summary.sales.net_sales)}
               strong
@@ -1664,8 +1659,6 @@ function CashierRevenueView({
             تعديل قيمة المبيعات بالاستبدال
             {' - '}
             المرتجعات
-            {' - '}
-            إلغاءات فواتير سابقة
             {' = '}
             صافي المبيعات
           </div>
@@ -1707,21 +1700,6 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="إلغاءات فواتير سابقة"
-            value={money(summary.sales.cross_shift_cancelled_sales_total)}
-            subtitle={
-              `${summary.sales.cross_shift_cancelled_invoices_count} فاتورة` +
-              ` • رد نقدي: ${money(
-                summary.sales.cross_shift_cancelled_refund_total,
-              )}` +
-              ` • إسقاط مديونية: ${money(
-                summary.sales.cross_shift_cancelled_debt_reduction_total,
-              )}`
-            }
-            tone="red"
-          />
-
-          <CashierMiniCard
             title="مبيعات الفواتير"
             value={money(summary.sales.invoice_sales)}
             subtitle="قيمة الفواتير بعد الخصومات وقبل المرتجعات والاستبدالات"
@@ -1746,37 +1724,56 @@ function CashierRevenueView({
           <CashierMiniCard
             title="المرتجعات"
             value={money(summary.sales.returns_total)}
-            subtitle={
-              `${summary.sales.returns_count} عملية` +
-              ` • رد نقدي: ${money(summary.sales.return_cash_refund)}` +
-              ` • خفض مديونية: ${money(summary.sales.return_debt_reduction)}` +
-              ` • ملغاة: ${summary.sales.cancelled_returns_count}`
-            }
-            tone="red"
-          />
+            subtitle={[
+              `${summary.sales.returns_count} عملية`,
 
-          <CashierMiniCard
-            title="الاستبدالات"
-            value={signedMoney(summary.sales.exchange_adjustment)}
-            subtitle={`${summary.sales.exchanges_count} عملية • ملغاة: ${
-              summary.sales.cancelled_exchanges_count
-            }`}
-            tone="violet"
+              summary.sales.return_cash_refund > 0
+                ? `رد نقدي: ${money(summary.sales.return_cash_refund)}`
+                : null,
+
+              summary.sales.return_debt_reduction > 0
+                ? `خفض مديونية: ${money(summary.sales.return_debt_reduction)}`
+                : null,
+
+              summary.sales.cancelled_returns_count > 0
+                ? `ملغاة: ${summary.sales.cancelled_returns_count}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')}
+            tone="red"
           />
 
           <CashierMiniCard
             title="فرق الاستبدال النقدي"
             value={signedMoney(summary.sales.exchange_cash_difference)}
-            subtitle={
-              `${summary.sales.exchanges_count} عملية` +
-              ` • خفض مديونية: ${money(
-                summary.sales.exchange_debt_reduction,
-              )}` +
-              ` • تعديل قيمة البيع: ${signedMoney(
-                summary.sales.exchange_adjustment,
-              )}` +
-              ` • ملغاة: ${summary.sales.cancelled_exchanges_count}`
-            }
+            subtitle={[
+              `${summary.sales.exchanges_count} عملية`,
+
+              summary.sales.exchange_cash_collection > 0
+                ? `تحصيل فرق: ${money(summary.sales.exchange_cash_collection)}`
+                : null,
+
+              summary.sales.exchange_cash_refund > 0
+                ? `رد فرق: ${money(summary.sales.exchange_cash_refund)}`
+                : null,
+
+              summary.sales.exchange_debt_reduction > 0
+                ? `خفض مديونية: ${money(summary.sales.exchange_debt_reduction)}`
+                : null,
+
+              summary.sales.exchange_adjustment !== 0
+                ? `تعديل قيمة البيع: ${signedMoney(
+                    summary.sales.exchange_adjustment,
+                  )}`
+                : null,
+
+              summary.sales.cancelled_exchanges_count > 0
+                ? `ملغاة: ${summary.sales.cancelled_exchanges_count}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')}
             tone="violet"
           />
 

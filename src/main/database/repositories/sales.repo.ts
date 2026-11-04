@@ -4715,6 +4715,29 @@ export function cancelSaleReturn(input: {
       throw new Error('مرتجع البيع ملغي بالفعل');
     }
 
+    /*
+     * إلغاء المرتجع هو تصحيح لعملية
+     * تم إدخالها بالخطأ.
+     *
+     * لذلك مسموح فقط طالما نفس الشفت
+     * الذي تم فيه المرتجع ما زال مفتوحًا.
+     *
+     * بعد إغلاق الشفت يصبح المرتجع
+     * جزءًا من التاريخ المالي ولا نعيد
+     * كتابته من شفت لاحق.
+     */
+    const returnShiftId = Number(saleReturn.shift_id || 0);
+
+    const currentShift = getOpenCashShift();
+
+    if (
+      returnShiftId <= 0 ||
+      !currentShift ||
+      Number(currentShift.id) !== returnShiftId
+    ) {
+      throw new Error('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
+    }
+
     if (saleReturn.sale_cancelled_at) {
       throw new Error('لا يمكن إلغاء المرتجع لأن الفاتورة الأصلية ملغاة');
     }

@@ -7,6 +7,7 @@ import {
 import { syncCustomerTotalSpent } from './sales.repo';
 import {
   getAttributableOpenCashShift,
+  getOpenCashShift,
   resolveFinancialOperationShift,
 } from './cash-shifts.repo';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
@@ -2382,6 +2383,25 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       throw new Error('عملية الاستبدال ملغاة بالفعل');
     }
 
+    /*
+     * لو الاستبدال تابع لشفت،
+     * إلغاؤه مسموح فقط أثناء نفس الشفت.
+     *
+     * أما الاستبدال الذي أنشأه الأدمن
+     * خارج أي شفت بحساب غير درج المحل،
+     * فيظل خارج الشفت عند إلغائه أيضًا.
+     */
+    const exchangeShiftId = Number(exchange.shift_id || 0);
+
+    const currentShift = getOpenCashShift();
+
+    if (
+      exchangeShiftId > 0 &&
+      (!currentShift || Number(currentShift.id) !== exchangeShiftId)
+    ) {
+      throw new Error('لا يمكن إلغاء الاستبدال بعد إغلاق الشفت الذي تم فيه');
+    }
+
     if (exchange.sale_cancelled_at) {
       throw new Error('لا يمكن إلغاء الاستبدال لأن الفاتورة الأصلية ملغاة');
     }
@@ -2591,8 +2611,10 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         : null;
 
     const openShift =
-      financialShift ??
-      getAttributableOpenCashShift(Number(input.actor_id || 0));
+      exchangeShiftId > 0
+        ? (financialShift ??
+          getAttributableOpenCashShift(Number(input.actor_id || 0)))
+        : null;
 
     const cancelBusinessDate = resolveFinancialBusinessDate(
       openShift?.id ?? null,

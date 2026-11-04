@@ -3637,61 +3637,57 @@ describe('sales repository', () => {
         actor_id: 1,
         reason: 'Cancel return without shift',
       }),
-    ).toThrow('لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح');
+    ).toThrow('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
 
     const currentShift = openCashShift({
       opening_counted_amount: 150,
       opened_by: 1,
     });
 
-    const cancelled = cancelSaleReturn({
-      return_id: saleReturn.returnId,
-      actor_id: 1,
-      reason: 'إلغاء المرتجع في شفت جديد',
-    });
-
-    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+    expect(() =>
+      cancelSaleReturn({
+        return_id: saleReturn.returnId,
+        actor_id: 1,
+        reason: 'إلغاء المرتجع في شفت جديد',
+      }),
+    ).toThrow('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
 
     const returnRow = db
       .prepare(
         `
       SELECT
         shift_id,
-        cancelled_shift_id
+        cancelled_shift_id,
+        cancelled_at
       FROM sale_returns
       WHERE id = ?
-    `,
+      `,
       )
       .get(saleReturn.returnId) as {
       shift_id: number;
-      cancelled_shift_id: number;
+      cancelled_shift_id: number | null;
+      cancelled_at: string | null;
     };
 
     expect(returnRow.shift_id).toBe(originalShift!.id);
 
-    expect(returnRow.cancelled_shift_id).toBe(currentShift.id);
+    expect(returnRow.cancelled_shift_id).toBeNull();
+
+    expect(returnRow.cancelled_at).toBeNull();
 
     const movement = db
       .prepare(
         `
-      SELECT
-        shift_id,
-        direction
+      SELECT id
       FROM cash_movements
-      WHERE reference_type =
-        'sale_return_cancel'
+      WHERE reference_type = 'sale_return_cancel'
         AND reference_id = ?
       LIMIT 1
-    `,
+      `,
       )
-      .get(saleReturn.returnId) as {
-      shift_id: number;
-      direction: string;
-    };
+      .get(saleReturn.returnId);
 
-    expect(movement.shift_id).toBe(currentShift.id);
-
-    expect(movement.direction).toBe('in');
+    expect(movement).toBeUndefined();
   });
 
   it('filters invoice history by payment method', () => {
@@ -5844,24 +5840,23 @@ describe('sales repository', () => {
       opened_by: 1,
     });
 
-    const cancelled = cancelSaleReturn({
-      return_id: saleReturn.returnId,
-      actor_id: 1,
-      reason: 'Cancel debt-only return in next shift',
-    });
+    expect(currentShift.id).not.toBe(originalShift!.id);
 
-    expect(cancelled.cash_restored).toBe(0);
-
-    expect(cancelled.debt_restored).toBe(150);
-
-    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+    expect(() =>
+      cancelSaleReturn({
+        return_id: saleReturn.returnId,
+        actor_id: 1,
+        reason: 'Cancel debt-only return in next shift',
+      }),
+    ).toThrow('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
 
     const row = db
       .prepare(
         `
       SELECT
         shift_id,
-        cancelled_shift_id
+        cancelled_shift_id,
+        cancelled_at
       FROM sale_returns
       WHERE id = ?
       `,
@@ -5870,7 +5865,9 @@ describe('sales repository', () => {
 
     expect(Number(row.shift_id)).toBe(originalShift!.id);
 
-    expect(Number(row.cancelled_shift_id)).toBe(currentShift.id);
+    expect(row.cancelled_shift_id).toBeNull();
+
+    expect(row.cancelled_at).toBeNull();
 
     const reverseMovement = db
       .prepare(
@@ -5885,5 +5882,179 @@ describe('sales repository', () => {
       .get(saleReturn.returnId);
 
     expect(reverseMovement).toBeUndefined();
+  });
+
+  it('allows admin to create a non-drawer return without an open shift', () => {
+    const db = getDb();
+
+    const variant = seedProduct();
+
+    /*
+     * المستخدم رقم 1 هو Admin الاختبارات.
+     */
+    const admin = db
+      .prepare(
+        `
+      SELECT
+        id,
+        role
+      FROM users
+      WHERE id = 1
+      LIMIT 1
+      `,
+      )
+      .get() as {
+      id: number;
+      role: string;
+    };
+
+    expect(admin.role).toBe('admin');
+
+    /*
+     * ننشئ فاتورة مدفوعة من البنك
+     * أثناء الشفت الأول.
+     */
+    const sale = createSale({
+      user_id: admin.id,
+
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 150,
+      remaining_amount: 0,
+      payment_status: 'paid',
+
+      change_amount: 0,
+
+      payment_method: 'owner_bank',
+
+      items: [
+        {
+          variant_id: variant.variant_id,
+
+          product_name: variant.product_name,
+
+          barcode: variant.barcode,
+
+          size: variant.size,
+
+          color: variant.color,
+
+          quantity: 1,
+
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const originalShift = getOpenCashShift();
+
+    expect(originalShift).toBeTruthy();
+
+    /*
+     * نقفل الشفت ولا نفتح شفت جديد.
+     */
+    closeCashShift({
+      shift_id: originalShift!.id,
+
+      closing_counted_amount: 0,
+
+      left_for_next_shift: 0,
+
+      closed_by: admin.id,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    /*
+     * الأدمن يعمل المرتجع من البنك.
+     *
+     * مفيش Store Cash،
+     * لذلك لا يحتاج شفت.
+     */
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+
+      user_id: admin.id,
+
+      refund_payment_method: 'owner_bank',
+
+      reason: 'Admin bank return without shift',
+
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+
+          variant_id: variant.variant_id,
+
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.return_value).toBe(150);
+
+    expect(saleReturn.refundAmount).toBe(150);
+
+    /*
+     * خارج أي شفت.
+     */
+    expect(saleReturn.shift_id).toBeNull();
+
+    const returnRow = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        payment_method,
+        refund_amount,
+        cash_refund_amount
+      FROM sale_returns
+      WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(returnRow.shift_id).toBeNull();
+
+    expect(returnRow.payment_method).toBe('owner_bank');
+
+    expect(Number(returnRow.refund_amount)).toBe(150);
+
+    expect(Number(returnRow.cash_refund_amount)).toBe(150);
+
+    /*
+     * حركة البنك نفسها أيضًا خارج الشفت.
+     */
+    const refundMovement = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        payment_method,
+        direction,
+        amount
+      FROM cash_movements
+      WHERE reference_type = 'sale_return'
+        AND reference_id = ?
+      LIMIT 1
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(refundMovement).toBeTruthy();
+
+    expect(refundMovement.shift_id).toBeNull();
+
+    expect(refundMovement.payment_method).toBe('owner_bank');
+
+    expect(refundMovement.direction).toBe('out');
+
+    expect(Number(refundMovement.amount)).toBe(150);
   });
 });

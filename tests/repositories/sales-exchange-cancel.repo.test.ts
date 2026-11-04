@@ -785,22 +785,13 @@ describe('sale exchange cancellation', () => {
 
     expect(customerBalance(customerId)).toBe(50);
 
-    closeCashShift({
-      shift_id: originalShift!.id,
-
-      closing_counted_amount: 400,
-
-      left_for_next_shift: 400,
-
-      closed_by: 1,
-    });
-
-    const currentShift = openCashShift({
-      opening_counted_amount: 400,
-
-      opened_by: 1,
-    });
-
+    /*
+     * إلغاء الاستبدال يتم داخل
+     * نفس الشفت الذي أُنشئ فيه.
+     *
+     * الهدف هنا التأكد من أن
+     * خفض المديونية يُعكس بشكل صحيح.
+     */
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
 
@@ -811,7 +802,7 @@ describe('sale exchange cancellation', () => {
 
     expect(cancelled.debt_restored).toBe(100);
 
-    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+    expect(cancelled.cancelled_shift_id).toBe(originalShift!.id);
 
     const exchangeRow = getDb()
       .prepare(
@@ -829,7 +820,7 @@ describe('sale exchange cancellation', () => {
 
     expect(Number(exchangeRow.shift_id)).toBe(originalShift!.id);
 
-    expect(Number(exchangeRow.cancelled_shift_id)).toBe(currentShift.id);
+    expect(Number(exchangeRow.cancelled_shift_id)).toBe(originalShift!.id);
 
     const reverseMovement = getDb()
       .prepare(
@@ -1003,7 +994,7 @@ describe('sale exchange cancellation', () => {
     expect(Number(reverse.amount)).toBe(100);
   });
 
-  it('cancels a previous-shift exchange in the current shift', () => {
+  it('blocks cancelling a previous-shift exchange in a later shift', () => {
     const db = getDb();
 
     const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
@@ -1042,75 +1033,89 @@ describe('sale exchange cancellation', () => {
       closed_by: 1,
     });
 
+    /*
+     * بعد إغلاق شفت الاستبدال
+     * لا يمكن إلغاؤه.
+     */
     expect(() =>
       cancelSaleExchange({
         exchange_id: exchange.exchangeId,
 
         actor_id: 1,
 
-        reason: 'إلغاء بدون شفت',
+        reason: 'إلغاء بعد إغلاق الشفت',
       }),
-    ).toThrow('لا يمكن إلغاء استبدال بدون شفت مفتوح');
+    ).toThrow('لا يمكن إلغاء الاستبدال بعد إغلاق الشفت الذي تم فيه');
 
+    /*
+     * وحتى فتح شفت جديد
+     * لا يسمح بتعديل تاريخ الشفت القديم.
+     */
     const currentShift = openCashShift({
       opening_counted_amount: 550,
+
       opened_by: 1,
     });
 
-    const cancelled = cancelSaleExchange({
-      exchange_id: exchange.exchangeId,
+    expect(currentShift.id).not.toBe(originalShift!.id);
 
-      actor_id: 1,
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
 
-      reason: 'إلغاء الاستبدال في شفت جديد',
-    });
+        actor_id: 1,
 
-    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+        reason: 'محاولة الإلغاء في شفت جديد',
+      }),
+    ).toThrow('لا يمكن إلغاء الاستبدال بعد إغلاق الشفت الذي تم فيه');
 
     const exchangeRow = db
       .prepare(
         `
       SELECT
         shift_id,
-        cancelled_shift_id
+        cancelled_shift_id,
+        cancelled_at
+
       FROM sale_exchanges
+
       WHERE id = ?
-    `,
+      `,
       )
       .get(exchange.exchangeId) as {
       shift_id: number;
-      cancelled_shift_id: number;
+      cancelled_shift_id: number | null;
+      cancelled_at: string | null;
     };
 
     expect(exchangeRow.shift_id).toBe(originalShift!.id);
 
-    expect(exchangeRow.cancelled_shift_id).toBe(currentShift.id);
+    expect(exchangeRow.cancelled_shift_id).toBeNull();
 
+    expect(exchangeRow.cancelled_at).toBeNull();
+
+    /*
+     * بما إن الإلغاء اترفض،
+     * ماينفعش يكون حصل أي عكس مالي.
+     */
     const reverseMovement = db
       .prepare(
         `
-      SELECT
-        shift_id,
-        direction,
-        amount
+      SELECT id
+
       FROM cash_movements
-      WHERE reference_type =
-        'sale_exchange_cancel'
+
+      WHERE
+        reference_type =
+          'sale_exchange_cancel'
+
         AND reference_id = ?
-      ORDER BY id DESC
+
       LIMIT 1
-    `,
+      `,
       )
-      .get(exchange.exchangeId) as {
-      shift_id: number;
-      direction: string;
-      amount: number;
-    };
+      .get(exchange.exchangeId);
 
-    expect(reverseMovement.shift_id).toBe(currentShift.id);
-
-    expect(reverseMovement.direction).toBe('out');
-
-    expect(Number(reverseMovement.amount)).toBe(100);
+    expect(reverseMovement).toBeUndefined();
   });
 });
