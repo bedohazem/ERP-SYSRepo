@@ -3576,7 +3576,7 @@ describe('sales repository', () => {
     expect(refundMovement.direction).toBe('out');
   });
 
-  it('cancels a previous-shift return in the current shift', () => {
+  it('allows admin to cancel a previous-shift return in the current shift', () => {
     const db = getDb();
 
     const variant = seedProduct();
@@ -3637,20 +3637,20 @@ describe('sales repository', () => {
         actor_id: 1,
         reason: 'Cancel return without shift',
       }),
-    ).toThrow('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
+    ).toThrow('لا يمكن إلغاء مرتجع بيع بدون شفت مفتوح');
 
     const currentShift = openCashShift({
       opening_counted_amount: 150,
       opened_by: 1,
     });
 
-    expect(() =>
-      cancelSaleReturn({
-        return_id: saleReturn.returnId,
-        actor_id: 1,
-        reason: 'إلغاء المرتجع في شفت جديد',
-      }),
-    ).toThrow('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
+    const cancelled = cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Admin cancellation in new shift',
+    });
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
 
     const returnRow = db
       .prepare(
@@ -3663,31 +3663,31 @@ describe('sales repository', () => {
       WHERE id = ?
       `,
       )
-      .get(saleReturn.returnId) as {
-      shift_id: number;
-      cancelled_shift_id: number | null;
-      cancelled_at: string | null;
-    };
+      .get(saleReturn.returnId) as any;
 
-    expect(returnRow.shift_id).toBe(originalShift!.id);
-
-    expect(returnRow.cancelled_shift_id).toBeNull();
-
-    expect(returnRow.cancelled_at).toBeNull();
+    expect(Number(returnRow.shift_id)).toBe(originalShift!.id);
+    expect(Number(returnRow.cancelled_shift_id)).toBe(currentShift.id);
+    expect(returnRow.cancelled_at).toBeTruthy();
 
     const movement = db
       .prepare(
         `
-      SELECT id
+      SELECT
+        shift_id,
+        direction,
+        amount
       FROM cash_movements
       WHERE reference_type = 'sale_return_cancel'
         AND reference_id = ?
+      ORDER BY id DESC
       LIMIT 1
       `,
       )
-      .get(saleReturn.returnId);
+      .get(saleReturn.returnId) as any;
 
-    expect(movement).toBeUndefined();
+    expect(Number(movement.shift_id)).toBe(currentShift.id);
+    expect(movement.direction).toBe('in');
+    expect(Number(movement.amount)).toBe(150);
   });
 
   it('filters invoice history by payment method', () => {
@@ -5842,13 +5842,13 @@ describe('sales repository', () => {
 
     expect(currentShift.id).not.toBe(originalShift!.id);
 
-    expect(() =>
-      cancelSaleReturn({
-        return_id: saleReturn.returnId,
-        actor_id: 1,
-        reason: 'Cancel debt-only return in next shift',
-      }),
-    ).toThrow('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
+    const cancelled = cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Admin debt-only cancellation in next shift',
+    });
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
 
     const row = db
       .prepare(
@@ -5864,11 +5864,13 @@ describe('sales repository', () => {
       .get(saleReturn.returnId) as any;
 
     expect(Number(row.shift_id)).toBe(originalShift!.id);
+    expect(Number(row.cancelled_shift_id)).toBe(currentShift.id);
+    expect(row.cancelled_at).toBeTruthy();
 
-    expect(row.cancelled_shift_id).toBeNull();
-
-    expect(row.cancelled_at).toBeNull();
-
+    /*
+     * مفيش رد نقدي أصلًا،
+     * لذلك لا توجد Cash Movement للعكس.
+     */
     const reverseMovement = db
       .prepare(
         `
@@ -6056,5 +6058,210 @@ describe('sales repository', () => {
     expect(refundMovement.direction).toBe('out');
 
     expect(Number(refundMovement.amount)).toBe(150);
+  });
+
+  it('blocks cashier from cancelling a sale from a previous shift', () => {
+    const db = getDb();
+
+    const initialShift = getOpenCashShift()!;
+
+    closeCashShift({
+      shift_id: initialShift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, 'cashier', 1)
+    `,
+    ).run(2, 'Sales Cashier', 'sales_cashier', 'test-password');
+
+    const shift1 = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 2,
+    });
+
+    const variant = seedProduct();
+
+    const sale = createSale({
+      user_id: 2,
+      customer_id: null,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    expect(sale.shift_id).toBe(shift1.id);
+
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 150,
+      left_for_next_shift: 150,
+      closed_by: 2,
+    });
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 150,
+      opened_by: 2,
+    });
+
+    expect(shift2.id).not.toBe(shift1.id);
+
+    expect(() =>
+      cancelSaleInvoice({
+        sale_id: sale.saleId,
+        actor_id: 2,
+        reason: 'Cashier cross-shift cancellation',
+      }),
+    ).toThrow('لا يمكن إلغاء الفاتورة إلا داخل نفس الشفت الذي تم البيع فيه');
+
+    const row = db
+      .prepare(
+        `
+      SELECT
+        cancelled_at,
+        cancelled_shift_id
+      FROM sales
+      WHERE id = ?
+      `,
+      )
+      .get(sale.saleId) as any;
+
+    expect(row.cancelled_at).toBeNull();
+    expect(row.cancelled_shift_id).toBeNull();
+  });
+
+  it('blocks cashier from cancelling a return from a previous shift', () => {
+    const db = getDb();
+
+    const initialShift = getOpenCashShift()!;
+
+    closeCashShift({
+      shift_id: initialShift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, 'cashier', 1)
+    `,
+    ).run(2, 'Return Cashier', 'return_cashier', 'test-password');
+
+    const shift1 = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: 2,
+    });
+
+    const variant = seedProduct();
+
+    const sale = createSale({
+      user_id: 2,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+      paid: 300,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 2,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.shift_id).toBe(shift1.id);
+
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 150,
+      left_for_next_shift: 150,
+      closed_by: 2,
+    });
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 150,
+      opened_by: 2,
+    });
+
+    expect(shift2.id).not.toBe(shift1.id);
+
+    expect(() =>
+      cancelSaleReturn({
+        return_id: saleReturn.returnId,
+        actor_id: 2,
+        reason: 'Cashier cross-shift return cancellation',
+      }),
+    ).toThrow('لا يمكن إلغاء المرتجع إلا داخل نفس الشفت الذي تم فيه');
+
+    const row = db
+      .prepare(
+        `
+      SELECT
+        cancelled_at,
+        cancelled_shift_id
+      FROM sale_returns
+      WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(row.cancelled_at).toBeNull();
+    expect(row.cancelled_shift_id).toBeNull();
   });
 });

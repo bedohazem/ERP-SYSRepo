@@ -251,6 +251,37 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   return String(row?.business_date || '');
 }
 
+function isSalesAdmin(actorIdInput: number) {
+  const actorId = Number(actorIdInput || 0);
+
+  if (!Number.isInteger(actorId) || actorId <= 0) {
+    return false;
+  }
+
+  const actor = getDb()
+    .prepare(
+      `
+      SELECT
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        role: string;
+        is_active: number;
+      }
+    | undefined;
+
+  return actor?.role === 'admin' && Number(actor.is_active) === 1;
+}
+
 export function syncCustomerTotalSpent(customerIdInput: number) {
   const customerId = Number(customerIdInput || 0);
 
@@ -4349,7 +4380,9 @@ export function cancelSaleInvoice(input: {
   }
 
   const reason = input.reason?.trim() || 'إلغاء فاتورة بيع';
+  const actorId = Number(input.actor_id || 0);
 
+  const isAdmin = isSalesAdmin(actorId);
   const tx = db.transaction(() => {
     const sale = db
       .prepare(
@@ -4369,6 +4402,29 @@ export function cancelSaleInvoice(input: {
 
     if (sale.cancelled_at) {
       throw new Error('فاتورة البيع ملغاة بالفعل');
+    }
+
+    /*
+     * الكاشير لا يلغي فاتورة
+     * إلا داخل نفس الشفت الذي
+     * تم البيع فيه.
+     *
+     * الأدمن له Override.
+     */
+    if (!isAdmin) {
+      const saleShiftId = Number(sale.shift_id || 0);
+
+      const currentShift = getOpenCashShift();
+
+      if (
+        saleShiftId <= 0 ||
+        !currentShift ||
+        Number(currentShift.id) !== saleShiftId
+      ) {
+        throw new Error(
+          'لا يمكن إلغاء الفاتورة إلا داخل نفس الشفت الذي تم البيع فيه',
+        );
+      }
     }
 
     const returnsRow = db
@@ -4688,6 +4744,10 @@ export function cancelSaleReturn(input: {
 
   const returnCode = `RET-${String(returnId).padStart(5, '0')}`;
 
+  const actorId = Number(input.actor_id || 0);
+
+  const isAdmin = isSalesAdmin(actorId);
+
   const tx = db.transaction(() => {
     const saleReturn = db
       .prepare(
@@ -4715,27 +4775,26 @@ export function cancelSaleReturn(input: {
       throw new Error('مرتجع البيع ملغي بالفعل');
     }
 
-    /*
-     * إلغاء المرتجع هو تصحيح لعملية
-     * تم إدخالها بالخطأ.
-     *
-     * لذلك مسموح فقط طالما نفس الشفت
-     * الذي تم فيه المرتجع ما زال مفتوحًا.
-     *
-     * بعد إغلاق الشفت يصبح المرتجع
-     * جزءًا من التاريخ المالي ولا نعيد
-     * كتابته من شفت لاحق.
-     */
     const returnShiftId = Number(saleReturn.shift_id || 0);
 
-    const currentShift = getOpenCashShift();
+    /*
+     * الكاشير فقط هو المقيد
+     * بنفس شفت المرتجع.
+     *
+     * الأدمن يقدر يلغي مرتجع قديم،
+     * والإلغاء نفسه يتبع الشفت الحالي
+     * إن كان هناك شفت مفتوح.
+     */
+    if (!isAdmin) {
+      const currentShift = getOpenCashShift();
 
-    if (
-      returnShiftId <= 0 ||
-      !currentShift ||
-      Number(currentShift.id) !== returnShiftId
-    ) {
-      throw new Error('لا يمكن إلغاء المرتجع بعد إغلاق الشفت الذي تم فيه');
+      if (
+        returnShiftId <= 0 ||
+        !currentShift ||
+        Number(currentShift.id) !== returnShiftId
+      ) {
+        throw new Error('لا يمكن إلغاء المرتجع إلا داخل نفس الشفت الذي تم فيه');
+      }
     }
 
     if (saleReturn.sale_cancelled_at) {

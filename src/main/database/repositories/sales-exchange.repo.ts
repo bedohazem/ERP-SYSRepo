@@ -141,6 +141,37 @@ type ExchangeVariantRow = {
   list_unit_price: number;
 };
 
+function isSaleExchangeAdmin(actorIdInput: number) {
+  const actorId = Number(actorIdInput || 0);
+
+  if (!Number.isInteger(actorId) || actorId <= 0) {
+    return false;
+  }
+
+  const actor = getDb()
+    .prepare(
+      `
+      SELECT
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        role: string;
+        is_active: number;
+      }
+    | undefined;
+
+  return actor?.role === 'admin' && Number(actor.is_active) === 1;
+}
+
 function parseProductIds(value: string) {
   try {
     const parsed = JSON.parse(value || '[]');
@@ -2342,6 +2373,10 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
   const exchangeCode = `EXC-${String(exchangeId).padStart(5, '0')}`;
 
+  const actorId = Number(input.actor_id || 0);
+
+  const isAdmin = isSaleExchangeAdmin(actorId);
+
   const tx = db.transaction(() => {
     const exchange = db
       .prepare(
@@ -2383,23 +2418,26 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
       throw new Error('عملية الاستبدال ملغاة بالفعل');
     }
 
-    /*
-     * لو الاستبدال تابع لشفت،
-     * إلغاؤه مسموح فقط أثناء نفس الشفت.
-     *
-     * أما الاستبدال الذي أنشأه الأدمن
-     * خارج أي شفت بحساب غير درج المحل،
-     * فيظل خارج الشفت عند إلغائه أيضًا.
-     */
     const exchangeShiftId = Number(exchange.shift_id || 0);
 
-    const currentShift = getOpenCashShift();
+    /*
+     * الكاشير لا يلغي الاستبدال
+     * إلا داخل نفس شفته.
+     *
+     * الأدمن له Override.
+     */
+    if (!isAdmin) {
+      const currentShift = getOpenCashShift();
 
-    if (
-      exchangeShiftId > 0 &&
-      (!currentShift || Number(currentShift.id) !== exchangeShiftId)
-    ) {
-      throw new Error('لا يمكن إلغاء الاستبدال بعد إغلاق الشفت الذي تم فيه');
+      if (
+        exchangeShiftId <= 0 ||
+        !currentShift ||
+        Number(currentShift.id) !== exchangeShiftId
+      ) {
+        throw new Error(
+          'لا يمكن إلغاء الاستبدال إلا داخل نفس الشفت الذي تم فيه',
+        );
+      }
     }
 
     if (exchange.sale_cancelled_at) {
@@ -2610,11 +2648,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
           )
         : null;
 
-    const openShift =
-      exchangeShiftId > 0
-        ? (financialShift ??
-          getAttributableOpenCashShift(Number(input.actor_id || 0)))
-        : null;
+    const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
     const cancelBusinessDate = resolveFinancialBusinessDate(
       openShift?.id ?? null,

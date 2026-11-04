@@ -1792,20 +1792,32 @@ function CashierRevenueView({
           <CashierMiniCard
             title="المصروفات المسجلة"
             value={money(summary.operations.expenses_total)}
-            subtitle={`${summary.operations.expenses_count} عملية • ملغاة: ${
-              summary.operations.cancelled_expenses_count
-            }`}
+            subtitle={[
+              `${summary.operations.expenses_count} عملية`,
+
+              summary.operations.cancelled_expenses_count > 0
+                ? `ملغاة: ${summary.operations.cancelled_expenses_count}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')}
             tone="blue"
           />
 
           <CashierMiniCard
             title="دفعات العملاء"
             value={money(summary.operations.customer_payments_total)}
-            subtitle={`${
-              summary.operations.customer_payments_count
-            } دفعة • ملغاة: ${
-              summary.operations.cancelled_customer_payments_count
-            }`}
+            subtitle={[
+              `${summary.operations.customer_payments_count} دفعة`,
+
+              summary.operations.cancelled_customer_payments_count > 0
+                ? `ملغاة: ${
+                    summary.operations.cancelled_customer_payments_count
+                  }`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')}
             tone="blue"
           />
 

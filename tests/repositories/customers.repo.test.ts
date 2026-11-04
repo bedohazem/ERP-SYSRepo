@@ -2259,4 +2259,293 @@ describe('customers repository', () => {
 
     expect(cancelled.cancelled_shift_id).toBe(shift!.id);
   });
+
+  it('blocks cashier from updating or cancelling a customer payment from a previous shift', () => {
+    const db = getDb();
+
+    const customer = createTestCustomer('01088881111');
+
+    const sale = createPartialSale(customer.id, 100);
+
+    const initialShift = getOpenCashShift();
+
+    expect(initialShift).toBeTruthy();
+
+    closeCashShift({
+      shift_id: initialShift!.id,
+      closing_counted_amount: 100,
+      left_for_next_shift: 100,
+      closed_by: 1,
+    });
+
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, ?, 1)
+    `,
+    ).run(
+      2,
+      'Customer Payment Cashier',
+      'customer_payment_cashier',
+      'test-password',
+      'cashier',
+    );
+
+    const shift1 = openCashShift({
+      opening_counted_amount: 100,
+      opened_by: 2,
+    });
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 50,
+      payment_method: 'store_cash',
+      actor_id: 2,
+    });
+
+    expect(payment.shift_id).toBe(shift1.id);
+
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 150,
+      left_for_next_shift: 150,
+      closed_by: 2,
+    });
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 150,
+      opened_by: 2,
+    });
+
+    expect(shift2.id).not.toBe(shift1.id);
+
+    expect(() =>
+      updateCustomerPaymentBatch({
+        batch_id: payment.payment_batch_id,
+        amount: 40,
+        payment_method: 'store_cash',
+        notes: 'Illegal cashier update',
+        actor_id: 2,
+      }),
+    ).toThrow(
+      'لا يمكن تعديل دفعة العميل إلا داخل نفس الشفت الذي تم تسجيلها فيه',
+    );
+
+    expect(() =>
+      cancelCustomerPaymentBatch({
+        batch_id: payment.payment_batch_id,
+        reason: 'Illegal cashier cancellation',
+        actor_id: 2,
+      }),
+    ).toThrow(
+      'لا يمكن إلغاء دفعة العميل إلا داخل نفس الشفت الذي تم تسجيلها فيه',
+    );
+
+    const batch = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_at,
+        cancelled_shift_id,
+        replacement_batch_id
+
+      FROM customer_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any;
+
+    expect(Number(batch.shift_id)).toBe(shift1.id);
+    expect(batch.cancelled_at).toBeNull();
+    expect(batch.cancelled_shift_id).toBeNull();
+    expect(batch.replacement_batch_id).toBeNull();
+  });
+
+  it('allows admin to update and cancel a previous-shift customer payment in the current cashier shift', () => {
+    const db = getDb();
+
+    const customer = createTestCustomer('01088882222');
+
+    const sale = createPartialSale(customer.id, 100);
+
+    const shift1 = getOpenCashShift();
+
+    expect(shift1).toBeTruthy();
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 50,
+      payment_method: 'store_cash',
+      actor_id: 1,
+    });
+
+    expect(payment.shift_id).toBe(shift1!.id);
+
+    closeCashShift({
+      shift_id: shift1!.id,
+      closing_counted_amount: 150,
+      left_for_next_shift: 150,
+      closed_by: 1,
+    });
+
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, ?, 1)
+    `,
+    ).run(
+      2,
+      'Customer Payment Cashier',
+      'customer_payment_cashier',
+      'test-password',
+      'cashier',
+    );
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 150,
+      opened_by: 2,
+    });
+
+    const updated = updateCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+      amount: 40,
+      payment_method: 'store_cash',
+      notes: 'Admin cross-shift correction',
+      actor_id: 1,
+    });
+
+    expect(updated.shift_id).toBe(shift2.id);
+
+    const oldBatch = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id,
+        replacement_batch_id
+
+      FROM customer_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any;
+
+    /*
+     * الدفعة الأصلية تظل تاريخيًا
+     * تابعة للشفت الأول.
+     */
+    expect(Number(oldBatch.shift_id)).toBe(shift1!.id);
+
+    /*
+     * لكن تعديل الأدمن حصل في Shift 2.
+     */
+    expect(Number(oldBatch.cancelled_shift_id)).toBe(shift2.id);
+    expect(Number(oldBatch.replacement_batch_id)).toBe(updated.batch_id);
+
+    const newBatch = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        amount
+
+      FROM customer_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(updated.batch_id) as any;
+
+    expect(Number(newBatch.shift_id)).toBe(shift2.id);
+    expect(Number(newBatch.amount)).toBe(40);
+
+    const cancelled = cancelCustomerPaymentBatch({
+      batch_id: updated.batch_id,
+      reason: 'Admin cancellation',
+      actor_id: 1,
+    });
+
+    expect(cancelled.cancelled_shift_id).toBe(shift2.id);
+
+    const cancelledBatch = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id,
+        cancelled_at
+
+      FROM customer_payment_batches
+
+      WHERE id = ?
+      `,
+      )
+      .get(updated.batch_id) as any;
+
+    expect(Number(cancelledBatch.shift_id)).toBe(shift2.id);
+    expect(Number(cancelledBatch.cancelled_shift_id)).toBe(shift2.id);
+    expect(cancelledBatch.cancelled_at).toBeTruthy();
+
+    const updateReverse = db
+      .prepare(
+        `
+      SELECT shift_id
+
+      FROM cash_movements
+
+      WHERE
+        reference_type = 'customer_payment_update_reverse'
+        AND reference_id = ?
+
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      )
+      .get(payment.payment_batch_id) as any;
+
+    expect(Number(updateReverse.shift_id)).toBe(shift2.id);
+
+    const cancelReverse = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        direction,
+        amount
+
+      FROM cash_movements
+
+      WHERE
+        reference_type = 'customer_payment_cancel'
+        AND reference_id = ?
+
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      )
+      .get(updated.batch_id) as any;
+
+    expect(Number(cancelReverse.shift_id)).toBe(shift2.id);
+    expect(cancelReverse.direction).toBe('out');
+    expect(Number(cancelReverse.amount)).toBe(40);
+  });
 });

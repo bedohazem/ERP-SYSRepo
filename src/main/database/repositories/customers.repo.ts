@@ -2,6 +2,7 @@ import { getDb } from '../db';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
   getAttributableOpenCashShift,
+  getOpenCashShift,
   resolveFinancialOperationShift,
 } from './cash-shifts.repo';
 import { roundMoney } from '../../../shared/money';
@@ -19,6 +20,35 @@ function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   };
 
   return String(row?.business_date || '');
+}
+
+function isCustomerPaymentAdmin(actorId: number) {
+  if (!actorId) {
+    return false;
+  }
+
+  const actor = getDb()
+    .prepare(
+      `
+      SELECT
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        role: string;
+        is_active: number;
+      }
+    | undefined;
+
+  return actor?.role === 'admin' && Number(actor.is_active) === 1;
 }
 
 function normalizeCreditLimit(value: unknown): number | null {
@@ -1687,7 +1717,7 @@ export function cancelCustomerPaymentBatch(input: {
   }
 
   const actorId = Number(input.actor_id || 0);
-
+  const isAdmin = isCustomerPaymentAdmin(actorId);
   const reason = String(input.reason || '').trim() || 'إلغاء دفعة عميل';
 
   const batch = db
@@ -1716,6 +1746,29 @@ export function cancelCustomerPaymentBatch(input: {
 
   if (batch.cancelled_at) {
     throw new Error('دفعة العميل ملغاة بالفعل');
+  }
+
+  /*
+   * الكاشير لا يقدر يلغي دفعة
+   * إلا داخل نفس الشفت الذي
+   * تم تسجيل الدفعة فيه.
+   *
+   * الأدمن له Override.
+   */
+  if (!isAdmin) {
+    const batchShiftId = Number(batch.shift_id || 0);
+
+    const currentShift = getOpenCashShift();
+
+    if (
+      batchShiftId <= 0 ||
+      !currentShift ||
+      Number(currentShift.id) !== batchShiftId
+    ) {
+      throw new Error(
+        'لا يمكن إلغاء دفعة العميل إلا داخل نفس الشفت الذي تم تسجيلها فيه',
+      );
+    }
   }
 
   assertCustomerPaymentBatchIsLatestMutable(db, batchId, batch);
@@ -1967,6 +2020,7 @@ export function updateCustomerPaymentBatch(input: {
   const amountInput = roundMoney(input.amount);
 
   const actorId = Number(input.actor_id || 0);
+  const isAdmin = isCustomerPaymentAdmin(actorId);
 
   if (!batchId) {
     throw new Error('رقم دفعة العميل غير صحيح');
@@ -2002,6 +2056,29 @@ export function updateCustomerPaymentBatch(input: {
 
   if (batch.cancelled_at) {
     throw new Error('لا يمكن تعديل دفعة ملغاة');
+  }
+
+  /*
+   * الكاشير لا يقدر يعدل دفعة
+   * إلا داخل نفس الشفت الذي
+   * تم تسجيل الدفعة فيه.
+   *
+   * الأدمن له Override.
+   */
+  if (!isAdmin) {
+    const batchShiftId = Number(batch.shift_id || 0);
+
+    const currentShift = getOpenCashShift();
+
+    if (
+      batchShiftId <= 0 ||
+      !currentShift ||
+      Number(currentShift.id) !== batchShiftId
+    ) {
+      throw new Error(
+        'لا يمكن تعديل دفعة العميل إلا داخل نفس الشفت الذي تم تسجيلها فيه',
+      );
+    }
   }
 
   assertCustomerPaymentBatchIsLatestMutable(db, batchId, batch);

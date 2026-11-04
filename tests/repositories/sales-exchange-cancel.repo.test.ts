@@ -994,7 +994,7 @@ describe('sale exchange cancellation', () => {
     expect(Number(reverse.amount)).toBe(100);
   });
 
-  it('blocks cancelling a previous-shift exchange in a later shift', () => {
+  it('allows admin to cancel a previous-shift exchange in the current shift', () => {
     const db = getDb();
 
     const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
@@ -1033,19 +1033,13 @@ describe('sale exchange cancellation', () => {
       closed_by: 1,
     });
 
-    /*
-     * بعد إغلاق شفت الاستبدال
-     * لا يمكن إلغاؤه.
-     */
     expect(() =>
       cancelSaleExchange({
         exchange_id: exchange.exchangeId,
-
         actor_id: 1,
-
-        reason: 'إلغاء بعد إغلاق الشفت',
+        reason: 'Admin cancellation without shift',
       }),
-    ).toThrow('لا يمكن إلغاء الاستبدال بعد إغلاق الشفت الذي تم فيه');
+    ).toThrow('لا يمكن إلغاء استبدال بدون شفت مفتوح');
 
     /*
      * وحتى فتح شفت جديد
@@ -1057,17 +1051,15 @@ describe('sale exchange cancellation', () => {
       opened_by: 1,
     });
 
+    const cancelled = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Admin cancellation in new shift',
+    });
+
+    expect(cancelled.cancelled_shift_id).toBe(currentShift.id);
+
     expect(currentShift.id).not.toBe(originalShift!.id);
-
-    expect(() =>
-      cancelSaleExchange({
-        exchange_id: exchange.exchangeId,
-
-        actor_id: 1,
-
-        reason: 'محاولة الإلغاء في شفت جديد',
-      }),
-    ).toThrow('لا يمكن إلغاء الاستبدال بعد إغلاق الشفت الذي تم فيه');
 
     const exchangeRow = db
       .prepare(
@@ -1076,46 +1068,109 @@ describe('sale exchange cancellation', () => {
         shift_id,
         cancelled_shift_id,
         cancelled_at
-
       FROM sale_exchanges
-
       WHERE id = ?
       `,
       )
-      .get(exchange.exchangeId) as {
-      shift_id: number;
-      cancelled_shift_id: number | null;
-      cancelled_at: string | null;
-    };
+      .get(exchange.exchangeId) as any;
 
-    expect(exchangeRow.shift_id).toBe(originalShift!.id);
+    expect(Number(exchangeRow.shift_id)).toBe(originalShift!.id);
+    expect(Number(exchangeRow.cancelled_shift_id)).toBe(currentShift.id);
+    expect(exchangeRow.cancelled_at).toBeTruthy();
 
-    expect(exchangeRow.cancelled_shift_id).toBeNull();
-
-    expect(exchangeRow.cancelled_at).toBeNull();
-
-    /*
-     * بما إن الإلغاء اترفض،
-     * ماينفعش يكون حصل أي عكس مالي.
-     */
     const reverseMovement = db
       .prepare(
         `
-      SELECT id
-
+      SELECT
+        shift_id,
+        direction,
+        amount
       FROM cash_movements
-
-      WHERE
-        reference_type =
-          'sale_exchange_cancel'
-
+      WHERE reference_type = 'sale_exchange_cancel'
         AND reference_id = ?
-
+      ORDER BY id DESC
       LIMIT 1
       `,
       )
-      .get(exchange.exchangeId);
+      .get(exchange.exchangeId) as any;
 
-    expect(reverseMovement).toBeUndefined();
+    expect(Number(reverseMovement.shift_id)).toBe(currentShift.id);
+    expect(reverseMovement.direction).toBe('out');
+    expect(Number(reverseMovement.amount)).toBe(100);
+  });
+
+  it('blocks cashier from cancelling an exchange from a previous shift', () => {
+    const db = getDb();
+
+    const originalShift = getOpenCashShift()!;
+
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
+
+    const gift = getUnitByPrice(result.sale.saleId, 150);
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(gift.id),
+          new_variant_id: result.variants.CEX300.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.shift_id).toBe(originalShift.id);
+
+    closeCashShift({
+      shift_id: originalShift.id,
+      closing_counted_amount: 550,
+      left_for_next_shift: 550,
+      closed_by: 1,
+    });
+
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, 'cashier', 1)
+    `,
+    ).run(2, 'Exchange Cashier', 'exchange_cashier', 'test-password');
+
+    const currentShift = openCashShift({
+      opening_counted_amount: 550,
+      opened_by: 2,
+    });
+
+    expect(currentShift.id).not.toBe(originalShift.id);
+
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+        actor_id: 2,
+        reason: 'Cashier cross-shift cancellation',
+      }),
+    ).toThrow('لا يمكن إلغاء الاستبدال إلا داخل نفس الشفت الذي تم فيه');
+
+    const row = db
+      .prepare(
+        `
+      SELECT
+        cancelled_at,
+        cancelled_shift_id
+      FROM sale_exchanges
+      WHERE id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(row.cancelled_at).toBeNull();
+    expect(row.cancelled_shift_id).toBeNull();
   });
 });

@@ -566,125 +566,174 @@ describe('expense repository', () => {
     expect(Number(expenseNet.net_out)).toBe(400);
   });
 
-  it('updates and cancels a previous-shift expense in the current shift', () => {
+  it('blocks cashier from updating or cancelling an expense from a previous shift', () => {
+    const db = getDb();
+
+    const initialShift = getOpenCashShift()!;
+
+    closeCashShift({
+      shift_id: initialShift.id,
+      closing_counted_amount: 1000000,
+      left_for_next_shift: 1000000,
+      closed_by: 1,
+    });
+
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, ?, 1)
+    `,
+    ).run(2, 'Expense Cashier', 'expense_cashier', 'test-password', 'cashier');
+
+    const shift1 = openCashShift({
+      opening_counted_amount: 1000000,
+      opened_by: 2,
+    });
+
+    const created = createExpense({
+      title: 'Cashier Previous Shift Expense',
+      amount: 100,
+      payment_method: 'store_cash',
+      created_by: 2,
+    });
+
+    expect(created.shift_id).toBe(shift1.id);
+
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 999900,
+      left_for_next_shift: 999900,
+      closed_by: 2,
+    });
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 999900,
+      opened_by: 2,
+    });
+
+    expect(shift2.id).not.toBe(shift1.id);
+
+    expect(() =>
+      updateExpense({
+        id: created.id,
+        title: 'Illegal Cashier Update',
+        amount: 150,
+        payment_method: 'store_cash',
+        actor_id: 2,
+      }),
+    ).toThrow('لا يمكن تعديل المصروف إلا داخل نفس الشفت الذي تم تسجيله فيه');
+
+    expect(() =>
+      cancelExpense({
+        id: created.id,
+        reason: 'Illegal Cashier Cancellation',
+        actor_id: 2,
+      }),
+    ).toThrow('لا يمكن إلغاء المصروف إلا داخل نفس الشفت الذي تم تسجيله فيه');
+
+    const row = db
+      .prepare(
+        `
+      SELECT
+        title,
+        amount,
+        shift_id,
+        updated_shift_id,
+        cancelled_shift_id,
+        cancelled_at
+
+      FROM expenses
+
+      WHERE id = ?
+      `,
+      )
+      .get(created.id) as any;
+
+    expect(row.title).toBe('Cashier Previous Shift Expense');
+    expect(Number(row.amount)).toBe(100);
+    expect(Number(row.shift_id)).toBe(shift1.id);
+    expect(row.updated_shift_id).toBeNull();
+    expect(row.cancelled_shift_id).toBeNull();
+    expect(row.cancelled_at).toBeNull();
+  });
+
+  it('allows admin to update and cancel a previous-shift expense in the current cashier shift', () => {
     const db = getDb();
 
     const shift1 = getOpenCashShift()!;
 
     const created = createExpense({
-      title: 'Previous Shift Expense',
-
+      title: 'Previous Admin Expense',
       amount: 100,
-
       payment_method: 'store_cash',
-
       created_by: 1,
     });
 
-    const originalMovement = db
-      .prepare(
-        `
-      SELECT *
-
-      FROM cash_movements
-
-      WHERE reference_type =
-        'expense'
-
-        AND reference_id = ?
-
-      ORDER BY id ASC
-
-      LIMIT 1
-      `,
-      )
-      .get(created.id) as any;
-
-    expect(Number(originalMovement.shift_id)).toBe(shift1.id);
+    expect(created.shift_id).toBe(shift1.id);
 
     closeCashShift({
       shift_id: shift1.id,
-
       closing_counted_amount: 999900,
-
       left_for_next_shift: 999900,
-
       closed_by: 1,
     });
 
+    db.prepare(
+      `
+    INSERT OR IGNORE INTO users (
+      id,
+      name,
+      username,
+      password,
+      role,
+      is_active
+    )
+    VALUES (?, ?, ?, ?, ?, 1)
+    `,
+    ).run(2, 'Expense Cashier', 'expense_cashier', 'test-password', 'cashier');
+
     const shift2 = openCashShift({
       opening_counted_amount: 999900,
-
-      opened_by: 1,
+      opened_by: 2,
     });
 
     const updated = updateExpense({
       id: created.id,
-
-      title: 'Corrected Expense',
-
+      title: 'Admin Corrected Expense',
       amount: 150,
-
       payment_method: 'store_cash',
-
       actor_id: 1,
+      can_manage_all: true,
     });
 
     expect(updated.updated_shift_id).toBe(shift2.id);
 
-    const expenseAfterUpdate = db
-      .prepare(
-        `
-      SELECT
-        shift_id,
-        updated_shift_id
-
-      FROM expenses
-
-      WHERE id = ?
-      `,
-      )
-      .get(created.id) as any;
-
-    expect(Number(expenseAfterUpdate.shift_id)).toBe(shift1.id);
-
-    expect(Number(expenseAfterUpdate.updated_shift_id)).toBe(shift2.id);
-
-    const originalAfterUpdate = db
-      .prepare(
-        `
-        SELECT
-          cancelled_at,
-          shift_id
-
-        FROM cash_movements
-
-        WHERE id = ?
-        `,
-      )
-      .get(originalMovement.id) as any;
-
-    expect(originalAfterUpdate.cancelled_at).toBeNull();
-
-    expect(Number(originalAfterUpdate.shift_id)).toBe(shift1.id);
-
     const cancelled = cancelExpense({
       id: created.id,
-
-      reason: 'Cancel in current shift',
-
+      reason: 'Admin cancellation in current shift',
       actor_id: 1,
+      can_manage_all: true,
     });
 
     expect(cancelled.cancelled_shift_id).toBe(shift2.id);
 
-    const expenseAfterCancel = db
+    const row = db
       .prepare(
         `
       SELECT
+        title,
+        amount,
         shift_id,
         updated_shift_id,
-        cancelled_shift_id
+        cancelled_shift_id,
+        cancelled_at
 
       FROM expenses
 
@@ -693,36 +742,65 @@ describe('expense repository', () => {
       )
       .get(created.id) as any;
 
-    expect(Number(expenseAfterCancel.shift_id)).toBe(shift1.id);
+    expect(row.title).toBe('Admin Corrected Expense');
+    expect(Number(row.amount)).toBe(150);
 
-    expect(Number(expenseAfterCancel.updated_shift_id)).toBe(shift2.id);
+    /*
+     * أصل المصروف يظل تابعًا
+     * للشفت الذي أُنشئ فيه.
+     */
+    expect(Number(row.shift_id)).toBe(shift1.id);
 
-    expect(Number(expenseAfterCancel.cancelled_shift_id)).toBe(shift2.id);
+    /*
+     * لكن التعديل والإلغاء حصلا
+     * فعليًا داخل Shift 2.
+     */
+    expect(Number(row.updated_shift_id)).toBe(shift2.id);
+    expect(Number(row.cancelled_shift_id)).toBe(shift2.id);
+    expect(row.cancelled_at).toBeTruthy();
 
-    const cancelReverse = db
+    const updateReverse = db
       .prepare(
         `
-      SELECT *
+      SELECT shift_id
 
       FROM cash_movements
 
-      WHERE reference_type =
-        'expense_cancel'
-
+      WHERE
+        reference_type = 'expense_update_reverse'
         AND reference_id = ?
 
       ORDER BY id DESC
-
       LIMIT 1
       `,
       )
       .get(created.id) as any;
 
-    expect(cancelReverse.direction).toBe('in');
+    expect(Number(updateReverse.shift_id)).toBe(shift2.id);
 
-    expect(Number(cancelReverse.amount)).toBe(150);
+    const cancelReverse = db
+      .prepare(
+        `
+        SELECT
+          shift_id,
+          direction,
+          amount
+
+        FROM cash_movements
+
+        WHERE
+          reference_type = 'expense_cancel'
+          AND reference_id = ?
+
+        ORDER BY id DESC
+        LIMIT 1
+        `,
+      )
+      .get(created.id) as any;
 
     expect(Number(cancelReverse.shift_id)).toBe(shift2.id);
+    expect(cancelReverse.direction).toBe('in');
+    expect(Number(cancelReverse.amount)).toBe(150);
   });
 
   it('uses protected business date for an admin expense without a shift', () => {

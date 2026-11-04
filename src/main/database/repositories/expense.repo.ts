@@ -3,6 +3,7 @@ import { createCashMovement, resolveCashAccount } from './cash.repo';
 import { createCriticalActivityLog } from './activity.repo';
 import {
   getAttributableOpenCashShift,
+  getOpenCashShift,
   resolveFinancialOperationShift,
 } from './cash-shifts.repo';
 import { roundFinancial } from '../../../shared/money';
@@ -55,6 +56,35 @@ function appendCreatedByFilter(
 
   where.push('e.created_by = ?');
   params.push(userId);
+}
+
+function isExpenseAdmin(actorId: number) {
+  if (!actorId) {
+    return false;
+  }
+
+  const actor = getDb()
+    .prepare(
+      `
+      SELECT
+        role,
+        is_active
+
+      FROM users
+
+      WHERE id = ?
+
+      LIMIT 1
+      `,
+    )
+    .get(actorId) as
+    | {
+        role: string;
+        is_active: number;
+      }
+    | undefined;
+
+  return actor?.role === 'admin' && Number(actor.is_active) === 1;
 }
 
 export function createExpense(input: CreateExpenseInput) {
@@ -427,8 +457,11 @@ export function updateExpense(input: UpdateExpenseInput) {
 
   const actorId = Number(input.actor_id || 0);
 
+  const isAdmin = isExpenseAdmin(actorId);
+
   if (
     input.can_manage_all !== true &&
+    !isAdmin &&
     (!actorId || Number(expense.created_by || 0) !== actorId)
   ) {
     throw new Error('غير مصرح لك بتعديل هذا المصروف');
@@ -436,6 +469,33 @@ export function updateExpense(input: UpdateExpenseInput) {
 
   if (expense.cancelled_at) {
     throw new Error('لا يمكن تعديل مصروف ملغي');
+  }
+
+  /*
+   * الكاشير:
+   * تعديل المصروف مسموح فقط داخل
+   * نفس الشفت الذي أُنشئ فيه المصروف.
+   *
+   * الأدمن:
+   * can_manage_all = true
+   * وبالتالي يقدر يعدل مصروف قديم.
+   * التعديل نفسه يُنسب للشفت الحالي إن وجد،
+   * أو يتم خارج الشفت لو لا يمس درج المحل.
+   */
+  if (!isAdmin) {
+    const expenseShiftId = Number(expense.shift_id || 0);
+
+    const currentShift = getOpenCashShift();
+
+    if (
+      expenseShiftId <= 0 ||
+      !currentShift ||
+      Number(currentShift.id) !== expenseShiftId
+    ) {
+      throw new Error(
+        'لا يمكن تعديل المصروف إلا داخل نفس الشفت الذي تم تسجيله فيه',
+      );
+    }
   }
 
   const cashMovement = db
@@ -690,8 +750,11 @@ export function cancelExpense(input: CancelExpenseInput) {
 
   const actorId = Number(input.actor_id || 0);
 
+  const isAdmin = isExpenseAdmin(actorId);
+
   if (
     input.can_manage_all !== true &&
+    !isAdmin &&
     (!actorId || Number(expense.created_by || 0) !== actorId)
   ) {
     throw new Error('غير مصرح لك بإلغاء هذا المصروف');
@@ -699,6 +762,32 @@ export function cancelExpense(input: CancelExpenseInput) {
 
   if (expense.cancelled_at) {
     throw new Error('المصروف ملغي بالفعل');
+  }
+
+  /*
+   * الكاشير:
+   * إلغاء المصروف مسموح فقط داخل
+   * نفس الشفت الذي أُنشئ فيه المصروف.
+   *
+   * الأدمن:
+   * له Override ويقدر يلغي مصروف قديم.
+   * الإلغاء يُنسب للشفت الحالي إن وجد،
+   * أو يتم خارج الشفت لو الحساب لا يمس الدرج.
+   */
+  if (!isAdmin) {
+    const expenseShiftId = Number(expense.shift_id || 0);
+
+    const currentShift = getOpenCashShift();
+
+    if (
+      expenseShiftId <= 0 ||
+      !currentShift ||
+      Number(currentShift.id) !== expenseShiftId
+    ) {
+      throw new Error(
+        'لا يمكن إلغاء المصروف إلا داخل نفس الشفت الذي تم تسجيله فيه',
+      );
+    }
   }
 
   const cashMovement = db
