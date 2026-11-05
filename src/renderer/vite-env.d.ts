@@ -1931,6 +1931,8 @@ declare global {
           outstanding_debt_invoices_count: number;
           returns_count: number;
           cancelled_returns_count: number;
+          cross_shift_cancelled_returns_total: number;
+          cross_shift_cancelled_returns_debt_restored: number;
           returns_total: number;
           return_cash_refund: number;
           return_debt_reduction: number;

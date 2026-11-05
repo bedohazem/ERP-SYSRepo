@@ -18,6 +18,7 @@ import {
 import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
 import {
   closeCashShift,
+  getCashShiftDetails,
   getOpenCashShift,
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo';
@@ -30,7 +31,7 @@ import {
   recordCustomerPayment,
   cancelCustomerPaymentBatch,
 } from '../../src/main/database/repositories/customers.repo';
-
+import { getCashierDashboardSummary } from '../../src/main/database/repositories/reports.repo';
 import {
   getInventoryCostState,
   receiveStockAtCost,
@@ -41,6 +42,7 @@ import {
   updateSalesperson,
   getSalespeoplePerformance,
 } from '../../src/main/database/repositories/salespeople.repo';
+import { createUser } from '../../src/main/database/repositories/user.repo';
 
 type SaleVariantTestRow = {
   variant_id: number;
@@ -5828,6 +5830,19 @@ describe('sales repository', () => {
 
     expect(saleReturn.shift_id).toBe(originalShift!.id);
 
+    /*
+     * صورة تاريخ الشفت الأول قبل إغلاقه.
+     */
+    const originalBefore = getCashShiftDetails(originalShift!.id);
+
+    expect(originalBefore.sales_summary.net_sales).toBe(0);
+
+    expect(originalBefore.operations_summary.returns_count).toBe(1);
+
+    expect(originalBefore.operations_summary.returns_debt_reduction).toBe(150);
+
+    const stockBeforeCancellation = getStockByBarcode(variant.barcode);
+
     closeCashShift({
       shift_id: originalShift!.id,
       closing_counted_amount: 0,
@@ -5835,10 +5850,29 @@ describe('sales repository', () => {
       closed_by: 1,
     });
 
+    const cashier = createUser(
+      'Debt Return Cashier',
+      'debt_return_cashier',
+      'Cashier1234',
+      'cashier',
+    );
+
     const currentShift = openCashShift({
       opening_counted_amount: 0,
-      opened_by: 1,
+      opened_by: cashier.id,
     });
+
+    /*
+     * الكاشير ممنوع يلغي مرتجع
+     * تابع للشفت السابق.
+     */
+    expect(() =>
+      cancelSaleReturn({
+        return_id: saleReturn.returnId,
+        actor_id: cashier.id,
+        reason: 'Cashier cross-shift cancellation attempt',
+      }),
+    ).toThrow('لا يمكن إلغاء المرتجع إلا داخل نفس الشفت الذي تم فيه');
 
     expect(currentShift.id).not.toBe(originalShift!.id);
 
@@ -5884,6 +5918,95 @@ describe('sales repository', () => {
       .get(saleReturn.returnId);
 
     expect(reverseMovement).toBeUndefined();
+
+    /*
+     * الشفت القديم لازم يحتفظ
+     * بنفس الأرقام التاريخية.
+     */
+    const originalAfter = getCashShiftDetails(originalShift!.id);
+
+    expect(originalAfter.sales_summary.net_sales).toBe(
+      originalBefore.sales_summary.net_sales,
+    );
+
+    expect(originalAfter.operations_summary.returns_count).toBe(1);
+
+    expect(originalAfter.operations_summary.returns_debt_reduction).toBe(150);
+
+    expect(originalAfter.preview.expected_closing_amount).toBe(
+      originalBefore.preview.expected_closing_amount,
+    );
+
+    /*
+     * الشفت الجديد لازم يعرف إن فيه
+     * إلغاء مرتجع قديم حصل أثناءه.
+     */
+    const currentDetails = getCashShiftDetails(currentShift.id);
+
+    expect(currentDetails.operations_summary.cancelled_returns_count).toBe(1);
+
+    /*
+     * إلغاء المرتجع يعيد 150 جنيه
+     * إلى صافي المبيعات، وليس الدرج.
+     */
+    expect(currentDetails.sales_summary.net_sales).toBe(150);
+
+    /*
+     * شاشة الكاشير لازم تطابق
+     * صافي مبيعات تفاصيل الشفت.
+     */
+    const cashierDashboard = getCashierDashboardSummary({
+      user_id: cashier.id,
+    });
+
+    expect(cashierDashboard.sales.net_sales).toBe(150);
+
+    expect(cashierDashboard.sales.cancelled_returns_count).toBe(1);
+
+    /*
+     * مديونية العميل ترجع 150 جنيه.
+     */
+    const customer = db
+      .prepare('SELECT balance FROM customers WHERE id = ?')
+      .get(customerId) as { balance: number };
+
+    expect(Number(customer.balance)).toBe(150);
+
+    /*
+     * المخزون يرجع لحالة ما بعد البيع.
+     */
+    expect(getStockByBarcode(variant.barcode)).toBe(
+      stockBeforeCancellation - 1,
+    );
+
+    /*
+     * لا توجد أي حركة نقدية على الشفت
+     * بسبب إلغاء المرتجع الآجل.
+     */
+    const cashRows = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS count
+        FROM cash_movements
+        WHERE shift_id = ?
+          AND reference_type = 'sale_return_cancel'
+        `,
+      )
+      .get(currentShift.id) as { count: number };
+
+    expect(Number(cashRows.count)).toBe(0);
+
+    expect(cashierDashboard.sales.cross_shift_cancelled_returns_total).toBe(
+      150,
+    );
+
+    expect(
+      cashierDashboard.sales.cross_shift_cancelled_returns_debt_restored,
+    ).toBe(150);
+
+    expect(cashierDashboard.sales.paid_sales_total).toBe(0);
+
+    expect(cashierDashboard.sales.outstanding_debt_total).toBe(0);
   });
 
   it('allows admin to create a non-drawer return without an open shift', () => {

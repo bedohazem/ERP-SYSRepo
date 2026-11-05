@@ -5202,10 +5202,17 @@ export function cancelSaleReturn(input: {
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
         cancelled_shift_id = ?,
+        cancelled_outside_shift = ?,
         cancel_reason = ?
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, openShift?.id ?? null, reason, returnId);
+    ).run(
+      input.actor_id ?? null,
+      openShift?.id ?? null,
+      openShift ? 0 : 1,
+      reason,
+      returnId,
+    );
 
     if (saleReturn.customer_id) {
       syncCustomerTotalSpent(Number(saleReturn.customer_id));

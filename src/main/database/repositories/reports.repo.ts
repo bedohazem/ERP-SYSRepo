@@ -2702,6 +2702,10 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
         cancelled_returns_count: 0,
 
+        cross_shift_cancelled_returns_total: 0,
+
+        cross_shift_cancelled_returns_debt_restored: 0,
+
         returns_total: 0,
         return_cash_refund: 0,
 
@@ -3122,16 +3126,36 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
     .prepare(
       `
       SELECT
-        COUNT(*) AS count
+        COUNT(*) AS count,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN sr.shift_id IS NULL
+                OR sr.shift_id <> sr.cancelled_shift_id
+              THEN IFNULL(sr.refund_amount, 0)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_total,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN sr.shift_id IS NULL
+                OR sr.shift_id <> sr.cancelled_shift_id
+              THEN IFNULL(sr.debt_reduction_amount, 0)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_debt_restored
 
       FROM sale_returns sr
 
-      WHERE
-        sr.cancelled_at
-        IS NOT NULL
-
-        AND
-          sr.cancelled_shift_id = ?
+      WHERE sr.cancelled_at IS NOT NULL
+        AND sr.cancelled_shift_id = ?
       `,
     )
     .get(shiftId) as any;
@@ -3491,7 +3515,8 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
     invoiceSales +
       exchangeAdjustment -
       returnsTotal -
-      crossShiftCancelledSalesTotal,
+      crossShiftCancelledSalesTotal +
+      reportMoney(cancelledReturns?.cross_shift_total),
   );
 
   return {
@@ -3540,7 +3565,13 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       returns_count: Number(returns?.returns_count || 0),
 
       cancelled_returns_count: Number(cancelledReturns?.count || 0),
+      cross_shift_cancelled_returns_total: reportMoney(
+        cancelledReturns?.cross_shift_total,
+      ),
 
+      cross_shift_cancelled_returns_debt_restored: reportMoney(
+        cancelledReturns?.cross_shift_debt_restored,
+      ),
       returns_total: returnsTotal,
       return_cash_refund: returnCashRefund,
 

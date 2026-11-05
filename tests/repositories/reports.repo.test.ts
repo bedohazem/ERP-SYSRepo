@@ -7,6 +7,7 @@ import {
 } from '../../src/main/database/repositories/product.repo';
 import {
   cancelSaleInvoice,
+  cancelSaleReturn,
   createSale,
   createSaleReturn,
   getSaleReceipt,
@@ -36,7 +37,10 @@ import {
 
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
 
-import { createCashMovement } from '../../src/main/database/repositories/cash.repo';
+import {
+  createCashMovement,
+  getCashSummary,
+} from '../../src/main/database/repositories/cash.repo';
 import {
   closeCashShift,
   getCashShiftDetails,
@@ -3575,7 +3579,7 @@ describe('reports repository', () => {
      * نتأكد كمان إن الأدمن لم يسرق
      * ملكية الفواتير من الكاشير والعكس.
      *
-     * كل Invoice محتفظ بمن أنشأها،
+     * كل Invoice محتفظ بمن أنشأها，
      * مع أن الجميع داخل نفس shift_id.
      */
     const db = getDb();
@@ -3608,6 +3612,835 @@ describe('reports repository', () => {
     expect(Number(cashierInvoices?.count || 0)).toBe(5);
 
     expect(Number(adminInvoices?.count || 0)).toBe(7);
+  });
+
+  it('preserves a closed shift expense when admin cancels it without a shift', () => {
+    const shift1 = getOpenCashShift();
+
+    expect(shift1).toBeTruthy();
+
+    /*
+     * رصيد ابتدائي للبنك: 1000 جنيه.
+     * لا نستخدم درج المحل.
+     */
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'owner_bank',
+      reference_type: 'test_seed',
+      notes: 'Historical shift bank test',
+      created_by: 1,
+      shift_id: null,
+    });
+
+    /*
+     * مصروف 100 جنيه أثناء Shift 1.
+     */
+    const expense = createExpense({
+      title: 'Historical Bank Expense',
+      amount: 100,
+      payment_method: 'owner_bank',
+      created_by: 1,
+    });
+
+    expect(expense.shift_id).toBe(shift1!.id);
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_bank',
+      }).balance,
+    ).toBe(900);
+
+    /*
+     * إغلاق الشفت.
+     * لم تحدث أي حركة على درج المحل.
+     */
+    closeCashShift({
+      shift_id: shift1!.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    const before = getCashShiftDetails(shift1!.id);
+
+    expect(before.operations_summary.expenses_count).toBe(1);
+    expect(before.operations_summary.expenses_total).toBe(100);
+
+    /*
+     * الأدمن يلغي المصروف بعد الإغلاق
+     * وبدون أي شفت مفتوح.
+     */
+    expect(getOpenCashShift()).toBeNull();
+
+    const cancelled = cancelExpense({
+      id: expense.id,
+      actor_id: 1,
+      can_manage_all: true,
+      reason: 'Correction outside shift',
+    });
+
+    expect(cancelled.cancelled_shift_id).toBeNull();
+
+    /*
+     * رصيد البنك يرجع صحيحًا.
+     */
+    expect(
+      getCashSummary({
+        payment_method: 'owner_bank',
+      }).balance,
+    ).toBe(1000);
+
+    /*
+     * تاريخ الشفت الأول يجب ألا يتغير.
+     */
+    const after = getCashShiftDetails(shift1!.id);
+
+    expect(after.operations_summary.expenses_count).toBe(1);
+    expect(after.operations_summary.expenses_total).toBe(100);
+
+    expect(after.preview.expected_closing_amount).toBe(
+      before.preview.expected_closing_amount,
+    );
+  });
+
+  it('preserves historical bank customer payment after admin cancellation without shift', () => {
+    const shift1 = getOpenCashShift()!;
+
+    const customer = createTestCustomer(
+      'Historical Bank Customer',
+      '01077779999',
+    );
+
+    const variant = seedReportProduct({
+      name: 'Historical Bank Payment Product',
+      barcode: 'HIST-BANK-PAYMENT',
+      openingQty: 10,
+      buyPrice: 40,
+      sellPrice: 200,
+    });
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+      change_amount: 0,
+      payment_method: 'owner_bank',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 100,
+      payment_method: 'owner_bank',
+      actor_id: 1,
+    });
+
+    expect(payment.shift_id).toBe(shift1.id);
+
+    const before = getCashShiftDetails(shift1.id);
+
+    expect(before.operations_summary.customer_payments_count).toBe(1);
+    expect(before.operations_summary.customer_payments_total).toBe(100);
+    expect(before.sales_summary.paid_total).toBe(100);
+    expect(before.sales_summary.remaining_total).toBe(100);
+
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    const cancelled = cancelCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+      actor_id: 1,
+      reason: 'Cancel historical bank payment',
+    });
+
+    expect(cancelled.cancelled_shift_id).toBeNull();
+
+    const after = getCashShiftDetails(shift1.id);
+
+    /*
+     * الشفت القديم يحتفظ بالتحصيل
+     * الذي حدث فيه فعليًا.
+     */
+    expect(after.operations_summary.customer_payments_count).toBe(1);
+    expect(after.operations_summary.customer_payments_total).toBe(100);
+
+    expect(after.sales_summary.paid_total).toBe(100);
+    expect(after.sales_summary.remaining_total).toBe(100);
+
+    expect(after.preview.expected_closing_amount).toBe(
+      before.preview.expected_closing_amount,
+    );
+
+    /*
+     * الحسابات الحالية ترجع لحالتها الصحيحة
+     * بعد إلغاء الدفعة.
+     */
+    const customerRow = getDb()
+      .prepare('SELECT balance FROM customers WHERE id = ?')
+      .get(customer.id) as { balance: number };
+
+    expect(Number(customerRow.balance)).toBe(200);
+
+    expect(
+      getCashSummary({
+        payment_method: 'owner_bank',
+      }).balance,
+    ).toBe(0);
+  });
+
+  it('preserves original shift payment after admin edits it without shift', () => {
+    const db = getDb();
+
+    const shift1 = getOpenCashShift()!;
+
+    const customer = createTestCustomer(
+      'Historical Edited Payment Customer',
+      '01077776666',
+    );
+
+    const variant = seedReportProduct({
+      name: 'Historical Edited Payment Product',
+      barcode: 'HIST-EDIT-PAYMENT-001',
+      openingQty: 10,
+      buyPrice: 40,
+      sellPrice: 200,
+    });
+
+    // فاتورة آجل بقيمة 200 جنيه
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+      change_amount: 0,
+      payment_method: 'owner_bank',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    // العميل دفع 100 جنيه بنك
+    const originalPayment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 100,
+      payment_method: 'owner_bank',
+      actor_id: 1,
+    });
+
+    expect(originalPayment.shift_id).toBe(shift1.id);
+
+    const before = getCashShiftDetails(shift1.id);
+
+    expect(before.operations_summary.customer_payments_total).toBe(100);
+    expect(before.operations_summary.customer_payments_count).toBe(1);
+    expect(before.sales_summary.paid_total).toBe(100);
+
+    expect(getCashSummary({ payment_method: 'owner_bank' }).balance).toBe(100);
+
+    // نقفل الشفت بدون تغيير درج المحل
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    // الأدمن يصحح الدفعة من 100 إلى 60
+    const updated = updateCustomerPaymentBatch({
+      batch_id: originalPayment.payment_batch_id,
+      amount: 60,
+      payment_method: 'owner_bank',
+      notes: 'Correct payment amount',
+      actor_id: 1,
+    });
+
+    expect(updated.shift_id).toBeNull();
+    expect(updated.old_amount).toBe(100);
+    expect(updated.new_amount).toBe(60);
+
+    // الشفت القديم لازم يحتفظ بحالته
+    const after = getCashShiftDetails(shift1.id);
+
+    expect(after.operations_summary.customer_payments_count).toBe(1);
+    expect(after.operations_summary.customer_payments_total).toBe(100);
+    expect(after.sales_summary.paid_total).toBe(100);
+    expect(after.sales_summary.remaining_total).toBe(100);
+
+    expect(after.preview.expected_closing_amount).toBe(
+      before.preview.expected_closing_amount,
+    );
+
+    // البنك يحتفظ بصافي 60 جنيه فقط
+    expect(getCashSummary({ payment_method: 'owner_bank' }).balance).toBe(60);
+
+    // مديونية العميل الحالية 140 جنيه
+    const customerRow = db
+      .prepare('SELECT balance FROM customers WHERE id = ?')
+      .get(customer.id) as { balance: number };
+
+    expect(Number(customerRow.balance)).toBe(140);
+
+    // الفاتورة الحالية: مدفوع 60 وباقي 140
+    const saleRow = db
+      .prepare('SELECT paid, remaining_amount FROM sales WHERE id = ?')
+      .get(sale.saleId) as {
+      paid: number;
+      remaining_amount: number;
+    };
+
+    expect(Number(saleRow.paid)).toBe(60);
+    expect(Number(saleRow.remaining_amount)).toBe(140);
+
+    // التأكد من ارتباط الدفعة القديمة بالجديدة
+    const oldBatch = db
+      .prepare(
+        `
+      SELECT
+        cancelled_at,
+        cancelled_shift_id,
+        replacement_batch_id
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(originalPayment.payment_batch_id) as any;
+
+    expect(oldBatch.cancelled_at).toBeTruthy();
+    expect(oldBatch.cancelled_shift_id).toBeNull();
+    expect(Number(oldBatch.replacement_batch_id)).toBe(updated.batch_id);
+
+    // الدفعة البديلة خارج الشفت
+    const newBatch = db
+      .prepare(
+        `
+      SELECT amount, shift_id
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(updated.batch_id) as any;
+
+    expect(Number(newBatch.amount)).toBe(60);
+    expect(newBatch.shift_id).toBeNull();
+  });
+
+  it('keeps admin payment correction in the current cashier shift', () => {
+    const db = getDb();
+
+    const shift1 = getOpenCashShift()!;
+
+    const customer = createTestCustomer(
+      'Shift Payment Correction Customer',
+      '01066667777',
+    );
+
+    const variant = seedReportProduct({
+      name: 'Shift Payment Correction Product',
+      barcode: 'SHIFT-PAYMENT-CORRECTION',
+      openingQty: 10,
+      buyPrice: 40,
+      sellPrice: 200,
+    });
+
+    // فاتورة آجل بقيمة 200 جنيه
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+      change_amount: 0,
+      payment_method: 'owner_bank',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    // تحصيل 100 جنيه بنك في الشفت الأول
+    const payment = recordCustomerPayment({
+      customer_id: customer.id,
+      sale_id: sale.saleId,
+      amount: 100,
+      payment_method: 'owner_bank',
+      actor_id: 1,
+    });
+
+    const shift1Before = getCashShiftDetails(shift1.id);
+
+    expect(shift1Before.operations_summary.customer_payments_total).toBe(100);
+
+    expect(shift1Before.sales_summary.paid_total).toBe(100);
+
+    // إغلاق الشفت الأول
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    // إنشاء كاشير لفتح الشفت الثاني
+    const cashier = createUser(
+      'Payment Correction Cashier',
+      'payment_correction_cashier',
+      'Cashier1234',
+      'cashier',
+    );
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: cashier.id,
+    });
+
+    // الكاشير ممنوع يعدل دفعة من شفت قديم
+    expect(() =>
+      updateCustomerPaymentBatch({
+        batch_id: payment.payment_batch_id,
+        amount: 60,
+        payment_method: 'owner_bank',
+        actor_id: cashier.id,
+      }),
+    ).toThrow();
+
+    // الأدمن يصحح الدفعة أثناء شفت الكاشير
+    const updated = updateCustomerPaymentBatch({
+      batch_id: payment.payment_batch_id,
+      amount: 60,
+      payment_method: 'owner_bank',
+      actor_id: 1,
+    });
+
+    expect(updated.shift_id).toBe(shift2.id);
+    expect(updated.old_amount).toBe(100);
+    expect(updated.new_amount).toBe(60);
+
+    // الشفت الأول لا يتغير
+    const shift1After = getCashShiftDetails(shift1.id);
+
+    expect(shift1After.operations_summary.customer_payments_total).toBe(100);
+
+    expect(shift1After.operations_summary.customer_payments_count).toBe(1);
+
+    expect(shift1After.sales_summary.paid_total).toBe(100);
+
+    expect(shift1After.preview.expected_closing_amount).toBe(
+      shift1Before.preview.expected_closing_amount,
+    );
+
+    // الشفت الثاني يسجل التصحيح
+    const shift2Details = getCashShiftDetails(shift2.id);
+
+    expect(shift2Details.operations_summary.customer_payments_count).toBe(1);
+
+    expect(shift2Details.operations_summary.customer_payments_total).toBe(60);
+
+    expect(
+      shift2Details.operations_summary.cancelled_customer_payments_count,
+    ).toBe(1);
+
+    // نتأكد من حركتي البنك في الشفت الثاني
+    const movements = db
+      .prepare(
+        `
+      SELECT
+        direction,
+        amount,
+        payment_method,
+        reference_type
+      FROM cash_movements
+      WHERE shift_id = ?
+        AND reference_type IN (
+          'customer_payment',
+          'customer_payment_update_reverse'
+        )
+      ORDER BY id
+      `,
+      )
+      .all(shift2.id) as Array<{
+      direction: string;
+      amount: number;
+      payment_method: string;
+      reference_type: string;
+    }>;
+
+    expect(movements).toHaveLength(2);
+
+    expect(
+      movements.find((m) => m.reference_type === 'customer_payment')?.amount,
+    ).toBe(60);
+
+    expect(
+      movements.find(
+        (m) => m.reference_type === 'customer_payment_update_reverse',
+      )?.amount,
+    ).toBe(100);
+
+    expect(movements.every((m) => m.payment_method === 'owner_bank')).toBe(
+      true,
+    );
+
+    const netCorrection = movements.reduce(
+      (total, movement) =>
+        total +
+        (movement.direction === 'in' ? movement.amount : -movement.amount),
+      0,
+    );
+
+    expect(netCorrection).toBe(-40);
+
+    // البنك حاليًا فيه صافي 60 جنيه
+    expect(getCashSummary({ payment_method: 'owner_bank' }).balance).toBe(60);
+
+    // درج المحل لم يتأثر
+    expect(getCashSummary({ payment_method: 'store_cash' }).balance).toBe(0);
+
+    // مديونية العميل الحالية 140 جنيه
+    const customerRow = db
+      .prepare('SELECT balance FROM customers WHERE id = ?')
+      .get(customer.id) as { balance: number };
+
+    expect(Number(customerRow.balance)).toBe(140);
+
+    // التأكد من ربط الدفعة القديمة بالجديدة
+    const oldBatch = db
+      .prepare(
+        `
+      SELECT cancelled_shift_id, replacement_batch_id
+      FROM customer_payment_batches
+      WHERE id = ?
+      `,
+      )
+      .get(payment.payment_batch_id) as any;
+
+    expect(oldBatch.cancelled_shift_id).toBe(shift2.id);
+    expect(oldBatch.replacement_batch_id).toBe(updated.batch_id);
+  });
+
+  it('preserves an old shift return after admin cancels it without a shift', () => {
+    const shift1 = getOpenCashShift()!;
+
+    const variant = seedReportProduct({
+      name: 'Historical Bank Return Product',
+      barcode: 'HIST-BANK-RETURN-001',
+      openingQty: 10,
+      buyPrice: 40,
+      sellPrice: 150,
+    });
+
+    // بيع قطعة من البنك بقيمة 150 جنيه.
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      paid: 150,
+      remaining_amount: 0,
+      payment_status: 'paid',
+      change_amount: 0,
+      payment_method: 'owner_bank',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    // مرتجع كامل داخل الشفت الأول.
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'owner_bank',
+      reason: 'Historical bank return',
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.shift_id).toBe(shift1.id);
+    expect(saleReturn.refundAmount).toBe(150);
+
+    // البيع والمرتجع ألغيا أثر بعضهما في البنك.
+    expect(getCashSummary({ payment_method: 'owner_bank' }).balance).toBe(0);
+
+    expect(Number(getVariantByBarcode(variant.barcode)?.stock)).toBe(10);
+
+    const before = getCashShiftDetails(shift1.id);
+
+    expect(before.operations_summary.returns_count).toBe(1);
+    expect(before.operations_summary.returns_total).toBe(150);
+    expect(before.sales_summary.net_sales).toBe(0);
+
+    // نقفل الشفت، ودرج المحل لم يتأثر.
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    // الأدمن يلغي المرتجع من غير شفت.
+    const cancelled = cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Admin correction outside shift',
+    });
+
+    expect(cancelled.ok).toBe(true);
+    expect(cancelled.cancelled_shift_id).toBeNull();
+
+    // البنك استرد المبلغ، والمخزون رجع لحالة البيع.
+    expect(getCashSummary({ payment_method: 'owner_bank' }).balance).toBe(150);
+
+    expect(Number(getVariantByBarcode(variant.barcode)?.stock)).toBe(9);
+
+    // درج المحل ما زال صفر.
+    expect(getCashSummary({ payment_method: 'store_cash' }).balance).toBe(0);
+
+    // التاريخ القديم يجب أن يبقى كما كان.
+    const after = getCashShiftDetails(shift1.id);
+
+    expect(after.operations_summary.returns_count).toBe(1);
+    expect(after.operations_summary.returns_total).toBe(150);
+    expect(after.operations_summary.returns_cash_refund).toBe(150);
+
+    expect(after.sales_summary.invoice_sales).toBe(150);
+    expect(after.sales_summary.net_sales).toBe(0);
+
+    expect(after.preview.expected_closing_amount).toBe(
+      before.preview.expected_closing_amount,
+    );
+  });
+
+  it('preserves historical debt-only return after cancellation without shift', () => {
+    const db = getDb();
+
+    const shift1 = getOpenCashShift()!;
+
+    const customer = createTestCustomer(
+      'Historical Debt Return Customer',
+      '01066668888',
+    );
+
+    const variant = seedReportProduct({
+      name: 'Historical Debt Return Product',
+      barcode: 'HIST-DEBT-RETURN-001',
+      openingQty: 10,
+      buyPrice: 40,
+      sellPrice: 150,
+    });
+
+    // بيع آجل: العميل عليه 150 جنيه.
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      paid: 0,
+      remaining_amount: 150,
+      payment_status: 'unpaid',
+      change_amount: 0,
+      payment_method: 'owner_bank',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    // مرتجع يخفض المديونية فقط.
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'owner_bank',
+      reason: 'Debt-only return',
+      items: [
+        {
+          sale_item_id: receipt.items[0].id,
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.shift_id).toBe(shift1.id);
+    expect(saleReturn.refundAmount).toBe(0);
+    expect(saleReturn.debt_reduction_amount).toBe(150);
+
+    const before = getCashShiftDetails(shift1.id);
+
+    expect(before.operations_summary.returns_count).toBe(1);
+    expect(before.operations_summary.returns_total).toBe(150);
+    expect(before.operations_summary.returns_debt_reduction).toBe(150);
+
+    expect(before.sales_summary.net_sales).toBe(0);
+
+    // مديونية العميل بعد المرتجع صفر.
+    const debtBefore = db
+      .prepare('SELECT balance FROM customers WHERE id = ?')
+      .get(customer.id) as { balance: number };
+
+    expect(Number(debtBefore.balance)).toBe(0);
+
+    // لا توجد حركة نقدية بسبب المرتجع.
+    expect(getCashSummary({ payment_method: 'owner_bank' }).balance).toBe(0);
+
+    // إغلاق الشفت الأول.
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    // الأدمن يلغي المرتجع خارج أي شفت.
+    const cancelled = cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Reverse debt reduction outside shift',
+    });
+
+    expect(cancelled.ok).toBe(true);
+    expect(cancelled.cancelled_shift_id).toBeNull();
+
+    const cancelledReturnRow = db
+      .prepare(
+        `
+        SELECT cancelled_outside_shift
+        FROM sale_returns
+        WHERE id = ?
+        `,
+      )
+      .get(saleReturn.returnId) as {
+      cancelled_outside_shift: number | null;
+    };
+
+    expect(cancelledReturnRow.cancelled_outside_shift).toBe(1);
+    expect(cancelled.debt_restored).toBe(150);
+    expect(cancelled.cash_restored).toBe(0);
+
+    // المديونية الحالية رجعت 150.
+    const debtAfter = db
+      .prepare('SELECT balance FROM customers WHERE id = ?')
+      .get(customer.id) as { balance: number };
+
+    expect(Number(debtAfter.balance)).toBe(150);
+
+    // الفاتورة الحالية: باقي 150 جنيه.
+    const saleAfter = db
+      .prepare('SELECT remaining_amount FROM sales WHERE id = ?')
+      .get(sale.saleId) as { remaining_amount: number };
+
+    expect(Number(saleAfter.remaining_amount)).toBe(150);
+
+    // المخزون رجع 9 قطع.
+    expect(Number(getVariantByBarcode(variant.barcode)?.stock)).toBe(9);
+
+    // مفيش حركة مالية وهمية لإلغاء المرتجع.
+    const refundMovement = db
+      .prepare(
+        `
+    SELECT COUNT(*) AS count
+    FROM cash_movements
+    WHERE reference_type = 'sale_return_cancel'
+      AND reference_id = ?
+  `,
+      )
+      .get(saleReturn.returnId) as { count: number };
+
+    expect(Number(refundMovement.count)).toBe(0);
+
+    expect(getCashSummary({ payment_method: 'owner_bank' }).balance).toBe(0);
+
+    expect(getCashSummary({ payment_method: 'store_cash' }).balance).toBe(0);
+
+    // التاريخ المحاسبي للشفت المقفول لا يتغير.
+    const after = getCashShiftDetails(shift1.id);
+
+    expect(after.operations_summary.returns_count).toBe(1);
+    expect(after.operations_summary.returns_total).toBe(150);
+    expect(after.operations_summary.returns_debt_reduction).toBe(150);
+
+    expect(after.sales_summary.net_sales).toBe(0);
+
+    expect(after.preview.expected_closing_amount).toBe(
+      before.preview.expected_closing_amount,
+    );
   });
 
   it('keeps historical shift details immutable when later-shift operations touch old records', () => {

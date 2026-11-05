@@ -4368,6 +4368,21 @@ export function getDb(): Database.Database {
           repairLegacySupplierCreditAllocations(database);
         },
       },
+
+      {
+        version: 34,
+
+        name: 'track-return-cancellation-outside-shift',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'sale_returns',
+            'cancelled_outside_shift',
+            'INTEGER',
+          );
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

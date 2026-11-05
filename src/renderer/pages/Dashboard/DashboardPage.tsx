@@ -103,6 +103,8 @@ type CashierDashboardSummary = {
     outstanding_debt_invoices_count: number;
     returns_count: number;
     cancelled_returns_count: number;
+    cross_shift_cancelled_returns_total: number;
+    cross_shift_cancelled_returns_debt_restored: number;
     returns_total: number;
     return_cash_refund: number;
     return_debt_reduction: number;
@@ -158,6 +160,8 @@ const emptyCashierDashboard: CashierDashboardSummary = {
     outstanding_debt_invoices_count: 0,
     returns_count: 0,
     cancelled_returns_count: 0,
+    cross_shift_cancelled_returns_total: 0,
+    cross_shift_cancelled_returns_debt_restored: 0,
     returns_total: 0,
     return_cash_refund: 0,
     return_debt_reduction: 0,
@@ -1622,7 +1626,7 @@ function CashierRevenueView({
             }}
           >
             <ReconciliationCard
-              title="مبيعات الفواتير"
+              title="إجمالي المبيعات"
               value={money(summary.sales.invoice_sales)}
             />
 
@@ -1654,9 +1658,9 @@ function CashierRevenueView({
               fontSize: '13px',
             }}
           >
-            مبيعات الفواتير
+            إجمالي المبيعات
             {' + '}
-            تعديل قيمة المبيعات بالاستبدال
+            تعديل الاستبدالات
             {' - '}
             المرتجعات
             {' = '}
@@ -1700,24 +1704,9 @@ function CashierRevenueView({
           />
 
           <CashierMiniCard
-            title="مبيعات الفواتير"
+            title="إجمالي المبيعات"
             value={money(summary.sales.invoice_sales)}
             subtitle="قيمة الفواتير بعد الخصومات وقبل المرتجعات والاستبدالات"
-            tone="green"
-          />
-
-          <CashierMiniCard
-            title="المبيعات المحصلة"
-            value={money(summary.sales.paid_sales_total)}
-            subtitle={
-              summary.sales.outstanding_debt_total > 0
-                ? `⚠ باقي على فواتير الشفت: ${money(
-                    summary.sales.outstanding_debt_total,
-                  )} • ${
-                    summary.sales.outstanding_debt_invoices_count
-                  } فاتورة عليها باقي`
-                : '✓ كل فواتير الشفت مدفوعة بالكامل'
-            }
             tone="green"
           />
 

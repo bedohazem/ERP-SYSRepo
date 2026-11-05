@@ -1703,6 +1703,28 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
                 AND cpb.cancelled_shift_id <> cpb.shift_id
               )
+
+              OR (
+                cpb.cancelled_at IS NOT NULL
+
+                AND cpb.cancelled_shift_id IS NULL
+
+                AND EXISTS (
+                  SELECT 1
+                  FROM cash_movements cm
+
+                  WHERE cm.reference_id = cpb.id
+
+                    AND cm.reference_type IN (
+                      'customer_payment_cancel',
+                      'customer_payment_update_reverse'
+                    )
+
+                    AND cm.shift_id IS NULL
+
+                    AND cm.cancelled_at IS NULL
+                )
+              )
             )
         ),
         0
@@ -1731,6 +1753,32 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
                 AND sr.cancelled_shift_id <> sr.shift_id
               )
+
+              OR (
+                sr.cancelled_at IS NOT NULL
+
+                AND sr.cancelled_outside_shift = 1
+              )
+
+              OR (
+                sr.cancelled_at IS NOT NULL
+
+                AND sr.cancelled_shift_id IS NULL
+
+                AND EXISTS (
+                  SELECT 1
+
+                  FROM cash_movements cm
+
+                  WHERE cm.reference_type = 'sale_return_cancel'
+
+                    AND cm.reference_id = sr.id
+
+                    AND cm.shift_id IS NULL
+
+                    AND cm.cancelled_at IS NULL
+                )
+              )
             )
         ),
         0
@@ -1754,6 +1802,32 @@ export function getCashShiftDetails(shiftIdInput: number) {
                 sr.cancelled_shift_id IS NOT NULL
 
                 AND sr.cancelled_shift_id <> sr.shift_id
+              )
+
+              OR (
+                sr.cancelled_at IS NOT NULL
+
+                AND sr.cancelled_outside_shift = 1
+              )
+
+              OR (
+                sr.cancelled_at IS NOT NULL
+
+                AND sr.cancelled_shift_id IS NULL
+
+                AND EXISTS (
+                  SELECT 1
+
+                  FROM cash_movements cm
+
+                  WHERE cm.reference_type = 'sale_return_cancel'
+
+                    AND cm.reference_id = sr.id
+
+                    AND cm.shift_id IS NULL
+
+                    AND cm.cancelled_at IS NULL
+                )
               )
             )
         ),
@@ -2149,6 +2223,28 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
               AND cpb.cancelled_shift_id <> cpb.shift_id
             )
+
+            OR (
+              cpb.cancelled_at IS NOT NULL
+
+              AND cpb.cancelled_shift_id IS NULL
+
+              AND EXISTS (
+                SELECT 1
+                FROM cash_movements cm
+
+                WHERE cm.reference_id = cpb.id
+
+                  AND cm.reference_type IN (
+                    'customer_payment_cancel',
+                    'customer_payment_update_reverse'
+                  )
+
+                  AND cm.shift_id IS NULL
+
+                  AND cm.cancelled_at IS NULL
+              )
+            )
           )
       ) AS customer_payments_count,
 
@@ -2164,13 +2260,36 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
               AND cpb.cancelled_shift_id <> cpb.shift_id
             )
+
+            OR (
+              cpb.cancelled_at IS NOT NULL
+
+              AND cpb.cancelled_shift_id IS NULL
+
+              AND EXISTS (
+                SELECT 1
+                FROM cash_movements cm
+
+                WHERE cm.reference_id = cpb.id
+
+                  AND cm.reference_type IN (
+                    'customer_payment_cancel',
+                    'customer_payment_update_reverse'
+                  )
+
+                  AND cm.shift_id IS NULL
+
+                  AND cm.cancelled_at IS NULL
+              )
+            )
           )
       ) AS customer_payments_total,
 
       (
         SELECT COUNT(*)
         FROM expenses e
-        WHERE e.shift_id = ?
+        WHERE 
+          e.shift_id = ?
           AND (
             e.cancelled_at IS NULL
 
@@ -2178,6 +2297,26 @@ export function getCashShiftDetails(shiftIdInput: number) {
               e.cancelled_shift_id IS NOT NULL
 
               AND e.cancelled_shift_id <> e.shift_id
+            )
+
+            OR (
+              e.cancelled_at IS NOT NULL
+
+              AND e.cancelled_shift_id IS NULL
+
+              AND EXISTS (
+                SELECT 1
+
+                FROM cash_movements cm
+
+                WHERE cm.reference_type = 'expense_cancel'
+
+                  AND cm.reference_id = e.id
+
+                  AND cm.shift_id IS NULL
+
+                  AND cm.cancelled_at IS NULL
+              )
             )
           )
       ) AS expenses_count,
@@ -2222,7 +2361,6 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
         WHERE
           e.shift_id = ?
-
           AND (
             e.cancelled_at IS NULL
 
@@ -2230,6 +2368,26 @@ export function getCashShiftDetails(shiftIdInput: number) {
               e.cancelled_shift_id IS NOT NULL
 
               AND e.cancelled_shift_id <> e.shift_id
+            )
+
+            OR (
+              e.cancelled_at IS NOT NULL
+
+              AND e.cancelled_shift_id IS NULL
+
+              AND EXISTS (
+                SELECT 1
+
+                FROM cash_movements cm
+
+                WHERE cm.reference_type = 'expense_cancel'
+
+                  AND cm.reference_id = e.id
+
+                  AND cm.shift_id IS NULL
+
+                  AND cm.cancelled_at IS NULL
+              )
             )
           )
       ) AS expenses_total,
@@ -2246,6 +2404,32 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
             AND sr.cancelled_shift_id <> sr.shift_id
           )
+
+          OR (
+            sr.cancelled_at IS NOT NULL
+
+            AND sr.cancelled_outside_shift = 1
+          )
+
+          OR (
+            sr.cancelled_at IS NOT NULL
+
+            AND sr.cancelled_shift_id IS NULL
+
+            AND EXISTS (
+              SELECT 1
+
+              FROM cash_movements cm
+
+              WHERE cm.reference_type = 'sale_return_cancel'
+
+                AND cm.reference_id = sr.id
+
+                AND cm.shift_id IS NULL
+
+                AND cm.cancelled_at IS NULL
+            )
+          )
         )
       ) AS returns_count,
 
@@ -2260,6 +2444,32 @@ export function getCashShiftDetails(shiftIdInput: number) {
               sr.cancelled_shift_id IS NOT NULL
 
               AND sr.cancelled_shift_id <> sr.shift_id
+            )
+
+            OR (
+              sr.cancelled_at IS NOT NULL
+
+              AND sr.cancelled_outside_shift = 1
+            )
+
+            OR (
+              sr.cancelled_at IS NOT NULL
+
+              AND sr.cancelled_shift_id IS NULL
+
+              AND EXISTS (
+                SELECT 1
+
+                FROM cash_movements cm
+
+                WHERE cm.reference_type = 'sale_return_cancel'
+
+                  AND cm.reference_id = sr.id
+
+                  AND cm.shift_id IS NULL
+
+                  AND cm.cancelled_at IS NULL
+              )
             )
           )
       ) AS returns_total,
@@ -2276,6 +2486,32 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
               AND sr.cancelled_shift_id <> sr.shift_id
             )
+
+            OR (
+              sr.cancelled_at IS NOT NULL
+
+              AND sr.cancelled_outside_shift = 1
+            )
+
+            OR (
+              sr.cancelled_at IS NOT NULL
+
+              AND sr.cancelled_shift_id IS NULL
+
+              AND EXISTS (
+                SELECT 1
+
+                FROM cash_movements cm
+
+                WHERE cm.reference_type = 'sale_return_cancel'
+
+                  AND cm.reference_id = sr.id
+
+                  AND cm.shift_id IS NULL
+
+                  AND cm.cancelled_at IS NULL
+              )
+            )
           )
       ) AS returns_cash_refund,
 
@@ -2290,6 +2526,32 @@ export function getCashShiftDetails(shiftIdInput: number) {
               sr.cancelled_shift_id IS NOT NULL
 
               AND sr.cancelled_shift_id <> sr.shift_id
+            )
+
+            OR (
+              sr.cancelled_at IS NOT NULL
+
+              AND sr.cancelled_outside_shift = 1
+            )
+
+            OR (
+              sr.cancelled_at IS NOT NULL
+
+              AND sr.cancelled_shift_id IS NULL
+
+              AND EXISTS (
+                SELECT 1
+
+                FROM cash_movements cm
+
+                WHERE cm.reference_type = 'sale_return_cancel'
+
+                  AND cm.reference_id = sr.id
+
+                  AND cm.shift_id IS NULL
+
+                  AND cm.cancelled_at IS NULL
+              )
             )
           )
       ) AS returns_debt_reduction,
@@ -2485,11 +2747,52 @@ export function getCashShiftDetails(shiftIdInput: number) {
     ),
   };
 
+  /*
+   * إلغاء مرتجع قديم داخل الشفت الحالي.
+   *
+   * لو المرتجع اتعمل في شفت سابق،
+   * إلغاءه يعيد قيمته إلى صافي المبيعات
+   * في شفت الإلغاء.
+   *
+   * لا نضيف إلغاء مرتجع من نفس الشفت،
+   * لأن المرتجع نفسه مستبعد بالفعل
+   * من إجماليات ذلك الشفت.
+   */
+  const priorShiftCancelledReturns = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(SUM(sr.refund_amount), 0) AS total
+
+      FROM sale_returns sr
+
+      WHERE
+        sr.cancelled_at IS NOT NULL
+
+        AND sr.cancelled_shift_id = ?
+
+        AND (
+          sr.shift_id IS NULL
+          OR sr.shift_id <> sr.cancelled_shift_id
+        )
+      `,
+    )
+    .get(shiftId) as
+    | {
+        total: number;
+      }
+    | undefined;
+
+  const priorShiftReturnsReversalTotal = roundFinancial(
+    Number(priorShiftCancelledReturns?.total || 0),
+  );
+
   salesSummary.net_sales = roundFinancial(
     Number(salesSummary.invoice_sales || 0) +
       Number(operationsSummary.exchange_difference || 0) -
       Number(operationsSummary.returns_total || 0) -
-      Number(salesSummary.cross_shift_cancelled_sales_total || 0),
+      Number(salesSummary.cross_shift_cancelled_sales_total || 0) +
+      priorShiftReturnsReversalTotal,
   );
 
   const activityRows = db
