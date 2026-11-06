@@ -419,6 +419,16 @@ describe('database migrations', () => {
 
         name: 'repair-legacy-supplier-credit-allocations',
       },
+
+      {
+        name: 'track-return-cancellation-outside-shift',
+        version: 34,
+      },
+
+      {
+        name: 'track-exchange-cancellation-outside-shift',
+        version: 35,
+      },
     ]);
 
     const performanceIndexes = database

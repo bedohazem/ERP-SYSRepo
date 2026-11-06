@@ -52,6 +52,7 @@ import {
 import { createUser } from '../../src/main/database/repositories/user.repo';
 import {
   createSaleExchange,
+  cancelSaleExchange,
   getSaleExchangeState,
 } from '../../src/main/database/repositories/sales-exchange.repo';
 import {
@@ -4443,6 +4444,159 @@ describe('reports repository', () => {
     );
   });
 
+  it('attributes cross-shift exchange cancellation to the cancellation shift', () => {
+    const db = getDb();
+
+    const oldVariant = seedReportProduct({
+      name: 'Old Exchange Product',
+      barcode: 'EX-CROSS-OLD',
+      openingQty: 10,
+      buyPrice: 40,
+      sellPrice: 100,
+    });
+
+    const newVariant = seedReportProduct({
+      name: 'New Exchange Product',
+      barcode: 'EX-CROSS-NEW',
+      openingQty: 10,
+      buyPrice: 55,
+      sellPrice: 130,
+    });
+
+    const shift1 = getOpenCashShift()!;
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 100,
+      discount_value: 0,
+      grand_total: 100,
+      paid: 100,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 100,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const group = state.groups.find((g: any) => g.group_kind === 'regular');
+
+    const unit = group?.units.find(
+      (u: any) => Number(u.is_returned || 0) === 0,
+    );
+
+    expect(unit).toBeTruthy();
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(unit!.id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(30);
+    expect(exchange.shift_id).toBe(shift1.id);
+
+    const oldBefore = getCashShiftDetails(shift1.id);
+
+    expect(oldBefore.sales_summary.net_sales).toBe(130);
+    expect(oldBefore.operations_summary.exchange_difference).toBe(30);
+
+    const closing = Number(oldBefore.preview.expected_closing_amount);
+
+    expect(closing).toBe(130);
+
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: closing,
+      left_for_next_shift: closing,
+      closed_by: 1,
+    });
+
+    const shift2 = openCashShift({
+      opening_counted_amount: closing,
+      opened_by: 1,
+    });
+
+    const cancelled = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Cancel historical exchange in new shift',
+    });
+
+    expect(cancelled.ok).toBe(true);
+    expect(cancelled.cancelled_shift_id).toBe(shift2.id);
+    expect(cancelled.cash_refunded).toBe(30);
+
+    // الشيفت الأول يظل كما كان قبل الإلغاء
+    const oldAfter = getCashShiftDetails(shift1.id);
+
+    expect(oldAfter.sales_summary.net_sales).toBe(130);
+    expect(oldAfter.operations_summary.exchange_difference).toBe(30);
+    expect(oldAfter.preview.expected_closing_amount).toBe(
+      oldBefore.preview.expected_closing_amount,
+    );
+
+    // رد الـ30 جنيه لازم يتم مرة واحدة في الشيفت الجديد
+    const movements = db
+      .prepare(
+        `
+    SELECT shift_id, direction, amount, payment_method
+    FROM cash_movements
+    WHERE reference_type = 'sale_exchange_cancel'
+      AND reference_id = ?
+      AND cancelled_at IS NULL
+  `,
+      )
+      .all(exchange.exchangeId) as Array<{
+      shift_id: number | null;
+      direction: string;
+      amount: number;
+      payment_method: string;
+    }>;
+
+    expect(movements).toHaveLength(1);
+    expect(movements[0].shift_id).toBe(shift2.id);
+    expect(movements[0].direction).toBe('out');
+    expect(movements[0].amount).toBe(30);
+    expect(movements[0].payment_method).toBe('store_cash');
+
+    const newDetails = getCashShiftDetails(shift2.id);
+
+    expect(newDetails.preview.expected_closing_amount).toBe(100);
+
+    expect(newDetails.operations_summary.cancelled_exchanges_count).toBe(1);
+
+    // الإلغاء ينقص صافي مبيعات الشيفت الجديد
+    expect(newDetails.sales_summary.net_sales).toBe(-30);
+
+    const dashboard = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(dashboard.sales.net_sales).toBe(-30);
+
+    // إجمالي الشيفتين يساوي البيع بعد عكس الاستبدال
+    expect(
+      oldAfter.sales_summary.net_sales + newDetails.sales_summary.net_sales,
+    ).toBe(100);
+  });
+
   it('keeps historical shift details immutable when later-shift operations touch old records', () => {
     const shift1 = getOpenCashShift();
 
@@ -6066,6 +6220,718 @@ describe('reports repository', () => {
     expect(cashier.discounts.total).toBe(40);
   });
 
+  it('preserves negative discount reversals across exchange cancellation dates', () => {
+    const db = getDb();
+
+    const cancellationDate = getLocalBusinessDate();
+
+    const historicalDate = new Date(
+      Date.parse(`${cancellationDate}T00:00:00Z`) - 24 * 60 * 60 * 1000,
+    )
+      .toISOString()
+      .slice(0, 10);
+
+    const shift = getOpenCashShift()!;
+
+    /*
+     * القطعة الأصلية:
+     * بيع 200، تكلفة 100، بدون خصم.
+     *
+     * القطعة الجديدة:
+     * سعر أساسي 170، خصم 20،
+     * سعر فعلي 150، تكلفة 80.
+     */
+    const oldVariant = seedReportProduct({
+      name: 'Reverse Discount Original',
+      barcode: 'REVERSE-DISCOUNT-OLD',
+      sellPrice: 200,
+      buyPrice: 100,
+    });
+
+    const newVariant = seedReportProduct({
+      name: 'Reverse Discount Replacement',
+      barcode: 'REVERSE-DISCOUNT-NEW',
+      sellPrice: 170,
+      buyPrice: 80,
+    });
+
+    db.prepare(
+      `
+    UPDATE product_variants
+    SET discount_price = ?
+    WHERE id = ?
+  `,
+    ).run(150, newVariant.variant_id);
+
+    const customer = createTestCustomer(
+      'Reverse Discount Customer',
+      '01055556666',
+    );
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup!.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-50);
+    expect(exchange.debt_reduction_amount).toBe(50);
+
+    // ننسب البيع والاستبدال إلى اليوم السابق.
+    db.prepare(
+      `
+    UPDATE cash_shifts
+    SET business_date = ?
+    WHERE id = ?
+  `,
+    ).run(historicalDate, shift.id);
+
+    const historicalBefore = getReportsSummary({
+      date_from: historicalDate,
+      date_to: historicalDate,
+    });
+
+    expect(historicalBefore.summary.net_sales).toBe(150);
+    expect(historicalBefore.summary.product_discounts).toBe(20);
+    expect(historicalBefore.summary.total_discounts).toBe(20);
+
+    expect(historicalBefore.summary.gross_profit_before_discounts).toBe(90);
+
+    expect(historicalBefore.summary.net_profit_after_discounts).toBe(70);
+
+    // نقفل الشيفت بدون حركة نقدية.
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    // الأدمن يلغي الاستبدال خارج الشيفت.
+    const cancellation = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Reverse negative discount regression',
+    });
+
+    expect(cancellation.ok).toBe(true);
+    expect(cancellation.cancelled_shift_id).toBeNull();
+
+    const historicalAfter = getReportsSummary({
+      date_from: historicalDate,
+      date_to: historicalDate,
+    });
+
+    const cancellationDayReport = getReportsSummary({
+      date_from: cancellationDate,
+      date_to: cancellationDate,
+    });
+
+    const allTimeReport = getReportsSummary();
+
+    /*
+     * اليوم القديم يفضل زي ما كان:
+     * مبيعات 150 وخصم 20 وربح 70.
+     */
+    expect(historicalAfter.summary.net_sales).toBe(150);
+    expect(historicalAfter.summary.product_discounts).toBe(20);
+    expect(historicalAfter.summary.total_discounts).toBe(20);
+
+    expect(historicalAfter.summary.gross_profit_before_discounts).toBe(90);
+
+    expect(historicalAfter.summary.net_profit_after_discounts).toBe(70);
+
+    /*
+     * يوم الإلغاء:
+     * عكس مبيعات +50،
+     * عكس خصم -20،
+     * عكس ربح إجمالي +10،
+     * عكس ربح صافي +30.
+     */
+    expect(cancellationDayReport.summary.net_sales).toBe(50);
+
+    expect(cancellationDayReport.summary.product_discounts).toBe(-20);
+
+    expect(cancellationDayReport.summary.total_discounts).toBe(-20);
+
+    expect(cancellationDayReport.summary.gross_profit_before_discounts).toBe(
+      10,
+    );
+
+    expect(cancellationDayReport.summary.net_profit_after_discounts).toBe(30);
+
+    /*
+     * إجمالي الفترتين يرجع
+     * للفواتير الأصلية بدون خصومات.
+     */
+    expect(allTimeReport.summary.net_sales).toBe(200);
+    expect(allTimeReport.summary.product_discounts).toBe(0);
+    expect(allTimeReport.summary.total_discounts).toBe(0);
+
+    expect(allTimeReport.summary.gross_profit_before_discounts).toBe(100);
+
+    expect(allTimeReport.summary.net_profit_after_discounts).toBe(100);
+  });
+
+  it('reverses exchange product discounts on the cancellation business date', () => {
+    const db = getDb();
+
+    const cancellationDate = getLocalBusinessDate();
+
+    const historicalDate = new Date(
+      Date.parse(`${cancellationDate}T00:00:00Z`) - 24 * 60 * 60 * 1000,
+    )
+      .toISOString()
+      .slice(0, 10);
+
+    const shift = getOpenCashShift()!;
+
+    /*
+     * القطعة الأصلية:
+     * السعر الأساسي = 220
+     * السعر بعد الخصم = 200
+     * التكلفة = 100
+     *
+     * القطعة الجديدة:
+     * السعر = 150
+     * التكلفة = 80
+     * بدون خصومات.
+     */
+    const oldVariant = seedReportProduct({
+      name: 'Discount Exchange Original',
+      barcode: 'DISCOUNT-EX-OLD',
+      sellPrice: 220,
+      buyPrice: 100,
+    });
+
+    const newVariant = seedReportProduct({
+      name: 'Discount Exchange Replacement',
+      barcode: 'DISCOUNT-EX-NEW',
+      sellPrice: 150,
+      buyPrice: 80,
+    });
+
+    // تفعيل خصم المنتج الأصلي فعليًا.
+    db.prepare(
+      `
+    UPDATE product_variants
+    SET discount_price = ?
+    WHERE id = ?
+  `,
+    ).run(200, oldVariant.variant_id);
+
+    const customer = createTestCustomer(
+      'Exchange Discount Report Customer',
+      '01088889999',
+    );
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+
+          size: oldVariant.size,
+          color: oldVariant.color,
+
+          quantity: 1,
+
+          unit_price: 200,
+          list_unit_price: 220,
+        },
+      ],
+    });
+
+    const originalReport = getReportsSummary();
+
+    expect(originalReport.summary.net_sales).toBe(200);
+    expect(originalReport.summary.product_discounts).toBe(20);
+
+    expect(originalReport.summary.gross_profit_before_discounts).toBe(120);
+
+    expect(originalReport.summary.net_profit_after_discounts).toBe(100);
+
+    /*
+     * استبدال القطعة بواحدة أرخص.
+     *
+     * العميل كان عليه 200.
+     * القطعة الجديدة = 150.
+     *
+     * إذن المديونية تقل 50.
+     */
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup!.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-50);
+    expect(exchange.debt_reduction_amount).toBe(50);
+
+    /*
+     * ننسب البيع والاستبدال إلى أمس،
+     * ونسيب إلغاء الاستبدال لليوم الحالي.
+     */
+    db.prepare(
+      `
+    UPDATE cash_shifts
+    SET business_date = ?
+    WHERE id = ?
+  `,
+    ).run(historicalDate, shift.id);
+
+    const beforeCancellation = getReportsSummary({
+      date_from: historicalDate,
+      date_to: historicalDate,
+    });
+
+    // بعد الاستبدال لم يعد هناك خصم على القطعة.
+    expect(beforeCancellation.summary.net_sales).toBe(150);
+    expect(beforeCancellation.summary.product_discounts).toBe(0);
+    expect(beforeCancellation.summary.total_discounts).toBe(0);
+
+    expect(beforeCancellation.summary.gross_profit_before_discounts).toBe(70);
+
+    expect(beforeCancellation.summary.net_profit_after_discounts).toBe(70);
+
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    /*
+     * الأدمن يلغي الاستبدال خارج الشيفت.
+     */
+    const cancellation = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Exchange discount historical regression',
+    });
+
+    expect(cancellation.ok).toBe(true);
+    expect(cancellation.cancelled_shift_id).toBeNull();
+
+    const historicalAfter = getReportsSummary({
+      date_from: historicalDate,
+      date_to: historicalDate,
+    });
+
+    const cancellationDayReport = getReportsSummary({
+      date_from: cancellationDate,
+      date_to: cancellationDate,
+    });
+
+    const allTimeReport = getReportsSummary();
+
+    /*
+     * اليوم القديم لا يتغير بعد الإلغاء.
+     */
+    expect(historicalAfter.summary.net_sales).toBe(150);
+    expect(historicalAfter.summary.product_discounts).toBe(0);
+    expect(historicalAfter.summary.total_discounts).toBe(0);
+
+    expect(historicalAfter.summary.gross_profit_before_discounts).toBe(70);
+
+    expect(historicalAfter.summary.net_profit_after_discounts).toBe(70);
+
+    /*
+     * يوم الإلغاء:
+     *
+     * عكس فرق الاستبدال = +50
+     * استعادة خصم المنتج = +20
+     *
+     * عكس الربح الإجمالي = +50
+     * عكس الربح الصافي = +30
+     */
+    expect(cancellationDayReport.summary.net_sales).toBe(50);
+
+    expect(cancellationDayReport.summary.product_discounts).toBe(20);
+
+    expect(cancellationDayReport.summary.total_discounts).toBe(20);
+
+    expect(cancellationDayReport.summary.gross_profit_before_discounts).toBe(
+      50,
+    );
+
+    expect(cancellationDayReport.summary.net_profit_after_discounts).toBe(30);
+
+    /*
+     * إجمالي الفترتين يرجع
+     * لأرقام الفاتورة الأصلية.
+     */
+    expect(allTimeReport.summary.net_sales).toBe(200);
+    expect(allTimeReport.summary.product_discounts).toBe(20);
+    expect(allTimeReport.summary.total_discounts).toBe(20);
+
+    expect(allTimeReport.summary.gross_profit_before_discounts).toBe(120);
+
+    expect(allTimeReport.summary.net_profit_after_discounts).toBe(100);
+  });
+
+  it('attributes debt-only exchange cancellation to its cancellation date without rewriting historical reports', () => {
+    const db = getDb();
+
+    const cancellationDate = getLocalBusinessDate();
+
+    const historicalDate = new Date(
+      Date.parse(`${cancellationDate}T00:00:00Z`) - 24 * 60 * 60 * 1000,
+    )
+      .toISOString()
+      .slice(0, 10);
+
+    const shift = getOpenCashShift()!;
+
+    const oldVariant = seedReportProduct({
+      name: 'Historical Exchange Old',
+      barcode: 'HIST-EX-OLD',
+      sellPrice: 200,
+      buyPrice: 100,
+    });
+
+    const newVariant = seedReportProduct({
+      name: 'Historical Exchange New',
+      barcode: 'HIST-EX-NEW',
+      sellPrice: 150,
+      buyPrice: 80,
+    });
+
+    const customer = createTestCustomer(
+      'Historical Exchange Report Customer',
+      '01066667777',
+    );
+
+    // فاتورة آجل بقيمة 200.
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    // استبدال بقطعة أرخص 50 جنيه.
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup!.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-50);
+    expect(exchange.debt_reduction_amount).toBe(50);
+    expect(exchange.amount_to_collect).toBe(0);
+    expect(exchange.amount_to_refund).toBe(0);
+
+    // محاكاة تاريخ شيفت قديم داخل قاعدة الاختبار فقط.
+    db.prepare(
+      `
+    UPDATE cash_shifts
+    SET business_date = ?
+    WHERE id = ?
+  `,
+    ).run(historicalDate, shift.id);
+
+    const historicalBefore = getReportsSummary({
+      date_from: historicalDate,
+      date_to: historicalDate,
+    });
+
+    expect(historicalBefore.summary.net_sales).toBe(150);
+
+    expect(getAdminDashboardTodaySummary(historicalDate).net_sales).toBe(150);
+
+    const shiftBefore = getCashShiftDetails(shift.id);
+
+    expect(shiftBefore.sales_summary.net_sales).toBe(150);
+
+    // إغلاق الشيفت بدون حركة نقدية.
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    // إلغاء الاستبدال في تاريخ لاحق خارج أي شيفت.
+    const cancellation = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Historical report date regression',
+    });
+
+    expect(cancellation.ok).toBe(true);
+    expect(cancellation.cancelled_shift_id).toBeNull();
+    expect(cancellation.debt_restored).toBe(50);
+
+    // تقرير التاريخ القديم لا يتغير.
+    const historicalAfter = getReportsSummary({
+      date_from: historicalDate,
+      date_to: historicalDate,
+    });
+
+    expect(historicalAfter.summary.net_sales).toBe(150);
+
+    expect(getAdminDashboardTodaySummary(historicalDate).net_sales).toBe(150);
+
+    // يوم الإلغاء يظهر فيه عكس الاستبدال +50.
+    const cancellationDayReport = getReportsSummary({
+      date_from: cancellationDate,
+      date_to: cancellationDate,
+    });
+
+    expect(cancellationDayReport.summary.net_sales).toBe(50);
+
+    expect(getAdminDashboardTodaySummary(cancellationDate).net_sales).toBe(50);
+
+    // إجمالي الفترتين = 200.
+    const allTimeReport = getReportsSummary();
+
+    expect(allTimeReport.summary.net_sales).toBe(200);
+
+    const dailySalesRows = allTimeReport.dailySales as Array<{
+      day: string;
+      total: number;
+    }>;
+
+    const historicalDailySale = dailySalesRows.find(
+      (row) => row.day === historicalDate,
+    );
+
+    const cancellationDailySale = dailySalesRows.find(
+      (row) => row.day === cancellationDate,
+    );
+
+    // اليوم القديم: بيع 200 - استبدال 50.
+    expect(historicalDailySale).toBeTruthy();
+    expect(Number(historicalDailySale?.total)).toBe(150);
+
+    // يوم الإلغاء: عكس الاستبدال +50.
+    expect(cancellationDailySale).toBeTruthy();
+    expect(Number(cancellationDailySale?.total)).toBe(50);
+
+    // مجموع اليومين يساوي صافي التقرير العام.
+    const dailySalesTotal = dailySalesRows.reduce(
+      (total, row) => total + Number(row.total || 0),
+      0,
+    );
+
+    expect(dailySalesTotal).toBe(200);
+    expect(dailySalesTotal).toBe(allTimeReport.summary.net_sales);
+
+    /*
+     * أداء الكاشير والبائع لازم يتطابق
+     * مع صافي المبيعات التاريخي.
+     *
+     * الاستبدال -50 في يومه الأصلي،
+     * وإلغاؤه +50 في يوم الإلغاء.
+     */
+
+    const historicalCashier = historicalAfter.cashierSales.find(
+      (row) => Number(row.user_id) === 1,
+    );
+
+    const cancellationCashier = cancellationDayReport.cashierSales.find(
+      (row) => Number(row.user_id) === 1,
+    );
+
+    // الكاشير: يوم البيع والاستبدال.
+    expect(historicalCashier).toBeTruthy();
+    expect(historicalCashier?.sales_total).toBe(200);
+    expect(historicalCashier?.exchange_adjustment).toBe(-50);
+    expect(historicalCashier?.net_sales).toBe(150);
+
+    // الكاشير: يوم إلغاء الاستبدال.
+    expect(cancellationCashier).toBeTruthy();
+    expect(cancellationCashier?.exchange_adjustment).toBe(50);
+    expect(cancellationCashier?.net_sales).toBe(50);
+
+    /*
+     * أداء البائعين:
+     * الفاتورة بدون بائع مستقل،
+     * فتُنسب للكاشير الذي باعها.
+     */
+    const historicalSellerNet = historicalAfter.salespersonSales.reduce(
+      (total, row) => total + Number(row.net_sales || 0),
+      0,
+    );
+
+    const cancellationSellerNet = cancellationDayReport.salespersonSales.reduce(
+      (total, row) => total + Number(row.net_sales || 0),
+      0,
+    );
+
+    expect(historicalSellerNet).toBe(150);
+    expect(cancellationSellerNet).toBe(50);
+
+    // مجموع أداء الكاشير والبائع عبر الفترتين.
+    const allTimeCashierNet = allTimeReport.cashierSales.reduce(
+      (total, row) => total + Number(row.net_sales || 0),
+      0,
+    );
+
+    const allTimeSellerNet = allTimeReport.salespersonSales.reduce(
+      (total, row) => total + Number(row.net_sales || 0),
+      0,
+    );
+
+    expect(allTimeCashierNet).toBe(200);
+    expect(allTimeSellerNet).toBe(200);
+
+    /*
+     * أرباح الاستبدال عبر يومين:
+     *
+     * البيع الأصلي:
+     * 200 - 100 تكلفة = 100 ربح.
+     *
+     * بعد الاستبدال:
+     * 150 - 80 تكلفة = 70 ربح.
+     *
+     * فرق الربح = -30.
+     * إلغاء الاستبدال يعكسه +30
+     * في تاريخ الإلغاء.
+     */
+
+    // اليوم القديم يحتفظ بربحه وقت الاستبدال.
+    expect(historicalAfter.summary.gross_profit_before_discounts).toBe(70);
+
+    expect(historicalAfter.summary.net_profit_after_discounts).toBe(70);
+
+    // يوم الإلغاء يسجل عكس فرق الربح.
+    expect(cancellationDayReport.summary.gross_profit_before_discounts).toBe(
+      30,
+    );
+
+    expect(cancellationDayReport.summary.net_profit_after_discounts).toBe(30);
+
+    // إجمالي الفترة يرجع للربح الأصلي.
+    expect(allTimeReport.summary.gross_profit_before_discounts).toBe(100);
+
+    expect(allTimeReport.summary.net_profit_after_discounts).toBe(100);
+
+    // مفيش خصومات في السيناريو ده.
+    expect(historicalAfter.summary.total_discounts).toBe(0);
+    expect(cancellationDayReport.summary.total_discounts).toBe(0);
+    expect(allTimeReport.summary.total_discounts).toBe(0);
+
+    // تفاصيل الشيفت المقفول تفضل ثابتة.
+    const shiftAfter = getCashShiftDetails(shift.id);
+
+    expect(shiftAfter.sales_summary.net_sales).toBe(150);
+
+    expect(shiftAfter.sales_summary).toEqual(shiftBefore.sales_summary);
+  });
+
   it('builds lightweight admin dashboard today summary', () => {
     const variant = seedReportProduct({
       name: 'Dashboard Today Product',
@@ -6330,5 +7196,201 @@ describe('reports repository', () => {
     expect(report.summary.gross_profit_before_discounts).toBe(50);
 
     expect(report.summary.net_profit_after_discounts).toBe(48);
+  });
+
+  it('preserves normal promotion and loyalty discount adjustments across exchange cancellation dates', () => {
+    const db = getDb();
+
+    const cancellationDate = getLocalBusinessDate();
+
+    const historicalDate = new Date(
+      Date.parse(`${cancellationDate}T00:00:00Z`) - 24 * 60 * 60 * 1000,
+    )
+      .toISOString()
+      .slice(0, 10);
+
+    const shift = getOpenCashShift()!;
+
+    const oldVariant = seedReportProduct({
+      name: 'Normal Discount Original',
+      barcode: 'NORMAL-EX-OLD',
+      sellPrice: 200,
+      buyPrice: 100,
+    });
+
+    const newVariant = seedReportProduct({
+      name: 'Normal Discount Replacement',
+      barcode: 'NORMAL-EX-NEW',
+      sellPrice: 150,
+      buyPrice: 80,
+    });
+
+    const customer = createTestCustomer(
+      'Normal Discount Exchange Customer',
+      '01044445555',
+    );
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customer.id,
+
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+
+      change_amount: 0,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup!.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-50);
+    expect(exchange.debt_reduction_amount).toBe(50);
+
+    // تاريخ البيع والاستبدال: اليوم السابق.
+    db.prepare(
+      `
+    UPDATE cash_shifts
+    SET business_date = ?
+    WHERE id = ?
+  `,
+    ).run(historicalDate, shift.id);
+
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    const cancellation = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Normal discount report regression',
+    });
+
+    expect(cancellation.ok).toBe(true);
+    expect(cancellation.cancelled_shift_id).toBeNull();
+
+    /*
+     * Fixture خاص باختبار تجميع التقارير:
+     *
+     * نفرض أن سجل الاستبدال يحتوي
+     * على فرق خصم عادي مقداره +12.
+     *
+     * لا نختبر هنا كيفية منح الخصم
+     * أو حساب سعر الاستبدال.
+     */
+    const snapshotUpdate = db
+      .prepare(
+        `
+        UPDATE sale_exchanges
+
+        SET
+          old_normal_discount_value = 0,
+          new_normal_discount_value = 12,
+
+          old_promotion_discount_value = 0,
+          new_promotion_discount_value = 7,
+
+          old_loyalty_discount_value = 0,
+          new_loyalty_discount_value = 5
+
+        WHERE id = ?
+      `,
+      )
+      .run(exchange.exchangeId);
+
+    expect(snapshotUpdate.changes).toBe(1);
+
+    const historicalReport = getReportsSummary({
+      date_from: historicalDate,
+      date_to: historicalDate,
+    });
+
+    const cancellationReport = getReportsSummary({
+      date_from: cancellationDate,
+      date_to: cancellationDate,
+    });
+
+    const allTimeReport = getReportsSummary();
+
+    /*
+     * تاريخ الاستبدال:
+     * فرق الخصم العادي +12.
+     */
+    expect(historicalReport.summary.normal_discounts).toBe(12);
+
+    expect(historicalReport.summary.promotion_discounts).toBe(7);
+
+    expect(historicalReport.summary.loyalty_discounts).toBe(5);
+
+    expect(historicalReport.summary.total_discounts).toBe(24);
+
+    /*
+     * تاريخ الإلغاء:
+     * عكس فرق الخصم العادي -12.
+     */
+    expect(cancellationReport.summary.normal_discounts).toBe(-12);
+
+    expect(cancellationReport.summary.promotion_discounts).toBe(-7);
+
+    expect(cancellationReport.summary.loyalty_discounts).toBe(-5);
+
+    expect(cancellationReport.summary.total_discounts).toBe(-24);
+
+    /*
+     * إجمالي الفترتين:
+     * الخصم وعكسه يساويان صفرًا.
+     */
+    expect(allTimeReport.summary.normal_discounts).toBe(0);
+    expect(allTimeReport.summary.promotion_discounts).toBe(0);
+
+    expect(allTimeReport.summary.loyalty_discounts).toBe(0);
+
+    expect(allTimeReport.summary.total_discounts).toBe(0);
+
+    /*
+     * التعديل في بيانات الخصم لا
+     * يغير فروق المبيعات المسجلة.
+     */
+    expect(historicalReport.summary.net_sales).toBe(150);
+    expect(cancellationReport.summary.net_sales).toBe(50);
+    expect(allTimeReport.summary.net_sales).toBe(200);
   });
 });

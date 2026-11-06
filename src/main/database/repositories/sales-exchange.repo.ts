@@ -1301,6 +1301,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       userId,
       [paymentMethod],
       'لا يمكن تسجيل استبدال بدون شفت مفتوح',
+      cashCollectionAmount > 0 || cashRefundAmount > 0,
     );
 
     const openShift = financialShift ?? getAttributableOpenCashShift(userId);
@@ -1914,6 +1915,7 @@ export function getSaleExchangeCancellationAccess(
       SELECT
         id,
         user_id,
+        shift_id,
 
         CASE
           WHEN
@@ -1931,8 +1933,7 @@ export function getSaleExchangeCancellationAccess(
 
           THEN 0
           ELSE 1
-        END
-          AS requires_admin_password
+        END AS requires_admin_password
 
       FROM sale_exchanges
 
@@ -1945,6 +1946,7 @@ export function getSaleExchangeCancellationAccess(
     | {
         id: number;
         user_id: number | null;
+        shift_id: number | null;
         requires_admin_password: number;
       }
     | undefined;
@@ -1957,6 +1959,8 @@ export function getSaleExchangeCancellationAccess(
     exchange_id: Number(row.id),
 
     user_id: row.user_id == null ? null : Number(row.user_id),
+
+    shift_id: row.shift_id == null ? null : Number(row.shift_id),
 
     requires_admin_password: Number(row.requires_admin_password || 0) === 1,
   };
@@ -2295,6 +2299,12 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       `,
   );
 
+  const restrictToOwnShift = actorId > 0 && !isSaleExchangeAdmin(actorId);
+
+  const cashierShift = restrictToOwnShift
+    ? getAttributableOpenCashShift(actorId)
+    : null;
+
   const mappedRows = rows.map((row: any) => {
     let cancelBlockReason: string | null = null;
 
@@ -2304,6 +2314,12 @@ export function listSaleExchanges(input?: ListSaleExchangesInput) {
       cancelBlockReason = 'يجب إلغاء آخر عملية استبدال أولًا';
     } else if (Number(row.has_later_active_return || 0) === 1) {
       cancelBlockReason = 'يجب إلغاء المرتجع الأحدث أولًا';
+    } else if (
+      restrictToOwnShift &&
+      (!cashierShift || Number(row.shift_id || 0) !== Number(cashierShift.id))
+    ) {
+      cancelBlockReason =
+        'لا يمكن إلغاء الاستبدال إلا داخل نفس الشفت الذي تم فيه';
     }
 
     return {
@@ -3052,11 +3068,19 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
           cancelled_shift_id = ?,
 
+          cancelled_outside_shift = ?,
+
           cancel_reason = ?
 
         WHERE id = ?
-        `,
-    ).run(input.actor_id ?? null, openShift?.id ?? null, reason, exchangeId);
+      `,
+    ).run(
+      input.actor_id ?? null,
+      openShift?.id ?? null,
+      openShift ? 0 : 1,
+      reason,
+      exchangeId,
+    );
 
     if (exchange.customer_id) {
       syncCustomerTotalSpent(Number(exchange.customer_id));

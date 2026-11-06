@@ -13,6 +13,23 @@ type ReportFilter = {
   user_id?: number;
 };
 
+const EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL = `
+  se.cancelled_at IS NOT NULL
+
+  AND (
+    se.cancelled_outside_shift = 1
+
+    OR (
+      se.cancelled_shift_id IS NOT NULL
+
+      AND (
+        se.shift_id IS NULL
+        OR se.cancelled_shift_id <> se.shift_id
+      )
+    )
+  )
+`;
+
 export type CashierDashboardInput = {
   user_id: number;
 };
@@ -181,6 +198,11 @@ export function getAdminDashboardTodaySummary(businessDate: string) {
     'se.business_date',
   );
 
+  const cancelledExchangeBusinessDate = buildShiftBusinessDateExpression(
+    'se.cancelled_shift_id',
+    'se.cancelled_at',
+  );
+
   const row = db
     .prepare(
       `
@@ -252,7 +274,43 @@ export function getAdminDashboardTodaySummary(businessDate: string) {
           ON os.id = se.original_sale_id
 
         WHERE
-          se.cancelled_at IS NULL
+          (
+            se.cancelled_at IS NULL
+
+            OR (
+              ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+            )
+          )
+
+          AND os.cancelled_at IS NULL
+
+          AND IFNULL(
+            os.type,
+            'sale'
+          ) = 'sale'
+
+        UNION ALL
+
+        /*
+         * عكس الاستبدال في تاريخ إلغائه،
+         * بدون تعديل تاريخ العملية الأصلية.
+         */
+        SELECT
+          ${cancelledExchangeBusinessDate} AS business_date,
+
+          0 AS sales_count,
+
+          -se.difference_amount AS amount
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON os.id = se.original_sale_id
+
+        WHERE
+          (
+            ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+          )
 
           AND os.cancelled_at IS NULL
 
@@ -297,6 +355,11 @@ export function getReportsSummary(input?: ReportFilter) {
     'se.shift_id',
     'se.created_at',
     'se.business_date',
+  );
+
+  const cancelledExchangeBusinessDate = buildShiftBusinessDateExpression(
+    'se.cancelled_shift_id',
+    'se.cancelled_at',
   );
 
   const expenseBusinessDate = buildShiftBusinessDateExpression(
@@ -371,10 +434,25 @@ export function getReportsSummary(input?: ReportFilter) {
     [
       `IFNULL(os.type, 'sale') = 'sale'`,
       `os.cancelled_at IS NULL`,
-      `se.cancelled_at IS NULL`,
+      `(
+      se.cancelled_at IS NULL
+      OR (${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL})
+    )`,
     ],
     'se.user_id',
     exchangeBusinessDate,
+  );
+
+  const cancelledExchangesWhere = buildWhere(
+    'se',
+    input,
+    [
+      `IFNULL(os.type, 'sale') = 'sale'`,
+      `os.cancelled_at IS NULL`,
+      `(${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL})`,
+    ],
+    'se.user_id',
+    cancelledExchangeBusinessDate,
   );
 
   const cancelledSalesWhere = buildWhere(
@@ -644,6 +722,95 @@ export function getReportsSummary(input?: ReportFilter) {
     )
     .get(...exchangesWhere.params) as any;
 
+  const cancelledExchangeAdjustments = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(se.difference_amount),
+          0
+        ) AS reversal_amount,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_product_discount_value,
+              se.old_product_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_product_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS product_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_normal_discount_value,
+              se.old_normal_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_normal_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS normal_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_promotion_discount_value,
+              se.old_promotion_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_promotion_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS promotion_discount_adjustment,
+
+        IFNULL(
+          SUM(
+            COALESCE(
+              se.new_loyalty_discount_value,
+              se.old_loyalty_discount_value,
+              0
+            )
+            -
+            COALESCE(
+              se.old_loyalty_discount_value,
+              0
+            )
+          ),
+          0
+        ) AS loyalty_discount_adjustment
+
+      FROM sale_exchanges se
+
+      JOIN sales os
+        ON os.id = se.original_sale_id
+
+      ${cancelledExchangesWhere.whereSql}
+      `,
+    )
+    .get(...cancelledExchangesWhere.params) as {
+    reversal_amount: number;
+    product_discount_adjustment: number;
+    normal_discount_adjustment: number;
+    promotion_discount_adjustment: number;
+    loyalty_discount_adjustment: number;
+  };
+
   const cancelledSalesRow = db
     .prepare(
       `
@@ -896,10 +1063,107 @@ export function getReportsSummary(input?: ReportFilter) {
     )
     .get(...exchangesWhere.params) as any;
 
-  const exchangeAdjustment = Number(exchangeSummary.exchange_adjustment || 0);
+  /*
+   * فروق الربح التاريخية للاستبدالات
+   * التي أُلغيت خارج شيفتها.
+   *
+   * نستخدم Cost Snapshots المسجلة
+   * وقت الاستبدال، وليس متوسط
+   * تكلفة المخزون الحالي.
+   */
+  const cancelledExchangeProfitRow = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(IFNULL(x.price_delta, 0)),
+          0
+        ) AS gross_price_adjustment,
 
-  const grossPriceAdjustment = Number(
-    exchangeProfitRow.gross_price_adjustment || 0,
+        IFNULL(
+          SUM(
+            IFNULL(x.price_delta, 0)
+            -
+            IFNULL(x.cost_delta, 0)
+          ),
+          0
+        ) AS gross_profit_adjustment,
+
+        IFNULL(
+          SUM(
+            se.difference_amount
+            -
+            IFNULL(x.cost_delta, 0)
+          ),
+          0
+        ) AS net_profit_adjustment
+
+      FROM sale_exchanges se
+
+      JOIN sales os
+        ON os.id = se.original_sale_id
+
+      LEFT JOIN (
+        SELECT
+          sei.exchange_id,
+
+          IFNULL(
+            SUM(
+              (
+                COALESCE(
+                  sei.new_list_unit_price,
+                  sei.new_unit_price
+                )
+                -
+                COALESCE(
+                  sei.old_list_unit_price,
+                  sei.old_unit_price
+                )
+              ) * sei.quantity
+            ),
+            0
+          ) AS price_delta,
+
+          IFNULL(
+            SUM(
+              COALESCE(
+                sei.new_cost_value,
+                COALESCE(sei.new_unit_cost, 0)
+                  * sei.quantity
+              )
+              -
+              COALESCE(
+                sei.old_cost_value,
+                COALESCE(sei.old_unit_cost, 0)
+                  * sei.quantity
+              )
+            ),
+            0
+          ) AS cost_delta
+
+        FROM sale_exchange_items sei
+
+        GROUP BY sei.exchange_id
+      ) x
+        ON x.exchange_id = se.id
+
+      ${cancelledExchangesWhere.whereSql}
+      `,
+    )
+    .get(...cancelledExchangesWhere.params) as {
+    gross_price_adjustment: number;
+    gross_profit_adjustment: number;
+    net_profit_adjustment: number;
+  };
+
+  const exchangeAdjustment = preciseSubtract(
+    Number(exchangeSummary.exchange_adjustment || 0),
+    Number(cancelledExchangeAdjustments.reversal_amount || 0),
+  );
+
+  const grossPriceAdjustment = preciseSubtract(
+    Number(exchangeProfitRow.gross_price_adjustment || 0),
+    Number(cancelledExchangeProfitRow.gross_price_adjustment || 0),
   );
 
   const exchangeDiscountAdjustment = grossPriceAdjustment - exchangeAdjustment;
@@ -908,53 +1172,67 @@ export function getReportsSummary(input?: ReportFilter) {
 
   const totalReturns = Number(returnsSummary.total_returns || 0);
 
-  const productDiscounts = Math.max(
-    0,
-
+  /*
+   * خصومات التقارير قيم محاسبية موقعة.
+   *
+   * الخصم الموجب: خصم مُسجل.
+   * الخصم السالب: عكس خصم من فترة سابقة.
+   *
+   * ممنوع استخدام Math.max(0) هنا،
+   * لأنه يخفي التسويات السالبة الصحيحة.
+   */
+  const productDiscounts = preciseSubtract(
     Number(salesSummary.product_discounts || 0) -
       Number(returnsSummary.returned_product_discounts || 0) +
       Number(exchangeSummary.product_discount_adjustment || 0),
+
+    Number(cancelledExchangeAdjustments.product_discount_adjustment || 0),
   );
 
-  const normalDiscounts = Math.max(
-    0,
-
+  const normalDiscounts = preciseSubtract(
     Number(salesSummary.normal_discounts || 0) -
       Number(returnsSummary.returned_normal_discounts || 0) +
       Number(exchangeSummary.normal_discount_adjustment || 0),
+
+    Number(cancelledExchangeAdjustments.normal_discount_adjustment || 0),
   );
 
-  const promotionDiscounts = Math.max(
-    0,
-
+  const promotionDiscounts = preciseSubtract(
     Number(salesSummary.promotion_discounts || 0) -
       Number(returnsSummary.returned_promotion_discounts || 0) +
       Number(exchangeSummary.promotion_discount_adjustment || 0),
+
+    Number(cancelledExchangeAdjustments.promotion_discount_adjustment || 0),
   );
 
-  const loyaltyDiscounts = Math.max(
-    0,
-
+  const loyaltyDiscounts = preciseSubtract(
     Number(salesSummary.loyalty_discounts || 0) -
       Number(returnsSummary.returned_loyalty_discounts || 0) +
       Number(exchangeSummary.loyalty_discount_adjustment || 0),
+
+    Number(cancelledExchangeAdjustments.loyalty_discount_adjustment || 0),
   );
 
-  const totalDiscounts = Math.max(
-    0,
-
-    productDiscounts + normalDiscounts + promotionDiscounts + loyaltyDiscounts,
+  const totalDiscounts = reportMoney(
+    preciseAdd(
+      preciseAdd(productDiscounts, normalDiscounts),
+      preciseAdd(promotionDiscounts, loyaltyDiscounts),
+    ),
   );
 
-  const grossProfitBeforeDiscounts =
+  const grossProfitBeforeDiscounts = preciseSubtract(
     Number(salesProfitRow.gross_profit_before_discounts || 0) -
-    Number(returnsProfitRow.returned_profit_before_discounts || 0) +
-    Number(exchangeProfitRow.gross_profit_adjustment || 0);
+      Number(returnsProfitRow.returned_profit_before_discounts || 0) +
+      Number(exchangeProfitRow.gross_profit_adjustment || 0),
+    Number(cancelledExchangeProfitRow.gross_profit_adjustment || 0),
+  );
 
-  const netProfitAfterDiscounts =
+  const netProfitAfterDiscounts = preciseSubtract(
     Number(salesProfitRow.net_profit_after_discounts || 0) -
-    Number(returnsProfitRow.returned_profit_after_discounts || 0) +
-    Number(exchangeProfitRow.net_profit_adjustment || 0);
+      Number(returnsProfitRow.returned_profit_after_discounts || 0) +
+      Number(exchangeProfitRow.net_profit_adjustment || 0),
+    Number(cancelledExchangeProfitRow.net_profit_adjustment || 0),
+  );
 
   const expensesWhere = buildWhere(
     'e',
@@ -1694,8 +1972,14 @@ export function getReportsSummary(input?: ReportFilter) {
             s.cancelled_at
             IS NULL
 
+
         UNION ALL
 
+        /*
+         * الاستبدال يفضل محسوب في يومه
+         * الأصلي لو اتلغى في شيفت مختلف
+         * أو خارج أي شيفت.
+         */
         SELECT
           ${exchangeBusinessDate}
             AS business_date,
@@ -1713,18 +1997,59 @@ export function getReportsSummary(input?: ReportFilter) {
               se.original_sale_id
 
         WHERE
-          se.cancelled_at
-            IS NULL
+          (
+            se.cancelled_at IS NULL
+
+            OR (
+              ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+            )
+          )
 
           AND
-            os.cancelled_at
-            IS NULL
+            os.cancelled_at IS NULL
 
           AND
             IFNULL(
               os.type,
               'sale'
             ) = 'sale'
+
+        UNION ALL
+
+        /*
+         * عكس فرق الاستبدال في تاريخ
+         * الإلغاء، وليس تاريخ الاستبدال.
+         */
+        SELECT
+          ${cancelledExchangeBusinessDate}
+            AS business_date,
+
+          se.user_id,
+
+          -se.difference_amount
+            AS amount
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        WHERE
+          (
+            ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+          )
+
+          AND
+            os.cancelled_at IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
 
         UNION ALL
 
@@ -2034,9 +2359,13 @@ export function getReportsSummary(input?: ReportFilter) {
 
         UNION ALL
 
+
         /*
-         * فرق الاستبدال ينسب
-         * لصاحب الفاتورة الأصلية.
+         * الاستبدال ينسب لصاحب
+         * الفاتورة الأصلية.
+         *
+         * لو اتلغى خارج شيفته،
+         * نحافظ على أثره التاريخي.
          */
         SELECT
           os.user_id,
@@ -2065,18 +2394,72 @@ export function getReportsSummary(input?: ReportFilter) {
               se.original_sale_id
 
         WHERE
-          se.cancelled_at
-            IS NULL
+          (
+            se.cancelled_at IS NULL
+
+            OR (
+              ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+            )
+          )
 
           AND
-            os.cancelled_at
-            IS NULL
+            os.cancelled_at IS NULL
 
           AND
             IFNULL(
               os.type,
               'sale'
             ) = 'sale'
+
+        UNION ALL
+
+        /*
+         * عكس فرق الاستبدال
+         * في يوم الإلغاء.
+         *
+         * العكس ينسب أيضًا
+         * لصاحب الفاتورة الأصلية.
+         */
+        SELECT
+          os.user_id,
+
+          ${cancelledExchangeBusinessDate}
+            AS business_date,
+
+          0 AS sales_count,
+
+          0 AS sale_amount,
+
+          0 AS returns_count,
+
+          0 AS return_amount,
+
+          0 AS exchange_count,
+
+          -se.difference_amount
+            AS exchange_adjustment
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON
+            os.id =
+              se.original_sale_id
+
+        WHERE
+          (
+            ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+          )
+
+          AND
+            os.cancelled_at IS NULL
+
+          AND
+            IFNULL(
+              os.type,
+              'sale'
+            ) = 'sale'
+
       ) x
 
       LEFT JOIN users u
@@ -2230,8 +2613,13 @@ export function getReportsSummary(input?: ReportFilter) {
           AND os.cancelled_at IS NULL
           AND IFNULL(os.type, 'sale') = 'sale'
 
+
         UNION ALL
 
+        /*
+         * الاحتفاظ بأثر الاستبدال
+         * في تاريخ تنفيذه.
+         */
         SELECT
           os.salesperson_id,
           os.salesperson_name,
@@ -2255,9 +2643,54 @@ export function getReportsSummary(input?: ReportFilter) {
           ON os.id = se.original_sale_id
 
         WHERE
-          se.cancelled_at IS NULL
+          (
+            se.cancelled_at IS NULL
+
+            OR (
+              ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+            )
+          )
+
           AND os.cancelled_at IS NULL
           AND IFNULL(os.type, 'sale') = 'sale'
+
+        UNION ALL
+
+        /*
+         * عكس فرق الاستبدال في
+         * تاريخ إلغائه مع الحفاظ
+         * على البائع الأصلي.
+         */
+        SELECT
+          os.salesperson_id,
+          os.salesperson_name,
+          os.user_id,
+
+          ${cancelledExchangeBusinessDate}
+            AS business_date,
+
+          0 AS sales_count,
+          0 AS sale_amount,
+
+          0 AS returns_count,
+          0 AS return_amount,
+
+          0 AS exchange_count,
+          -se.difference_amount AS exchange_adjustment
+
+        FROM sale_exchanges se
+
+        JOIN sales os
+          ON os.id = se.original_sale_id
+
+        WHERE
+          (
+            ${EXCHANGE_CANCELLED_IN_ANOTHER_SHIFT_SQL}
+          )
+
+          AND os.cancelled_at IS NULL
+          AND IFNULL(os.type, 'sale') = 'sale'
+
       ) x
 
         LEFT JOIN salespeople sp
@@ -3288,16 +3721,61 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
     .prepare(
       `
       SELECT
-        COUNT(*) AS count
+        COUNT(*) AS count,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN se.shift_id IS NULL
+                OR se.shift_id <> se.cancelled_shift_id
+              THEN IFNULL(se.difference_amount, 0)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_reversal,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN se.shift_id IS NULL
+                OR se.shift_id <> se.cancelled_shift_id
+              THEN IFNULL(se.cash_refund_amount, 0)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_cash_in_total,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN se.shift_id IS NULL
+                OR se.shift_id <> se.cancelled_shift_id
+              THEN IFNULL(se.cash_collection_amount, 0)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_cash_out_total,
+
+        IFNULL(
+          SUM(
+            CASE
+              WHEN se.shift_id IS NULL
+                OR se.shift_id <> se.cancelled_shift_id
+              THEN IFNULL(se.debt_reduction_amount, 0)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS cross_shift_debt_restored
 
       FROM sale_exchanges se
 
       WHERE
-        se.cancelled_at
-        IS NOT NULL
-
-        AND
-          se.cancelled_shift_id = ?
+        se.cancelled_at IS NOT NULL
+        AND se.cancelled_shift_id = ?
       `,
     )
     .get(shiftId) as any;
@@ -3516,7 +3994,8 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       exchangeAdjustment -
       returnsTotal -
       crossShiftCancelledSalesTotal +
-      reportMoney(cancelledReturns?.cross_shift_total),
+      reportMoney(cancelledReturns?.cross_shift_total) -
+      reportMoney(cancelledExchanges?.cross_shift_reversal),
   );
 
   return {
@@ -3579,6 +4058,18 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       exchanges_count: Number(exchanges?.exchanges_count || 0),
 
       cancelled_exchanges_count: Number(cancelledExchanges?.count || 0),
+
+      cross_shift_cancelled_exchanges_cash_in_total: reportMoney(
+        cancelledExchanges?.cross_shift_cash_in_total,
+      ),
+
+      cross_shift_cancelled_exchanges_cash_out_total: reportMoney(
+        cancelledExchanges?.cross_shift_cash_out_total,
+      ),
+
+      cross_shift_cancelled_exchanges_debt_restored: reportMoney(
+        cancelledExchanges?.cross_shift_debt_restored,
+      ),
 
       exchange_adjustment: exchangeAdjustment,
 

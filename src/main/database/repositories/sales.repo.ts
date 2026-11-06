@@ -3441,6 +3441,7 @@ export function createSaleReturn(input: {
       userId,
       [refundPaymentMethod],
       'لا يمكن تسجيل مرتجع بيع بدون شفت مفتوح',
+      cashRefundAmount > 0,
     );
 
     const openShift = financialShift ?? getAttributableOpenCashShift(userId);

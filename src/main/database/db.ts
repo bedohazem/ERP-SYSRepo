@@ -4383,6 +4383,21 @@ export function getDb(): Database.Database {
           );
         },
       },
+
+      {
+        version: 35,
+
+        name: 'track-exchange-cancellation-outside-shift',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'cancelled_outside_shift',
+            'INTEGER',
+          );
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

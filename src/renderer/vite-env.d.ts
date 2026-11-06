@@ -1938,6 +1938,9 @@ declare global {
           return_debt_reduction: number;
           exchanges_count: number;
           cancelled_exchanges_count: number;
+          cross_shift_cancelled_exchanges_cash_in_total: number;
+          cross_shift_cancelled_exchanges_cash_out_total: number;
+          cross_shift_cancelled_exchanges_debt_restored: number;
           exchange_adjustment: number;
           exchange_cash_collection: number;
           exchange_cash_refund: number;

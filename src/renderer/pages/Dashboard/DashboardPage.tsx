@@ -110,6 +110,9 @@ type CashierDashboardSummary = {
     return_debt_reduction: number;
     exchanges_count: number;
     cancelled_exchanges_count: number;
+    cross_shift_cancelled_exchanges_cash_in_total: number;
+    cross_shift_cancelled_exchanges_cash_out_total: number;
+    cross_shift_cancelled_exchanges_debt_restored: number;
     exchange_adjustment: number;
     exchange_cash_collection: number;
     exchange_cash_refund: number;
@@ -167,6 +170,9 @@ const emptyCashierDashboard: CashierDashboardSummary = {
     return_debt_reduction: 0,
     exchanges_count: 0,
     cancelled_exchanges_count: 0,
+    cross_shift_cancelled_exchanges_cash_in_total: 0,
+    cross_shift_cancelled_exchanges_cash_out_total: 0,
+    cross_shift_cancelled_exchanges_debt_restored: 0,
     exchange_adjustment: 0,
     exchange_cash_collection: 0,
     exchange_cash_refund: 0,
@@ -1626,7 +1632,7 @@ function CashierRevenueView({
             }}
           >
             <ReconciliationCard
-              title="إجمالي المبيعات"
+              title="قيمة الفواتير"
               value={money(summary.sales.invoice_sales)}
             />
 
@@ -1658,7 +1664,7 @@ function CashierRevenueView({
               fontSize: '13px',
             }}
           >
-            إجمالي المبيعات
+            قيمة الفواتير
             {' + '}
             تعديل الاستبدالات
             {' - '}
@@ -1670,11 +1676,6 @@ function CashierRevenueView({
       </section>
 
       <section>
-        <SectionHeader
-          title="ملخص الحركة"
-          subtitle="الأرقام المالية بعد الإلغاء والمرتجعات والاستبدالات"
-        />
-
         <CashierMiniCard
           title="رصيد بداية الشفت"
           value={
@@ -1705,8 +1706,154 @@ function CashierRevenueView({
 
           <CashierMiniCard
             title="إجمالي المبيعات"
-            value={money(summary.sales.invoice_sales)}
-            subtitle="قيمة الفواتير بعد الخصومات وقبل المرتجعات والاستبدالات"
+            value={money(summary.sales.net_sales)}
+            subtitle={
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '7px',
+                    color: '#94a3b8',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <span style={{ color: '#86efac' }}>✓</span>
+                  <span>
+                    محصل من فواتير الشيفت:{' '}
+                    {money(summary.sales.paid_sales_total)}
+                  </span>
+                </div>
+
+                {summary.sales.cross_shift_cancelled_returns_total >
+                  summary.sales.cross_shift_cancelled_returns_debt_restored && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                      color: '#86efac',
+                    }}
+                  >
+                    <span>↩ فلوس رجعت للحساب (إلغاء مرتجع)</span>
+
+                    <strong style={{ color: '#86efac' }}>
+                      {money(
+                        Math.max(
+                          0,
+                          roundFinancial(
+                            summary.sales.cross_shift_cancelled_returns_total -
+                              summary.sales
+                                .cross_shift_cancelled_returns_debt_restored,
+                          ),
+                        ),
+                      )}
+                    </strong>
+                  </div>
+                )}
+
+                {summary.sales.cross_shift_cancelled_returns_debt_restored >
+                  0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                      color: '#fbbf24',
+                    }}
+                  >
+                    <span>⚠ زيادة مديونية (إلغاء مرتجع)</span>
+
+                    <strong style={{ color: '#fbbf24' }}>
+                      {money(
+                        summary.sales
+                          .cross_shift_cancelled_returns_debt_restored,
+                      )}
+                    </strong>
+                  </div>
+                )}
+
+                {summary.sales.cross_shift_cancelled_exchanges_cash_in_total >
+                  0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                      color: '#86efac',
+                    }}
+                  >
+                    <span>↩ فلوس رجعت للحساب (إلغاء استبدال)</span>
+
+                    <strong style={{ color: '#86efac' }}>
+                      {money(
+                        summary.sales
+                          .cross_shift_cancelled_exchanges_cash_in_total,
+                      )}
+                    </strong>
+                  </div>
+                )}
+
+                {summary.sales.cross_shift_cancelled_exchanges_cash_out_total >
+                  0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                      color: '#fca5a5',
+                    }}
+                  >
+                    <span>↪ رد للعميل بسبب إلغاء استبدال</span>
+
+                    <strong style={{ color: '#fca5a5' }}>
+                      {money(
+                        summary.sales
+                          .cross_shift_cancelled_exchanges_cash_out_total,
+                      )}
+                    </strong>
+                  </div>
+                )}
+
+                {summary.sales.cross_shift_cancelled_exchanges_debt_restored >
+                  0 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                      color: '#fbbf24',
+                    }}
+                  >
+                    <span>⚠ زيادة مديونية (إلغاء استبدال)</span>
+
+                    <strong style={{ color: '#fbbf24' }}>
+                      {money(
+                        summary.sales
+                          .cross_shift_cancelled_exchanges_debt_restored,
+                      )}
+                    </strong>
+                  </div>
+                )}
+
+                {summary.sales.outstanding_debt_total > 0 && (
+                  <div style={{ color: '#fbbf24' }}>
+                    ⚠ باقي على فواتير الشفت:{' '}
+                    {money(summary.sales.outstanding_debt_total)}
+                  </div>
+                )}
+              </div>
+            }
             tone="green"
           />
 
@@ -1942,7 +2089,7 @@ function CashierMiniCard({
 }: {
   title: string;
   value: string;
-  subtitle: string;
+  subtitle: ReactNode;
   tone?: 'green' | 'red' | 'violet' | 'amber' | 'blue';
 }) {
   const tones = {

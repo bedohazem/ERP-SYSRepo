@@ -21,7 +21,7 @@ import {
   CreditLimitExceededError,
   getSaleAuditTrail,
 } from '../database/repositories/sales.repo';
-
+import { getAttributableOpenCashShift } from '../database/repositories/cash-shifts.repo';
 import {
   getVariantByBarcode,
   searchSaleVariants,
@@ -1328,6 +1328,19 @@ export function registerSalesIpc(): void {
 
       if (Number(access.user_id || 0) !== Number(actorId || 0)) {
         requireAdmin(actorId);
+      }
+
+      if (actor.role !== 'admin') {
+        const currentShift = getAttributableOpenCashShift(actorId);
+
+        if (
+          !currentShift ||
+          Number(access.shift_id || 0) !== Number(currentShift.id)
+        ) {
+          throw new Error(
+            'لا يمكن إلغاء الاستبدال إلا داخل نفس الشفت الذي تم فيه',
+          );
+        }
       }
 
       if (access.requires_admin_password) {

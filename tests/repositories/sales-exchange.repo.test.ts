@@ -23,11 +23,17 @@ import {
 } from '../../src/main/database/repositories/sales-exchange.repo';
 import {
   closeCashShift,
+  getCashShiftDetails,
   getOpenCashShift,
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo';
 import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
 import { getInventoryCostState } from '../../src/main/database/inventory-cost';
+import {
+  createCashMovement,
+  getCashSummary,
+} from '../../src/main/database/repositories/cash.repo';
+import { createUser } from '../../src/main/database/repositories/user.repo';
 
 type TestVariant = {
   variant_id: number;
@@ -1488,6 +1494,572 @@ describe('sale promotion exchanges', () => {
     expect(Number(current.sale.product_discount_value)).toBe(40);
 
     expect(Number(current.sale.grand_total)).toBe(150);
+  });
+
+  it('blocks cashier from cancelling an exchange from a previous shift', () => {
+    const db = getDb();
+
+    const initialShift = getOpenCashShift()!;
+
+    closeCashShift({
+      shift_id: initialShift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    const cashier = createUser(
+      'Exchange Shift Cashier',
+      'exchange_shift_cashier',
+      'Cashier1234',
+      'cashier',
+    );
+
+    const shift1 = openCashShift({
+      opening_counted_amount: 0,
+      opened_by: cashier.id,
+    });
+
+    const catalog = seedExchangeCatalog();
+
+    const oldVariant = catalog.variants.EX150;
+    const newVariant = catalog.variants.EX200;
+
+    const sale = createSale({
+      user_id: cashier.id,
+      customer_id: null,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const group = state.groups.find(
+      (item: any) => item.group_kind === 'regular',
+    );
+
+    const unit = group?.units.find(
+      (item: any) => Number(item.is_returned || 0) === 0,
+    );
+
+    expect(unit).toBeTruthy();
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: cashier.id,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(unit!.id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(50);
+    expect(exchange.shift_id).toBe(shift1.id);
+
+    // إغلاق الشيفت الأول بعد تحصيل 200 جنيه.
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: 200,
+      left_for_next_shift: 200,
+      closed_by: cashier.id,
+    });
+
+    const shift2 = openCashShift({
+      opening_counted_amount: 200,
+      opened_by: cashier.id,
+    });
+
+    expect(shift2.id).not.toBe(shift1.id);
+
+    // قائمة الاستبدالات لا تسمح بإلغاء العملية القديمة.
+    const listed = listSaleExchanges({
+      actor_id: cashier.id,
+    });
+
+    const exchangeRow = listed.rows.find(
+      (row: any) => Number(row.id) === exchange.exchangeId,
+    ) as any;
+
+    expect(exchangeRow).toBeTruthy();
+    expect(exchangeRow.can_cancel).toBe(false);
+    expect(exchangeRow.cancel_block_reason).toContain('نفس الشفت');
+
+    // الحماية الفعلية داخل الـRepository.
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+        actor_id: cashier.id,
+        reason: 'Attempt to cancel previous shift exchange',
+      }),
+    ).toThrow('لا يمكن إلغاء الاستبدال إلا داخل نفس الشفت الذي تم فيه');
+
+    // الاستبدال يظل فعالًا.
+    const storedExchange = db
+      .prepare(
+        `
+    SELECT cancelled_at, cancelled_shift_id
+    FROM sale_exchanges
+    WHERE id = ?
+  `,
+      )
+      .get(exchange.exchangeId) as {
+      cancelled_at: string | null;
+      cancelled_shift_id: number | null;
+    };
+
+    expect(storedExchange.cancelled_at).toBeNull();
+    expect(storedExchange.cancelled_shift_id).toBeNull();
+
+    // لم تُسجّل أي حركة رد أموال.
+    const reversals = db
+      .prepare(
+        `
+    SELECT COUNT(*) AS count
+    FROM cash_movements
+    WHERE reference_type = 'sale_exchange_cancel'
+      AND reference_id = ?
+  `,
+      )
+      .get(exchange.exchangeId) as { count: number };
+
+    expect(reversals.count).toBe(0);
+  });
+
+  it('rejects exchange cancellation when drawer balance is insufficient without changing financial or inventory state', () => {
+    const db = getDb();
+
+    const result = createRegularExchangeSale();
+
+    const state = getSaleExchangeState(result.sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    const unit = regularGroup!.units[0];
+
+    // استبدال قطعة بـ100 بقطعة بـ150
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      reason: 'Insufficient balance regression',
+      items: [
+        {
+          promotion_unit_id: Number(unit.id),
+          new_variant_id: result.newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(50);
+    expect(exchange.amount_to_collect).toBe(50);
+
+    // رصيد الدرج = 100 بيع + 50 فرق استبدال
+    expect(getCashSummary({ payment_method: 'store_cash' }).balance).toBe(150);
+
+    const shift = getOpenCashShift()!;
+
+    // نسحب 130 جنيه، فيتبقى 20 فقط
+    createCashMovement({
+      type: 'withdraw',
+      direction: 'out',
+      amount: 130,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift.id,
+      notes: 'Test withdrawal before exchange cancellation',
+    });
+
+    expect(getCashSummary({ payment_method: 'store_cash' }).balance).toBe(20);
+
+    // نحفظ حالة المخزون والفاتورة قبل محاولة الإلغاء
+    const oldStockBefore = getInventoryCostState(
+      db,
+      result.oldVariant.variant_id,
+    );
+
+    const newStockBefore = getInventoryCostState(
+      db,
+      result.newVariant.variant_id,
+    );
+
+    const netBefore = getSaleCurrentState(result.sale.saleId).financials
+      .net_grand_total;
+
+    // إلغاء الاستبدال يحتاج رد 50، لكن المتاح 20 فقط
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+        actor_id: 1,
+        reason: 'Attempt cancellation with insufficient cash',
+      }),
+    ).toThrow(/رصيد.*غير كاف/);
+
+    // الاستبدال لم يُلغَ
+    const exchangeRow = db
+      .prepare(
+        `
+    SELECT cancelled_at, cancelled_shift_id
+    FROM sale_exchanges
+    WHERE id = ?
+  `,
+      )
+      .get(exchange.exchangeId) as {
+      cancelled_at: string | null;
+      cancelled_shift_id: number | null;
+    };
+
+    expect(exchangeRow.cancelled_at).toBeNull();
+    expect(exchangeRow.cancelled_shift_id).toBeNull();
+
+    // لا توجد حركة رد فلوس بسبب الإلغاء الفاشل
+    const reverseMovements = db
+      .prepare(
+        `
+    SELECT COUNT(*) AS count
+    FROM cash_movements
+    WHERE reference_type = 'sale_exchange_cancel'
+      AND reference_id = ?
+  `,
+      )
+      .get(exchange.exchangeId) as { count: number };
+
+    expect(reverseMovements.count).toBe(0);
+
+    // الدرج يفضل فيه 20 جنيه
+    expect(getCashSummary({ payment_method: 'store_cash' }).balance).toBe(20);
+
+    // المخزون لم يتغير
+    const oldStockAfter = getInventoryCostState(
+      db,
+      result.oldVariant.variant_id,
+    );
+
+    const newStockAfter = getInventoryCostState(
+      db,
+      result.newVariant.variant_id,
+    );
+
+    expect(oldStockAfter.stock).toBe(oldStockBefore.stock);
+    expect(oldStockAfter.inventory_value).toBe(oldStockBefore.inventory_value);
+
+    expect(newStockAfter.stock).toBe(newStockBefore.stock);
+    expect(newStockAfter.inventory_value).toBe(newStockBefore.inventory_value);
+
+    // قيمة الفاتورة لم تتغير
+    expect(
+      getSaleCurrentState(result.sale.saleId).financials.net_grand_total,
+    ).toBe(netBefore);
+  });
+
+  it('allows admin debt-only exchange on store_cash without an open shift', () => {
+    const db = getDb();
+    const catalog = seedExchangeCatalog();
+
+    const shift = getOpenCashShift()!;
+
+    const customerResult = db
+      .prepare(
+        `
+    INSERT INTO customers (name, phone)
+    VALUES (?, ?)
+  `,
+      )
+      .run('Debt Only Exchange Customer', '01088889999');
+
+    const customerId = Number(customerResult.lastInsertRowid);
+
+    const oldVariant = catalog.variants.EX200;
+    const newVariant = catalog.variants.EX150;
+
+    // فاتورة آجل 200 جنيه بدون تحصيل
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const group = state.groups.find(
+      (item: any) => item.group_kind === 'regular',
+    );
+
+    expect(group).toBeTruthy();
+
+    const unit = group!.units[0];
+
+    // نقفل الشيفت ومش هنفتح غيره
+    closeCashShift({
+      shift_id: shift.id,
+      closing_counted_amount: 0,
+      left_for_next_shift: 0,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    const movementsBefore = db
+      .prepare(
+        `
+    SELECT COUNT(*) AS count FROM cash_movements
+  `,
+      )
+      .get() as { count: number };
+
+    // استبدال 200 بقطعة 150
+    // الفرق كله خفض مديونية
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      reason: 'Debt-only exchange without shift',
+      items: [
+        {
+          promotion_unit_id: Number(unit.id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-50);
+    expect(exchange.amount_to_collect).toBe(0);
+    expect(exchange.amount_to_refund).toBe(0);
+    expect(exchange.debt_reduction_amount).toBe(50);
+
+    // العملية تمت بدون شيفت
+    expect(exchange.shift_id).toBeNull();
+
+    // مديونية العميل أصبحت 150
+    const customer = db
+      .prepare(
+        `
+    SELECT balance FROM customers WHERE id = ?
+  `,
+      )
+      .get(customerId) as { balance: number };
+
+    expect(Number(customer.balance)).toBe(150);
+
+    // لا توجد حركة مالية جديدة
+    const movementsAfter = db
+      .prepare(
+        `
+    SELECT COUNT(*) AS count FROM cash_movements
+  `,
+      )
+      .get() as { count: number };
+
+    expect(movementsAfter.count).toBe(movementsBefore.count);
+
+    // الاستبدال محفوظ فعليًا
+    const exchangeRow = db
+      .prepare(
+        `
+    SELECT shift_id, debt_reduction_amount,
+           cash_collection_amount, cash_refund_amount
+    FROM sale_exchanges
+    WHERE id = ?
+  `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(exchangeRow.shift_id).toBeNull();
+    expect(Number(exchangeRow.debt_reduction_amount)).toBe(50);
+    expect(Number(exchangeRow.cash_collection_amount)).toBe(0);
+    expect(Number(exchangeRow.cash_refund_amount)).toBe(0);
+  });
+
+  it('preserves closed shift history when admin cancels a debt-only exchange without a shift', () => {
+    const db = getDb();
+    const catalog = seedExchangeCatalog();
+    const shift1 = getOpenCashShift()!;
+
+    const customerResult = db
+      .prepare(
+        `
+    INSERT INTO customers (name, phone)
+    VALUES (?, ?)
+  `,
+      )
+      .run('Historical Debt Exchange Customer', '01077778888');
+
+    const customerId = Number(customerResult.lastInsertRowid);
+
+    const oldVariant = catalog.variants.EX200;
+    const newVariant = catalog.variants.EX150;
+
+    // فاتورة آجل 200 جنيه.
+    const sale = createSale({
+      user_id: 1,
+      customer_id: customerId,
+      sub_total: 200,
+      discount_value: 0,
+      grand_total: 200,
+      paid: 0,
+      remaining_amount: 200,
+      payment_status: 'unpaid',
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const group = state.groups.find(
+      (item: any) => item.group_kind === 'regular',
+    );
+
+    expect(group).toBeTruthy();
+
+    // استبدال 200 بقطعة 150 داخل Shift 1.
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(group!.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-50);
+    expect(exchange.debt_reduction_amount).toBe(50);
+    expect(exchange.amount_to_collect).toBe(0);
+    expect(exchange.amount_to_refund).toBe(0);
+
+    const before = getCashShiftDetails(shift1.id);
+
+    expect(before.sales_summary.net_sales).toBe(150);
+    expect(before.operations_summary.exchange_difference).toBe(-50);
+
+    const closingAmount = Number(before.preview.expected_closing_amount);
+
+    expect(closingAmount).toBe(0);
+
+    // نقفل الشيفت القديم.
+    closeCashShift({
+      shift_id: shift1.id,
+      closing_counted_amount: closingAmount,
+      left_for_next_shift: closingAmount,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    const movementsBefore = (
+      db.prepare('SELECT COUNT(*) AS count FROM cash_movements').get() as {
+        count: number;
+      }
+    ).count;
+
+    // الأدمن يلغي الاستبدال خارج أي شيفت.
+    const cancelled = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Cancel debt-only exchange outside shift',
+    });
+
+    expect(cancelled.ok).toBe(true);
+    expect(cancelled.cancelled_shift_id).toBeNull();
+    expect(cancelled.cash_refunded).toBe(0);
+    expect(cancelled.cash_collected).toBe(0);
+    expect(cancelled.debt_restored).toBe(50);
+
+    // المديونية رجعت إلى 200.
+    const customer = db
+      .prepare(
+        `
+    SELECT balance FROM customers WHERE id = ?
+  `,
+      )
+      .get(customerId) as { balance: number };
+
+    expect(Number(customer.balance)).toBe(200);
+
+    const saleRow = db
+      .prepare(
+        `
+    SELECT remaining_amount FROM sales WHERE id = ?
+  `,
+      )
+      .get(sale.saleId) as { remaining_amount: number };
+
+    expect(Number(saleRow.remaining_amount)).toBe(200);
+
+    // مفيش حركة فلوس جديدة.
+    const movementsAfter = (
+      db.prepare('SELECT COUNT(*) AS count FROM cash_movements').get() as {
+        count: number;
+      }
+    ).count;
+
+    expect(movementsAfter).toBe(movementsBefore);
+
+    // المخزون رجع لحالته بعد البيع وقبل الاستبدال.
+    expect(getStock('EX200')).toBe(19);
+    expect(getStock('EX150')).toBe(20);
+
+    // الأهم: تاريخ الشيفت المقفول لا يتغير.
+    const after = getCashShiftDetails(shift1.id);
+
+    expect(after.sales_summary.net_sales).toBe(150);
+    expect(after.operations_summary.exchange_difference).toBe(-50);
+
+    expect(after.sales_summary).toEqual(before.sales_summary);
+    expect(after.operations_summary).toEqual(before.operations_summary);
+    expect(after.preview).toEqual(before.preview);
   });
 
   it('allows admin exchange on store safe without an open shift', () => {

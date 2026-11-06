@@ -395,6 +395,7 @@ export function resolveFinancialOperationShift(
   actorIdInput: number,
   paymentMethods: Array<string | null | undefined>,
   noShiftMessage = 'لا يوجد شفت مفتوح',
+  hasCashMovement = true,
 ): CashShiftRow | null {
   const db = getDb();
   assertSystemClockStable();
@@ -438,7 +439,8 @@ export function resolveFinancialOperationShift(
     throw new Error('الخزنة الآمنة متاحة لمدير النظام فقط');
   }
 
-  const touchesDrawer = resolvedAccounts.includes('store_cash');
+  const touchesDrawer =
+    hasCashMovement && resolvedAccounts.includes('store_cash');
 
   /*
    * الأدمن يقدر يعمل عملية على
@@ -1857,6 +1859,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
                 AND se.cancelled_shift_id <> se.shift_id
               )
+
+              OR (
+                se.cancelled_at IS NOT NULL
+
+                AND se.cancelled_outside_shift = 1
+              )
             )
         ),
         0
@@ -1881,6 +1889,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
                 AND se.cancelled_shift_id <> se.shift_id
               )
+
+              OR (
+                se.cancelled_at IS NOT NULL
+
+                AND se.cancelled_outside_shift = 1
+              )
             )
         ),
         0
@@ -1904,6 +1918,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
                 se.cancelled_shift_id IS NOT NULL
 
                 AND se.cancelled_shift_id <> se.shift_id
+              )
+
+              OR (
+                se.cancelled_at IS NOT NULL
+
+                AND se.cancelled_outside_shift = 1
               )
             )
         ),
@@ -2568,6 +2588,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
               AND se.cancelled_shift_id <> se.shift_id
             )
+
+            OR (
+              se.cancelled_at IS NOT NULL
+
+              AND se.cancelled_outside_shift = 1
+            )
           )
       ) AS exchanges_count,
 
@@ -2582,6 +2608,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
               se.cancelled_shift_id IS NOT NULL
 
               AND se.cancelled_shift_id <> se.shift_id
+            )
+
+            OR (
+              se.cancelled_at IS NOT NULL
+
+              AND se.cancelled_outside_shift = 1
             )
           )
       ) AS exchange_cash_collection,
@@ -2598,6 +2630,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
               AND se.cancelled_shift_id <> se.shift_id
             )
+
+            OR (
+              se.cancelled_at IS NOT NULL
+
+              AND se.cancelled_outside_shift = 1
+            )
           )
       ) AS exchange_cash_refund,
 
@@ -2612,6 +2650,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
               se.cancelled_shift_id IS NOT NULL
 
               AND se.cancelled_shift_id <> se.shift_id
+            )
+
+            OR (
+              se.cancelled_at IS NOT NULL
+
+              AND se.cancelled_outside_shift = 1
             )
           )
       ) AS exchange_debt_reduction,
@@ -2655,6 +2699,12 @@ export function getCashShiftDetails(shiftIdInput: number) {
               se.cancelled_shift_id IS NOT NULL
 
               AND se.cancelled_shift_id <> se.shift_id
+            )
+
+            OR (
+              se.cancelled_at IS NOT NULL
+
+              AND se.cancelled_outside_shift = 1
             )
           )
       ) AS exchange_difference
@@ -2787,12 +2837,33 @@ export function getCashShiftDetails(shiftIdInput: number) {
     Number(priorShiftCancelledReturns?.total || 0),
   );
 
+  const priorShiftCancelledExchanges = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(SUM(se.difference_amount), 0) AS total
+      FROM sale_exchanges se
+      WHERE se.cancelled_at IS NOT NULL
+        AND se.cancelled_shift_id = ?
+        AND (
+          se.shift_id IS NULL
+          OR se.shift_id <> se.cancelled_shift_id
+        )
+      `,
+    )
+    .get(shiftId) as { total: number } | undefined;
+
+  const priorShiftExchangesReversalTotal = roundFinancial(
+    Number(priorShiftCancelledExchanges?.total || 0),
+  );
+
   salesSummary.net_sales = roundFinancial(
     Number(salesSummary.invoice_sales || 0) +
       Number(operationsSummary.exchange_difference || 0) -
       Number(operationsSummary.returns_total || 0) -
       Number(salesSummary.cross_shift_cancelled_sales_total || 0) +
-      priorShiftReturnsReversalTotal,
+      priorShiftReturnsReversalTotal -
+      priorShiftExchangesReversalTotal,
   );
 
   const activityRows = db
