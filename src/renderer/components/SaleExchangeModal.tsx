@@ -18,6 +18,7 @@ type ExchangeUnit = {
 
   current_variant_id: number;
   current_unit_price: number;
+  effective_promotion_discount_value: number;
   current_is_gift: number;
 
   is_returned: number;
@@ -53,6 +54,9 @@ type ExchangeGroup = {
   promotion_group_id: string;
 
   group_kind: 'promotion' | 'regular';
+
+  retained_normal_discount_after_exchange: number;
+
   promotion_id?: number | null;
 
   promotion_snapshot?: PromotionSnapshot | null;
@@ -112,6 +116,73 @@ type ExchangeDraft = {
   results: any[];
   new_variant: any | null;
 };
+
+type ActiveExchangePromotion = {
+  id: number;
+  name: string;
+  type: 'percent' | 'fixed_per_item' | 'fixed_invoice' | 'buy_x_get_y';
+  value: number;
+  scope_type: 'all' | 'category' | 'products';
+  category_id?: number | null;
+  product_ids?: number[];
+};
+
+function getReplacementOffer(
+  variant: any,
+  promotions: ActiveExchangePromotion[],
+): { name: string; discount: number } | null {
+  if (!variant) {
+    return null;
+  }
+
+  const price = roundMoney(Math.max(0, Number(variant.sell_price || 0)));
+
+  for (const promotion of promotions) {
+    const eligible =
+      promotion.scope_type === 'all' ||
+      (promotion.scope_type === 'category' &&
+        Number(variant.category_id) === Number(promotion.category_id)) ||
+      (promotion.scope_type === 'products' &&
+        (promotion.product_ids || [])
+          .map(Number)
+          .includes(Number(variant.product_id)));
+
+    if (!eligible) {
+      continue;
+    }
+
+    const value = Math.max(0, Number(promotion.value || 0));
+
+    let discount = 0;
+
+    if (promotion.type === 'percent') {
+      discount = roundMoney(price * (Math.min(value, 100) / 100));
+    } else if (
+      promotion.type === 'fixed_per_item' ||
+      promotion.type === 'fixed_invoice'
+    ) {
+      discount = roundMoney(value);
+    }
+
+    /*
+     * الاستبدال العادي لقطعة واحدة
+     * لا يحقق عرض اشتري وخد بمفرده.
+     *
+     * مجموعات اشتري وخد التاريخية
+     * لها حساب مستقل موجود بالفعل.
+     */
+    discount = roundMoney(Math.min(price, discount));
+
+    if (discount > 0) {
+      return {
+        name: promotion.name,
+        discount,
+      };
+    }
+  }
+
+  return null;
+}
 
 type Props = {
   saleId: number | null;
@@ -191,6 +262,10 @@ export default function SaleExchangeModal({
 }: Props) {
   const [state, setState] = useState<ExchangeState | null>(null);
 
+  const [activePromotions, setActivePromotions] = useState<
+    ActiveExchangePromotion[]
+  >([]);
+
   const [groupId, setGroupId] = useState('');
 
   const [drafts, setDrafts] = useState<ExchangeDraft[]>([]);
@@ -220,9 +295,14 @@ export default function SaleExchangeModal({
       setLoading(true);
       setError('');
       setDrafts([]);
+      setState(null);
+      setActivePromotions([]);
 
       try {
-        const result = await window.api.getSaleExchangeState(Number(saleId));
+        const [result, promotions] = await Promise.all([
+          window.api.getSaleExchangeState(Number(saleId)),
+          window.api.getActivePromotions(),
+        ]);
 
         if (cancelled) {
           return;
@@ -250,6 +330,8 @@ export default function SaleExchangeModal({
 
           financials: result.financials,
         };
+
+        setActivePromotions(Array.isArray(promotions) ? promotions : []);
 
         setState(nextState);
 
@@ -349,20 +431,26 @@ export default function SaleExchangeModal({
       price: Number(unit.current_unit_price || 0),
 
       isGift: Number(unit.current_is_gift || 0) === 1,
+
+      promotionDiscount: Number(unit.effective_promotion_discount_value || 0),
     }));
 
     const oldGroupGross = roundMoney(
       oldUnits.reduce((sum, unit) => sum + unit.price, 0),
     );
 
-    const oldGroupPromotionDiscount = selectedIsPromotion
-      ? roundMoney(
-          oldUnits.reduce(
-            (sum, unit) => sum + (unit.isGift ? unit.price : 0),
-            0,
-          ),
-        )
-      : 0;
+    const oldGroupPromotionDiscount = roundMoney(
+      oldUnits.reduce(
+        (sum, unit) =>
+          sum +
+          (selectedIsPromotion
+            ? unit.isGift
+              ? unit.price
+              : 0
+            : unit.promotionDiscount),
+        0,
+      ),
+    );
 
     const oldTotal = roundMoney(oldGroupGross - oldGroupPromotionDiscount);
 
@@ -371,12 +459,23 @@ export default function SaleExchangeModal({
         (item) => Number(item.promotion_unit_id) === Number(unit.id),
       );
 
+      const offer =
+        !selectedIsPromotion && draft?.new_variant
+          ? getReplacementOffer(draft.new_variant, activePromotions)
+          : null;
+
       return {
         id: Number(unit.id),
 
         price: Number(
           draft?.new_variant?.sell_price ?? unit.current_unit_price ?? 0,
         ),
+
+        promotionDiscount: selectedIsPromotion
+          ? 0
+          : draft?.new_variant
+            ? Number(offer?.discount || 0)
+            : Number(unit.effective_promotion_discount_value || 0),
       };
     });
 
@@ -402,7 +501,13 @@ export default function SaleExchangeModal({
 
     const newGroupPromotionDiscount = roundMoney(
       nextUnits.reduce(
-        (sum, unit) => sum + (giftIds.has(unit.id) ? unit.price : 0),
+        (sum, unit) =>
+          sum +
+          (selectedIsPromotion
+            ? giftIds.has(unit.id)
+              ? unit.price
+              : 0
+            : unit.promotionDiscount),
         0,
       ),
     );
@@ -433,12 +538,22 @@ export default function SaleExchangeModal({
       roundMoney(nextSubTotal - nextPromotionDiscount),
     );
 
-    const normalDiscount = roundMoney(
-      Math.min(
-        Number(state.financials.original_normal_discount_value || 0),
+    /*
+     * نعتمد على الخصم المتوقع من الـBackend.
+     *
+     * عند الاستبدال العادي:
+     * نصيب القطعة المستبدلة من الخصم ينتهي،
+     * ونحتفظ بنصيب القطع التي لم تتبدل.
+     *
+     * عند استبدال عرض اشتري وخد:
+     * نحافظ على قواعد خصم الفاتورة الأصلية.
+     */
+    const retainedNormalDiscount = Number(
+      selectedGroup.retained_normal_discount_after_exchange,
+    );
 
-        afterPromotion,
-      ),
+    const normalDiscount = roundMoney(
+      Math.min(Math.max(0, retainedNormalDiscount), afterPromotion),
     );
 
     const afterNormal = Math.max(
@@ -546,7 +661,7 @@ export default function SaleExchangeModal({
       currentInvoiceNet,
       nextInvoiceNet,
     };
-  }, [state, selectedGroup, selectedIsPromotion, drafts]);
+  }, [state, selectedGroup, selectedIsPromotion, drafts, activePromotions]);
 
   function isEligibleVariant(variant: any) {
     if (!state || !selectedGroup) {
@@ -835,11 +950,7 @@ export default function SaleExchangeModal({
             >
               {selectedIsPromotion
                 ? 'يتم إعادة حساب العرض حسب شروطه الأصلية، والأرخص يصبح الهدية.'
-                : hasRecordedPromotion
-                  ? `الفاتورة عليها عرض "${promotionName}" بخصم ${money(
-                      recordedPromotionDiscount,
-                    )}. يتم الحفاظ على خصم العرض المسجل أثناء الاستبدال.`
-                  : 'اختار القطعة الحالية ثم الصنف البديل، وسيتم حساب فرق السعر تلقائيًا.'}
+                : 'يتم حساب سعر المنتج البديل حسب العروض النشطة، مع الحفاظ على الأسعار والخصومات المسجلة للقطع الأخرى.'}
             </div>
           </div>
 
@@ -1399,6 +1510,68 @@ export default function SaleExchangeModal({
                         ))}
                       </select>
                     )}
+
+                    {!selectedIsPromotion &&
+                      draft.new_variant &&
+                      (() => {
+                        const offer = getReplacementOffer(
+                          draft.new_variant,
+                          activePromotions,
+                        );
+
+                        if (!offer) {
+                          return null;
+                        }
+
+                        const originalPrice = Number(
+                          draft.new_variant.sell_price || 0,
+                        );
+
+                        const finalPrice = roundMoney(
+                          originalPrice - offer.discount,
+                        );
+
+                        return (
+                          <div
+                            style={{
+                              display: 'grid',
+                              gap: '6px',
+                              padding: '12px',
+                              borderRadius: '10px',
+                              background: 'rgba(34,197,94,0.08)',
+                              border: '1px solid rgba(34,197,94,0.30)',
+                            }}
+                          >
+                            <strong
+                              style={{
+                                color: '#86efac',
+                                fontSize: '13px',
+                              }}
+                            >
+                              عرض مطبّق: {offer.name}
+                            </strong>
+
+                            <span
+                              style={{
+                                color: '#cbd5e1',
+                                fontSize: '12px',
+                              }}
+                            >
+                              السعر قبل العرض: {money(originalPrice)}
+                              {' — '}
+                              خصم العرض: {money(offer.discount)}
+                            </span>
+
+                            <strong
+                              style={{
+                                color: '#86efac',
+                              }}
+                            >
+                              السعر بعد العرض: {money(finalPrice)}
+                            </strong>
+                          </div>
+                        );
+                      })()}
                   </div>
                 ))}
 

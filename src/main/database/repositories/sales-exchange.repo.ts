@@ -5,6 +5,7 @@ import {
   getSaleCurrentState,
 } from './sales-current-state.repo';
 import { syncCustomerTotalSpent } from './sales.repo';
+import { getRetainedOriginalNormalDiscount } from './sales-normal-discount.repo';
 import {
   getAttributableOpenCashShift,
   getOpenCashShift,
@@ -18,7 +19,7 @@ import {
   receiveStockAtCost,
 } from '../inventory-cost';
 import { roundCost, roundMoney } from '../../../shared/money';
-
+import { calculateActivePromotionsForSale } from './promotions.repo';
 function splitCostValueAcrossWholeUnits(
   totalCostInput: number,
   quantityInput: number,
@@ -84,6 +85,7 @@ type ExchangeUnitState = {
 
   current_unit_price: number;
   current_list_unit_price: number;
+  current_promotion_discount_value: number | null;
   current_unit_cost: number | null;
   current_cost_value: number | null;
   current_is_gift: number;
@@ -115,6 +117,7 @@ type PromotionUnitRow = {
   current_unit_price: number;
   original_list_unit_price: number | null;
   current_list_unit_price: number | null;
+  current_promotion_discount_value: number | null;
   original_unit_cost: number | null;
   current_unit_cost: number | null;
   original_cost_value: number | null;
@@ -237,6 +240,13 @@ function parseExchangeStateJson(
       Number(raw?.current_list_unit_price ?? raw?.current_unit_price ?? 0),
     );
 
+    const rawPromotionDiscount = raw?.current_promotion_discount_value;
+
+    const promotionDiscount =
+      rawPromotionDiscount === null || rawPromotionDiscount === undefined
+        ? null
+        : Number(rawPromotionDiscount);
+
     const rawCost = raw?.current_unit_cost;
 
     const unitCost =
@@ -256,7 +266,9 @@ function parseExchangeStateJson(
       !variantId ||
       !Number.isFinite(unitPrice) ||
       (unitCost !== null && !Number.isFinite(unitCost)) ||
-      (costValue !== null && !Number.isFinite(costValue))
+      (costValue !== null && !Number.isFinite(costValue)) ||
+      (promotionDiscount !== null &&
+        (!Number.isFinite(promotionDiscount) || promotionDiscount < 0))
     ) {
       throw new Error(`بيانات ${label} غير مكتملة`);
     }
@@ -268,6 +280,8 @@ function parseExchangeStateJson(
 
       current_unit_price: unitPrice,
       current_list_unit_price: listUnitPrice,
+      current_promotion_discount_value:
+        promotionDiscount === null ? null : roundMoney(promotionDiscount),
       current_unit_cost: unitCost,
       current_cost_value: costValue === null ? null : roundCost(costValue),
       current_is_gift: isGift,
@@ -624,6 +638,26 @@ export function getSaleExchangeState(saleIdInput: number) {
       SELECT
         spu.*,
 
+        CASE
+          WHEN spu.promotion_group_id LIKE 'regular:%'
+          THEN COALESCE(
+            spu.current_promotion_discount_value,
+
+            MAX(
+              0,
+              COALESCE(si.promotion_discount_value, 0)
+            ) / MAX(
+              1,
+              COALESCE(si.quantity, 1)
+            )
+          )
+
+          WHEN spu.current_is_gift = 1
+          THEN spu.current_unit_price
+
+          ELSE 0
+        END AS effective_promotion_discount_value,
+
         p.id AS current_product_id,
         p.name AS current_product_name,
         p.category_id AS current_category_id,
@@ -639,6 +673,9 @@ export function getSaleExchangeState(saleIdInput: number) {
 
       JOIN products p
         ON p.id = v.product_id
+
+      LEFT JOIN sale_items si
+        ON si.id = spu.original_sale_item_id
 
       WHERE spu.sale_id = ?
 
@@ -703,7 +740,34 @@ export function getSaleExchangeState(saleIdInput: number) {
     snapshot: normalizedSnapshots.length === 1 ? normalizedSnapshots[0] : null,
 
     snapshots: normalizedSnapshots,
-    groups: Array.from(groupMap.values()),
+    groups: Array.from(groupMap.values()).map((group) => ({
+      ...group,
+
+      /*
+       * الخصم الأصلي الذي سيظل مستحقًا
+       * بعد استبدال هذه المجموعة.
+       *
+       * المجموعة العادية:
+       * نستبعد نصيب القطعة الأصلية.
+       *
+       * عرض اشتري وخد:
+       * لا نستبعد أي خصم إضافي.
+       *
+       * نستخدم نفس Helper الخاص بالـBackend
+       * حتى لا تختلف معاينة الشاشة
+       * عن الحساب المحاسبي الفعلي.
+       */
+      retained_normal_discount_after_exchange:
+        getRetainedOriginalNormalDiscount(
+          saleId,
+
+          Number(currentState.financials.original_normal_discount_value || 0),
+
+          group.group_kind === 'regular'
+            ? group.units.map((unit) => Number(unit.id))
+            : [],
+        ),
+    })),
     payments: currentState.current_receipt.payments || [],
 
     financials: currentState.financials,
@@ -958,6 +1022,30 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         );
       }
     }
+    /*
+     * نطبق العروض النشطة على البديل
+     * عند الاستبدال العادي فقط.
+     *
+     * مجموعات اشتري وخد الأصلية لها
+     * حساب مستقل وفق Snapshot وقت البيع.
+     */
+    const regularReplacementPromotion = isRegularExchange
+      ? calculateActivePromotionsForSale(
+          selectedUnits.map((unit) => {
+            const replacement = replacementMap.get(Number(unit.id));
+
+            if (!replacement) {
+              throw new Error('تعذر حساب عرض الصنف البديل');
+            }
+
+            return {
+              variant_id: replacement.variant_id,
+              quantity: 1,
+              unit_price: Number(replacement.sell_price),
+            };
+          }),
+        )
+      : null;
 
     const beforeState = groupUnits.map((unit) => ({
       id: Number(unit.id),
@@ -965,6 +1053,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       current_variant_id: Number(unit.current_variant_id),
 
       current_unit_price: Number(unit.current_unit_price),
+      current_promotion_discount_value:
+        unit.current_promotion_discount_value === null ||
+        unit.current_promotion_discount_value === undefined
+          ? null
+          : Number(unit.current_promotion_discount_value),
       current_list_unit_price: Math.max(
         Number(unit.current_unit_price || 0),
 
@@ -1000,6 +1093,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
         current_variant_id: replacement.variant_id,
 
         current_unit_price: Number(replacement.sell_price),
+        current_promotion_discount_value: isRegularExchange
+          ? roundMoney(
+              Number(regularReplacementPromotion?.item_discounts[0] || 0),
+            )
+          : unit.current_promotion_discount_value,
         current_list_unit_price: Math.max(
           Number(replacement.sell_price),
 
@@ -1087,13 +1185,43 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       ),
     );
 
+    const originalRegularItem = isRegularExchange
+      ? (db
+          .prepare(
+            `
+        SELECT
+          promotion_discount_value,
+          quantity
+        FROM sale_items
+        WHERE id = ?
+        LIMIT 1
+        `,
+          )
+          .get(Number(groupUnits[0].original_sale_item_id)) as
+          | {
+              promotion_discount_value: number;
+              quantity: number;
+            }
+          | undefined)
+      : null;
+
+    const originalRegularDiscountPerUnit = isRegularExchange
+      ? Number(originalRegularItem?.promotion_discount_value || 0) /
+        Math.max(1, Number(originalRegularItem?.quantity || 1))
+      : 0;
+
     const beforeGroupPromotionDiscount = roundMoney(
       beforeState.reduce(
         (total, unit) =>
           total +
-          (Number(unit.current_is_gift || 0) === 1
-            ? Number(unit.current_unit_price || 0)
-            : 0),
+          (isRegularExchange
+            ? Number(
+                unit.current_promotion_discount_value ??
+                  originalRegularDiscountPerUnit,
+              )
+            : unit.current_is_gift === 1
+              ? Number(unit.current_unit_price || 0)
+              : 0),
         0,
       ),
     );
@@ -1127,9 +1255,11 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       afterState.reduce(
         (total, unit) =>
           total +
-          (Number(unit.current_is_gift || 0) === 1
-            ? Number(unit.current_unit_price || 0)
-            : 0),
+          (isRegularExchange
+            ? Number(unit.current_promotion_discount_value || 0)
+            : Number(unit.current_is_gift || 0) === 1
+              ? Number(unit.current_unit_price || 0)
+              : 0),
         0,
       ),
     );
@@ -1164,12 +1294,14 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
       roundMoney(nextSubTotal - nextPromotionDiscount),
     );
 
-    const nextNormalDiscount = roundMoney(
-      Math.min(
-        currentStateBefore.financials.original_normal_discount_value,
+    const retainedOriginalNormalDiscount = getRetainedOriginalNormalDiscount(
+      saleId,
+      currentStateBefore.financials.original_normal_discount_value,
+      isRegularExchange ? selectedUnits.map((unit) => Number(unit.id)) : [],
+    );
 
-        nextAfterPromotion,
-      ),
+    const nextNormalDiscount = roundMoney(
+      Math.min(retainedOriginalNormalDiscount, nextAfterPromotion),
     );
 
     const nextAfterNormal = Math.max(
@@ -1656,6 +1788,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
           current_unit_price = ?,
 
           current_list_unit_price = ?,
+          current_promotion_discount_value = ?,
           current_unit_cost = ?,
           current_cost_value = ?,
           updated_at =
@@ -1739,6 +1872,7 @@ export function createSaleExchange(input: CreateSaleExchangeInput) {
 
           Number(replacement.list_unit_price ?? replacement.sell_price ?? 0),
         ),
+        newUnit.current_promotion_discount_value ?? null,
         replacementUnitCost,
         replacementCostValue,
         oldUnit.id,
@@ -2585,11 +2719,33 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
             ),
         ) < 0.01;
 
+      const currentPromotionDiscount =
+        current.current_promotion_discount_value === null ||
+        current.current_promotion_discount_value === undefined
+          ? null
+          : Number(current.current_promotion_discount_value);
+
+      const expectedPromotionDiscount =
+        expected.current_promotion_discount_value;
+
+      const samePromotionDiscount =
+        currentPromotionDiscount === null
+          ? expectedPromotionDiscount === null
+          : expectedPromotionDiscount !== null &&
+            Math.abs(currentPromotionDiscount - expectedPromotionDiscount) <
+              0.01;
+
       const sameGift =
         Number(current.current_is_gift || 0) ===
         Number(expected.current_is_gift || 0);
 
-      if (!sameVariant || !samePrice || !sameListPrice || !sameGift) {
+      if (
+        !sameVariant ||
+        !samePrice ||
+        !sameListPrice ||
+        !samePromotionDiscount ||
+        !sameGift
+      ) {
         throw new Error(
           'حالة العرض تغيرت بعد هذه العملية ولا يمكن إلغاؤها مباشرة',
         );
@@ -2800,6 +2956,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
             current_unit_price = ?,
             current_list_unit_price = ?,
+            current_promotion_discount_value = ?,
             current_unit_cost = ?,
             current_cost_value = ?,
             current_is_gift = ?,
@@ -2839,6 +2996,7 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
 
         before.current_unit_price,
         before.current_list_unit_price ?? before.current_unit_price,
+        before.current_promotion_discount_value,
         restoredCost,
         restoredCostValue,
         before.current_is_gift,
@@ -2848,6 +3006,31 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         saleId,
       );
     }
+
+    /*
+     * العملية داخل Transaction.
+     * نعلّم الاستبدال ملغيًا قبل إعادة
+     * حساب الحالة المالية ونقاط الولاء،
+     * حتى يعود نصيب الخصم الأصلي.
+     */
+    db.prepare(
+      `
+        UPDATE sale_exchanges
+        SET
+          cancelled_at = CURRENT_TIMESTAMP,
+          cancelled_by = ?,
+          cancelled_shift_id = ?,
+          cancelled_outside_shift = ?,
+          cancel_reason = ?
+        WHERE id = ?
+      `,
+    ).run(
+      input.actor_id ?? null,
+      openShift?.id ?? null,
+      openShift ? 0 : 1,
+      reason,
+      exchangeId,
+    );
 
     const loyaltyAfterCancellation = getSaleCurrentState(saleId);
 
@@ -3055,32 +3238,6 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
         `عكس تعديل النقاط المستخدمة بسبب إلغاء ${exchangeCode}`,
       );
     }
-
-    db.prepare(
-      `
-        UPDATE sale_exchanges
-
-        SET
-          cancelled_at =
-            CURRENT_TIMESTAMP,
-
-          cancelled_by = ?,
-
-          cancelled_shift_id = ?,
-
-          cancelled_outside_shift = ?,
-
-          cancel_reason = ?
-
-        WHERE id = ?
-      `,
-    ).run(
-      input.actor_id ?? null,
-      openShift?.id ?? null,
-      openShift ? 0 : 1,
-      reason,
-      exchangeId,
-    );
 
     if (exchange.customer_id) {
       syncCustomerTotalSpent(Number(exchange.customer_id));

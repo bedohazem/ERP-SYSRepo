@@ -1,5 +1,6 @@
 import { getDb } from '../db';
 import { roundMoney } from '../../../shared/money';
+import { getRetainedOriginalNormalDiscount } from './sales-normal-discount.repo';
 
 function positive(value: unknown) {
   return Math.max(0, Number(value || 0));
@@ -286,6 +287,22 @@ export function getSaleCurrentState(saleIdInput: number) {
       ? positive(originalItem?.promotion_discount_value) / originalItemQuantity
       : 0;
 
+    /*
+     * NULL = بيانات قديمة لم يُحفظ لها
+     * خصم عرض مستقل على الوحدة.
+     *
+     * 0 = خصم معروف يساوي صفرًا.
+     *
+     * لا ننقل خصم المنتج الأصلي
+     * للبديل عندما يكون هناك Snapshot صريح.
+     */
+    const currentRegularPromotionDiscountPerUnit = isRegular
+      ? unit.current_promotion_discount_value === null ||
+        unit.current_promotion_discount_value === undefined
+        ? originalPromotionDiscountPerUnit
+        : positive(unit.current_promotion_discount_value)
+      : 0;
+
     const key = isRegular
       ? [
           'regular',
@@ -296,6 +313,8 @@ export function getSaleCurrentState(saleIdInput: number) {
 
           Number(unit.current_unit_price),
           Number(unit.current_list_unit_price ?? unit.current_unit_price ?? 0),
+
+          currentRegularPromotionDiscountPerUnit,
         ].join(':')
       : [
           groupId,
@@ -364,7 +383,7 @@ export function getSaleCurrentState(saleIdInput: number) {
     bucket.quantity += 1;
 
     if (isRegular) {
-      bucket.promotion_discount_value += originalPromotionDiscountPerUnit;
+      bucket.promotion_discount_value += currentRegularPromotionDiscountPerUnit;
     }
 
     bucket.returned_quantity += Number(unit.is_returned || 0) === 1 ? 1 : 0;
@@ -530,8 +549,13 @@ export function getSaleCurrentState(saleIdInput: number) {
     roundMoney(currentSubTotal - currentPromotionDiscount),
   );
 
+  const retainedOriginalNormalDiscount = getRetainedOriginalNormalDiscount(
+    saleId,
+    originalNormalDiscount,
+  );
+
   const currentNormalDiscount = roundMoney(
-    Math.min(originalNormalDiscount, afterPromotion),
+    Math.min(retainedOriginalNormalDiscount, afterPromotion),
   );
 
   const afterNormalDiscount = Math.max(

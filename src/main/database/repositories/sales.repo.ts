@@ -2785,9 +2785,38 @@ export function createSaleReturn(input: {
           const productDiscount = roundMoney(
             Math.max(0, listUnitPrice - unitPrice),
           );
+
+          /*
+           * الفواتير القديمة قد لا تحتوي
+           * على خصم محفوظ لكل وحدة.
+           *
+           * NULL = نستخدم خصم البيع الأصلي.
+           * 0 = خصم محفوظ يساوي صفرًا.
+           *
+           * لذلك لا نورث خصم المنتج القديم
+           * للبديل إذا كان له خصم مستقل.
+           */
+          const originalPromotionDiscountPerUnit =
+            Number(originalItem.promotion_discount_value || 0) /
+            Math.max(1, Number(originalItem.quantity || 1));
+
+          const promotionDiscount = roundMoney(
+            Math.max(
+              0,
+              Math.min(
+                lineTotal,
+                Number(
+                  unit.current_promotion_discount_value ??
+                    originalPromotionDiscountPerUnit,
+                ),
+              ),
+            ),
+          );
+
           returnSubTotal += lineTotal;
           returnListSubTotal += listUnitPrice;
           returnProductDiscount += productDiscount;
+          returnPromotionDiscount += promotionDiscount;
 
           preparedItems.push({
             originalItem,
@@ -2819,7 +2848,7 @@ export function createSaleReturn(input: {
             lineTotal,
 
             productDiscount,
-            promotionDiscount: 0,
+            promotionDiscount,
           });
         }
 
@@ -3216,26 +3245,217 @@ export function createSaleReturn(input: {
       Number(previousReturns?.returned_after_promotion || 0) +
       returnAfterPromotion;
 
-    const targetNormalDiscount =
-      currentInvoiceAfterPromotion > 0
-        ? roundMoney(
-            currentNormalDiscount *
-              Math.min(
-                cumulativeAfterPromotion / currentInvoiceAfterPromotion,
-
-                1,
-              ),
-          )
-        : 0;
-
-    const saleDiscountPart = Math.max(
+    const previousNormalDiscount = Math.max(
       0,
-
-      roundMoney(
-        targetNormalDiscount -
-          Number(previousReturns?.returned_normal_discount || 0),
-      ),
+      Number(previousReturns?.returned_normal_discount || 0),
     );
+
+    /*
+     * الوحدات التي تم استبدالها فعليًا.
+     *
+     * نستخدم تاريخ الاستبدال، وليس مجرد
+     * مقارنة Variant الحالي بالأصلي.
+     *
+     * بذلك لا يعود خصم القطعة القديمة
+     * حتى لو تم استبدالها أكثر من مرة.
+     */
+    const exchangedRegularUnits = db
+      .prepare(
+        `
+        SELECT DISTINCT
+          sei.promotion_unit_id
+        FROM sale_exchange_items sei
+
+        JOIN sale_exchanges se
+          ON se.id = sei.exchange_id
+
+        JOIN sale_promotion_units spu
+          ON spu.id = sei.promotion_unit_id
+
+        WHERE se.original_sale_id = ?
+          AND se.cancelled_at IS NULL
+          AND spu.promotion_group_id LIKE 'regular:%'
+      `,
+      )
+      .all(originalSaleId) as Array<{
+      promotion_unit_id: number;
+    }>;
+
+    let targetNormalDiscount = 0;
+    let saleDiscountPart = 0;
+
+    if (exchangedRegularUnits.length === 0) {
+      /*
+       * لا توجد استبدالات عادية نشطة.
+       * نحافظ على حساب المرتجعات الأصلي
+       * والتقريب التراكمي كما هو.
+       */
+      targetNormalDiscount =
+        currentInvoiceAfterPromotion > 0
+          ? roundMoney(
+              currentNormalDiscount *
+                Math.min(
+                  cumulativeAfterPromotion / currentInvoiceAfterPromotion,
+                  1,
+                ),
+            )
+          : 0;
+
+      saleDiscountPart = Math.max(
+        0,
+        roundMoney(targetNormalDiscount - previousNormalDiscount),
+      );
+    } else {
+      /*
+       * بعد الاستبدال العادي:
+       * نوزع الخصم بناءً على قيمة الأصناف
+       * في الفاتورة الأصلية بعد عروضها،
+       * وليس أسعار البدائل الحالية.
+       */
+      const exchangedUnitIds = new Set(
+        exchangedRegularUnits.map((unit) => Number(unit.promotion_unit_id)),
+      );
+
+      const originalItems = db
+        .prepare(
+          `
+          SELECT
+            id,
+            quantity,
+            line_total,
+            promotion_discount_value
+          FROM sale_items
+          WHERE sale_id = ?
+        `,
+        )
+        .all(originalSaleId) as Array<{
+        id: number;
+        quantity: number;
+        line_total: number;
+        promotion_discount_value: number | null;
+      }>;
+
+      const originalWeights = new Map<number, number>();
+
+      let originalEligibleTotal = 0;
+
+      for (const item of originalItems) {
+        const eligibleValue = Math.max(
+          0,
+          Number(item.line_total || 0) -
+            Number(item.promotion_discount_value || 0),
+        );
+
+        const quantity = Math.max(1, Number(item.quantity || 1));
+
+        originalEligibleTotal += eligibleValue;
+
+        originalWeights.set(Number(item.id), eligibleValue / quantity);
+      }
+
+      type ReturnedDiscountUnit = {
+        original_sale_item_id: number;
+        promotion_unit_id: number | null;
+        quantity: number;
+      };
+
+      const previousReturnedItems = db
+        .prepare(
+          `
+          SELECT
+            sri.original_sale_item_id,
+            sri.promotion_unit_id,
+            sri.quantity
+
+          FROM sale_return_items sri
+
+          JOIN sale_returns sr
+            ON sr.id = sri.return_id
+
+          WHERE sr.original_sale_id = ?
+            AND sr.cancelled_at IS NULL
+        `,
+        )
+        .all(originalSaleId) as ReturnedDiscountUnit[];
+
+      const currentReturnedItems: ReturnedDiscountUnit[] = preparedItems.map(
+        (item) => ({
+          original_sale_item_id: Number(item.originalItem.id),
+          promotion_unit_id: item.promotionUnitId,
+          quantity: Number(item.quantity),
+        }),
+      );
+
+      function getOriginalEligibleReturnedValue(
+        items: ReturnedDiscountUnit[],
+      ): number {
+        return items.reduce((total, item) => {
+          /*
+           * القطعة البديلة لا ترث
+           * الخصم الأصلي للقطعة المستبدلة.
+           */
+          if (
+            item.promotion_unit_id != null &&
+            exchangedUnitIds.has(Number(item.promotion_unit_id))
+          ) {
+            return total;
+          }
+
+          const originalUnitWeight = Number(
+            originalWeights.get(Number(item.original_sale_item_id)) || 0,
+          );
+
+          return (
+            total + originalUnitWeight * Math.max(0, Number(item.quantity || 0))
+          );
+        }, 0);
+      }
+
+      const cumulativeOriginalReturnedValue =
+        getOriginalEligibleReturnedValue(previousReturnedItems) +
+        getOriginalEligibleReturnedValue(currentReturnedItems);
+
+      const originalDiscount = Math.max(
+        0,
+        Number(originalSale.discount_value || 0),
+      );
+
+      const calculatedCumulativeDiscount =
+        originalEligibleTotal > 0
+          ? roundMoney(
+              originalDiscount *
+                Math.min(
+                  1,
+                  cumulativeOriginalReturnedValue / originalEligibleTotal,
+                ),
+            )
+          : 0;
+
+      /*
+       * لا نعيد توزيع خصومات مرتجعات
+       * تمت تسويتها بالفعل.
+       *
+       * ولا نخصم أكثر من الخصم المتبقي
+       * أو قيمة الأصناف الحالية.
+       */
+      const availableNormalDiscount = Math.max(
+        0,
+        roundMoney(currentNormalDiscount - previousNormalDiscount),
+      );
+
+      saleDiscountPart = Math.max(
+        0,
+        Math.min(
+          availableNormalDiscount,
+          Math.max(0, calculatedCumulativeDiscount - previousNormalDiscount),
+          returnAfterPromotion,
+        ),
+      );
+
+      targetNormalDiscount = roundMoney(
+        previousNormalDiscount + saleDiscountPart,
+      );
+    }
 
     const invoiceBeforeLoyalty = Math.max(
       0,

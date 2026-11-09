@@ -4398,6 +4398,21 @@ export function getDb(): Database.Database {
           );
         },
       },
+
+      {
+        version: 36,
+
+        name: 'track-exchange-unit-promotion-discounts',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'current_promotion_discount_value',
+            'REAL',
+          );
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

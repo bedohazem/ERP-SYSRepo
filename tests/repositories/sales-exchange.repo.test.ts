@@ -434,6 +434,132 @@ describe('sale promotion exchanges', () => {
     expect(bankExchanges.total).toBe(0);
   });
 
+  it('applies an active percentage promotion to a replacement product', () => {
+    const result = createRegularExchangeSale();
+
+    /*
+     * الفاتورة الأصلية = 100 جنيه.
+     * المنتج البديل = 150 جنيه.
+     * العرض الجديد = خصم 20% على البديل.
+     *
+     * السعر بعد العرض = 120.
+     * فرق الاستبدال المطلوب = 20.
+     */
+    createProduct({
+      name: 'Active Exchange Promotion Replacement',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'EX-ACTIVE-PROMO-150',
+          size: 'M',
+          color: 'Blue',
+          buy_price: 70,
+          sell_price: 150,
+          min_stock: 1,
+          opening_qty: 20,
+        },
+      ],
+    });
+
+    const replacement = getVariantByBarcode('EX-ACTIVE-PROMO-150')!;
+
+    /*
+     * تفعيل العرض بعد إنشاء الفاتورة،
+     * حتى لا يؤثر بأثر رجعي على البيع القديم.
+     */
+    const promotion = createPromotion({
+      name: 'Replacement Product 20 Percent',
+      type: 'percent',
+      value: 20,
+      scope_type: 'products',
+      category_id: null,
+      product_ids: [replacement.product_id],
+      actor_id: 1,
+    });
+
+    togglePromotion(promotion.promotionId, 1);
+
+    const state = getSaleExchangeState(result.sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(regularGroup).toBeTruthy();
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup!.units[0].id),
+          new_variant_id: replacement.variant_id,
+        },
+      ],
+    });
+
+    // السعر القديم 100، الجديد بعد العرض 120.
+    expect(exchange.difference_amount).toBe(20);
+    expect(exchange.amount_to_collect).toBe(20);
+
+    const exchangeRow = getDb()
+      .prepare(
+        `
+      SELECT
+        new_promotion_discount_value,
+        new_invoice_grand_total
+      FROM sale_exchanges
+      WHERE id = ?
+    `,
+      )
+      .get(exchange.exchangeId) as {
+      new_promotion_discount_value: number;
+      new_invoice_grand_total: number;
+    };
+
+    expect(Number(exchangeRow.new_promotion_discount_value)).toBe(30);
+
+    expect(Number(exchangeRow.new_invoice_grand_total)).toBe(120);
+
+    const current = getSaleCurrentState(result.sale.saleId);
+
+    const updatedExchangeState = getSaleExchangeState(result.sale.saleId);
+
+    const updatedRegularGroup = updatedExchangeState.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(updatedRegularGroup).toBeTruthy();
+
+    expect(
+      Number(updatedRegularGroup!.units[0].effective_promotion_discount_value),
+    ).toBe(30);
+
+    expect(Number(current.financials.current_promotion_discount_value)).toBe(
+      30,
+    );
+
+    expect(Number(current.financials.net_grand_total)).toBe(120);
+
+    // إلغاء الاستبدال يرجع الفاتورة الأصلية بالكامل.
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore original promotion state',
+    });
+
+    const restored = getSaleCurrentState(result.sale.saleId);
+
+    expect(Number(restored.financials.current_promotion_discount_value)).toBe(
+      0,
+    );
+
+    expect(Number(restored.financials.net_grand_total)).toBe(100);
+  });
+
   it('exchanges a regular invoice item without a promotion', () => {
     const result = createRegularExchangeSale();
 
@@ -687,6 +813,206 @@ describe('sale promotion exchanges', () => {
     expect(Number(returnItem.variant_id)).toBe(result.newVariant.variant_id);
 
     expect(Number(returnItem.promotion_unit_id)).toBeGreaterThan(0);
+  });
+
+  it('refunds the promotion-adjusted replacement price after a regular exchange', () => {
+    const result = createRegularExchangeSale();
+
+    /*
+     * الفاتورة الأصلية = 100
+     * البديل = 150
+     * خصم العرض = 30
+     * سعر البديل الفعلي = 120
+     */
+    const promotion = createPromotion({
+      name: 'Exchange Return 20 Percent',
+      type: 'percent',
+      value: 20,
+      scope_type: 'products',
+      category_id: null,
+      product_ids: [result.newVariant.product_id],
+      actor_id: 1,
+    });
+
+    togglePromotion(promotion.promotionId, 1);
+
+    const state = getSaleExchangeState(result.sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    if (!regularGroup) {
+      throw new Error('Regular exchange group missing');
+    }
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup.units[0].id),
+          new_variant_id: result.newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(20);
+
+    /*
+     * نوفر رصيدًا إضافيًا للصندوق في الاختبار
+     * لعزل صحة قيمة المرتجع عن فحص الرصيد.
+     */
+    const shift = getOpenCashShift();
+
+    if (!shift) {
+      throw new Error('Open shift missing');
+    }
+
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 100,
+      payment_method: 'store_cash',
+      created_by: 1,
+      shift_id: shift.id,
+      notes: 'Return promotion regression test float',
+    });
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: result.sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      reason: 'Return discounted replacement',
+      items: [
+        {
+          sale_item_id: Number(result.saleItem.id),
+          variant_id: result.newVariant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    const returnRow = getDb()
+      .prepare(
+        `
+        SELECT
+          sub_total,
+          promotion_discount_value,
+          refund_amount
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(Number(returnRow.sub_total)).toBe(150);
+
+    expect(Number(returnRow.promotion_discount_value)).toBe(30);
+
+    expect(Number(returnRow.refund_amount)).toBe(120);
+
+    expect(saleReturn.return_value).toBe(120);
+
+    const returnItem = getDb()
+      .prepare(
+        `
+        SELECT promotion_discount_value
+        FROM sale_return_items
+        WHERE return_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(saleReturn.returnId) as any;
+
+    expect(Number(returnItem.promotion_discount_value)).toBe(30);
+
+    /*
+     * الرصيد:
+     * بيع 100 + استبدال 20 + إيداع 100
+     * - مرتجع 120 = 100
+     */
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(100);
+
+    // بعد المرتجع: الفاتورة تمت تسويتها بالكامل.
+    const afterReturn = getSaleCurrentState(result.sale.saleId);
+
+    expect(
+      Number(afterReturn.financials.current_promotion_discount_value),
+    ).toBe(30);
+
+    expect(Number(afterReturn.financials.total_return_value)).toBe(120);
+
+    expect(Number(afterReturn.financials.net_grand_total)).toBe(0);
+
+    // إلغاء المرتجع يعيد البديل إلى الفاتورة.
+    cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Restore discounted replacement return',
+    });
+
+    const restored = getSaleCurrentState(result.sale.saleId);
+
+    expect(Number(restored.financials.current_promotion_discount_value)).toBe(
+      30,
+    );
+
+    expect(Number(restored.financials.total_return_value)).toBe(0);
+
+    expect(Number(restored.financials.net_grand_total)).toBe(120);
+
+    // التأكد من إعادة إتاحة القطعة للاستبدال والمرتجع.
+    const restoredExchangeState = getSaleExchangeState(result.sale.saleId);
+
+    const restoredRegularGroup = restoredExchangeState.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    expect(restoredRegularGroup).toBeTruthy();
+
+    expect(Number(restoredRegularGroup!.units[0].is_returned)).toBe(0);
+
+    expect(
+      Number(restoredRegularGroup!.units[0].effective_promotion_discount_value),
+    ).toBe(30);
+
+    // القديم رجع للمخزون وقت الاستبدال.
+    expect(getStock('REG100')).toBe(20);
+
+    // البديل اترد للمخزون ثم خرج تاني عند إلغاء المرتجع.
+    expect(getStock('REG150')).toBe(19);
+
+    /*
+     * رصيد الصندوق:
+     * بيع 100 + استبدال 20 + إيداع 100
+     * - مرتجع 120 + إلغاء المرتجع 120
+     * = 220
+     */
+    expect(
+      getCashSummary({
+        payment_method: 'store_cash',
+      }).balance,
+    ).toBe(220);
+
+    const cancelledReturn = getDb()
+      .prepare(
+        `
+        SELECT cancelled_at
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as {
+      cancelled_at: string | null;
+    };
+
+    expect(cancelledReturn.cancelled_at).not.toBeNull();
   });
 
   it('requires an open shift and links exchange cash movement to the current shift', () => {
@@ -1342,6 +1668,447 @@ describe('sale promotion exchanges', () => {
         product_discount: 70,
       },
     ]);
+  });
+
+  it('does not carry the old product discount to an undiscounted replacement', () => {
+    createProduct({
+      name: 'Exchange Discount Isolation',
+
+      category_id: null,
+      image_path: null,
+      description: null,
+
+      variants: [
+        {
+          barcode: 'DISC-OLD-150',
+          size: 'Old',
+          color: 'Black',
+          buy_price: 90,
+          sell_price: 190,
+          discount_price: 150,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'DISC-NEW-200',
+          size: 'New',
+          color: 'Blue',
+          buy_price: 110,
+          sell_price: 200,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const oldVariant = getVariantByBarcode('DISC-OLD-150')!;
+
+    const newVariant = getVariantByBarcode('DISC-NEW-200')!;
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 150,
+          list_unit_price: 190,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    if (!regularGroup) {
+      throw new Error('Regular exchange group missing');
+    }
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    // القديم: 190 - 40 = 150
+    // الجديد: 200 بدون خصم
+    // الفرق الصحيح: 200 - 150 = 50
+    expect(exchange.difference_amount).toBe(50);
+    expect(exchange.amount_to_collect).toBe(50);
+
+    const current = getSaleCurrentState(sale.saleId);
+
+    expect(Number(current.financials.current_sub_total)).toBe(200);
+
+    expect(Number(current.financials.current_product_discount_value)).toBe(0);
+
+    expect(Number(current.financials.net_grand_total)).toBe(200);
+
+    const exchangeRow = getDb()
+      .prepare(
+        `
+        SELECT
+          old_product_discount_value,
+          new_product_discount_value
+        FROM sale_exchanges
+        WHERE id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(Number(exchangeRow.old_product_discount_value)).toBe(40);
+
+    expect(Number(exchangeRow.new_product_discount_value)).toBe(0);
+
+    // الإلغاء يعيد سعر وخصم المنتج الأصلي فقط.
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore original product discount',
+    });
+
+    const restored = getSaleCurrentState(sale.saleId);
+
+    expect(Number(restored.financials.current_sub_total)).toBe(150);
+
+    expect(Number(restored.financials.current_product_discount_value)).toBe(40);
+
+    expect(Number(restored.financials.net_grand_total)).toBe(150);
+  });
+
+  it('does not transfer an original invoice discount to a replacement', () => {
+    createProduct({
+      name: 'Invoice Discount Exchange Isolation',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'INV-DISC-OLD',
+          size: 'Old',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 200,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'INV-DISC-NEW',
+          size: 'New',
+          color: 'Blue',
+          buy_price: 120,
+          sell_price: 250,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const oldVariant = getVariantByBarcode('INV-DISC-OLD')!;
+    const newVariant = getVariantByBarcode('INV-DISC-NEW')!;
+
+    // فاتورة قديمة: 200 - 40 خصم فاتورة = 160
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 200,
+      discount_value: 40,
+      grand_total: 160,
+      paid: 160,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) => group.group_kind === 'regular',
+    );
+
+    if (!regularGroup) {
+      throw new Error('Regular exchange group missing');
+    }
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    // القديم كان صافي سعره 160، والبديل سعره 250.
+    expect(exchange.difference_amount).toBe(90);
+    expect(exchange.amount_to_collect).toBe(90);
+
+    const current = getSaleCurrentState(sale.saleId);
+
+    expect(Number(current.financials.current_sub_total)).toBe(250);
+
+    expect(Number(current.financials.current_normal_discount_value)).toBe(0);
+
+    expect(Number(current.financials.net_grand_total)).toBe(250);
+
+    const exchangeRow = getDb()
+      .prepare(
+        `
+        SELECT
+          old_normal_discount_value,
+          new_normal_discount_value
+        FROM sale_exchanges
+        WHERE id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(Number(exchangeRow.old_normal_discount_value)).toBe(40);
+
+    expect(Number(exchangeRow.new_normal_discount_value)).toBe(0);
+
+    // إلغاء الاستبدال يرجع الخصم الأصلي.
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore original invoice discount',
+    });
+
+    const restored = getSaleCurrentState(sale.saleId);
+
+    expect(Number(restored.financials.current_normal_discount_value)).toBe(40);
+
+    expect(Number(restored.financials.net_grand_total)).toBe(160);
+  });
+
+  it('keeps only the unchanged item share of an original invoice discount', () => {
+    createProduct({
+      name: 'Multi Item Invoice Discount Exchange',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'INVM-OLD200',
+          size: 'Old',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 200,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'INVM-OTHER100',
+          size: 'Other',
+          color: 'White',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'INVM-NEW250',
+          size: 'New',
+          color: 'Blue',
+          buy_price: 120,
+          sell_price: 250,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const oldVariant = getVariantByBarcode('INVM-OLD200')!;
+    const otherVariant = getVariantByBarcode('INVM-OTHER100')!;
+    const newVariant = getVariantByBarcode('INVM-NEW250')!;
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 40,
+      grand_total: 260,
+      paid: 260,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 1,
+          unit_price: 200,
+        },
+        {
+          variant_id: otherVariant.variant_id,
+          product_name: otherVariant.product_name,
+          barcode: otherVariant.barcode,
+          size: otherVariant.size,
+          color: otherVariant.color,
+          quantity: 1,
+          unit_price: 100,
+        },
+      ],
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const oldGroup = state.groups.find(
+      (group: any) =>
+        group.group_kind === 'regular' &&
+        Number(group.units[0]?.current_variant_id) ===
+          Number(oldVariant.variant_id),
+    );
+
+    expect(oldGroup).toBeTruthy();
+
+    /*
+     * قبل تنفيذ الاستبدال، الـBackend
+     * يقدر يحسب خصم الفاتورة المتبقي.
+     *
+     * الخصم الأصلي = 40
+     * نصيب القطعة التي ستظل = 13
+     */
+    expect(Number(oldGroup!.retained_normal_discount_after_exchange)).toBe(13);
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(oldGroup!.units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    /*
+     * خصم الفاتورة الأصلي = 40
+     *
+     * نصيب القطعة القديمة = 26.67
+     * نصيب القطعة المتبقية = 13.33
+     *
+     * التقريب النقدي المعتمد:
+     * الخصم المتبقي = 13
+     *
+     * إجمالي الفاتورة الجديد:
+     * 250 + 100 - 13 = 337
+     *
+     * فرق الاستبدال:
+     * 337 - 260 = 77
+     */
+    expect(exchange.difference_amount).toBe(77);
+    expect(exchange.amount_to_collect).toBe(77);
+
+    const current = getSaleCurrentState(sale.saleId);
+
+    expect(Number(current.financials.current_normal_discount_value)).toBe(13);
+
+    expect(Number(current.financials.net_grand_total)).toBe(337);
+
+    // القطعة التي لم تتبدل تستحق نصيبها الأصلي من الخصم.
+    const otherItem = getDb()
+      .prepare(
+        `
+        SELECT id
+        FROM sale_items
+        WHERE sale_id = ?
+          AND variant_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(sale.saleId, otherVariant.variant_id) as {
+      id: number;
+    };
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: otherItem.id,
+          variant_id: otherVariant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    // القطعة المتبقية نصيبها 13 جنيه خصم.
+    // المستحق عند إرجاعها = 100 - 13 = 87.
+    expect(saleReturn.return_value).toBe(87);
+
+    const returnRow = getDb()
+      .prepare(
+        `
+        SELECT normal_discount_value
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as {
+      normal_discount_value: number;
+    };
+
+    expect(Number(returnRow.normal_discount_value)).toBe(13);
+
+    cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Restore unchanged item',
+    });
+
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore original invoice',
+    });
+
+    const restored = getSaleCurrentState(sale.saleId);
+
+    expect(Number(restored.financials.current_normal_discount_value)).toBe(40);
+
+    expect(Number(restored.financials.net_grand_total)).toBe(260);
   });
 
   it('restores original product discount snapshots when a discounted exchange is cancelled', () => {

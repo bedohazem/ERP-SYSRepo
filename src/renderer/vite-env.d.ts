@@ -1140,8 +1140,9 @@ declare global {
 
           group_kind: 'promotion' | 'regular';
 
-          promotion_id: number | null;
+          retained_normal_discount_after_exchange: number;
 
+          promotion_id: number | null;
           promotion_snapshot: {
             sale_id: number;
 
@@ -1177,6 +1178,8 @@ declare global {
 
             original_unit_price: number;
             current_unit_price: number;
+
+            effective_promotion_discount_value: number;
 
             original_is_gift: number;
             current_is_gift: number;

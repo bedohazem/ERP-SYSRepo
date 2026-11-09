@@ -429,6 +429,11 @@ describe('database migrations', () => {
         name: 'track-exchange-cancellation-outside-shift',
         version: 35,
       },
+
+      {
+        name: 'track-exchange-unit-promotion-discounts',
+        version: 36,
+      },
     ]);
 
     const performanceIndexes = database
