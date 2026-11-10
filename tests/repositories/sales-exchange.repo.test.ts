@@ -2111,6 +2111,1467 @@ describe('sale promotion exchanges', () => {
     expect(Number(restored.financials.net_grand_total)).toBe(260);
   });
 
+  it('allocates invoice discount remainder to the 120-pound item', () => {
+    createProduct({
+      name: 'Invoice Discount Remainder Test',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'ALLOC-100-A',
+          size: 'A',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'ALLOC-100-B',
+          size: 'B',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'ALLOC-120',
+          size: 'C',
+          color: 'Black',
+          buy_price: 60,
+          sell_price: 120,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'ALLOC-80',
+          size: 'D',
+          color: 'Blue',
+          buy_price: 40,
+          sell_price: 80,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const old100A = getVariantByBarcode('ALLOC-100-A')!;
+    const old100B = getVariantByBarcode('ALLOC-100-B')!;
+    const old120 = getVariantByBarcode('ALLOC-120')!;
+    const replacement80 = getVariantByBarcode('ALLOC-80')!;
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+
+      sub_total: 320,
+      discount_value: 20,
+      grand_total: 300,
+      paid: 300,
+
+      change_amount: 0,
+      payment_method: 'store_cash',
+
+      items: [old100A, old100B, old120].map((variant) => ({
+        variant_id: variant.variant_id,
+        product_name: variant.product_name,
+        barcode: variant.barcode,
+        size: variant.size,
+        color: variant.color,
+        quantity: 1,
+        unit_price: variant.sell_price,
+      })),
+    });
+
+    const before = getSaleCurrentState(sale.saleId);
+
+    expect(before.financials.net_grand_total).toBe(300);
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const group120 = state.groups.find(
+      (group: any) =>
+        group.group_kind === 'regular' &&
+        Number(group.units[0]?.current_variant_id) ===
+          Number(old120.variant_id),
+    );
+
+    if (!group120) {
+      throw new Error('120-pound regular group missing');
+    }
+
+    /*
+     * الخصم الأصلي = 20
+     *
+     * التوزيع الصحيح:
+     * 100 -> 6
+     * 100 -> 6
+     * 120 -> 8
+     *
+     * عند استبدال 120 بـ 80:
+     * الخصم المتبقي = 12
+     * الصافي الجديد = 280 - 12 = 268
+     * رد العميل = 300 - 268 = 32
+     */
+    expect(Number(group120.retained_normal_discount_after_exchange)).toBe(12);
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+
+      items: [
+        {
+          promotion_unit_id: Number(group120.units[0].id),
+          new_variant_id: replacement80.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-32);
+    expect(exchange.amount_to_refund).toBe(32);
+
+    const after = getSaleCurrentState(sale.saleId);
+
+    expect(after.financials.current_sub_total).toBe(280);
+
+    expect(after.financials.current_normal_discount_value).toBe(12);
+
+    expect(after.financials.net_grand_total).toBe(268);
+
+    /*
+     * نستبدل القطعتين المتبقيتين.
+     * لا يجوز أن يضيع جنيه بسبب ترتيب العمليات.
+     */
+    const exchangeAnother100 = (variantId: number) => {
+      const latest = getSaleExchangeState(sale.saleId);
+
+      const group = latest.groups.find(
+        (entry: any) =>
+          entry.group_kind === 'regular' &&
+          Number(entry.units[0]?.current_variant_id) === variantId,
+      );
+
+      if (!group) {
+        throw new Error('Remaining 100-pound group missing');
+      }
+
+      return createSaleExchange({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        payment_method: 'store_cash',
+        items: [
+          {
+            promotion_unit_id: Number(group.units[0].id),
+            new_variant_id: replacement80.variant_id,
+          },
+        ],
+      });
+    };
+
+    const exchangeA = exchangeAnother100(old100A.variant_id);
+
+    expect(exchangeA.difference_amount).toBe(-14);
+    expect(exchangeA.amount_to_refund).toBe(14);
+
+    const afterA = getSaleCurrentState(sale.saleId);
+
+    expect(afterA.financials.current_normal_discount_value).toBe(6);
+    expect(afterA.financials.net_grand_total).toBe(254);
+
+    const exchangeB = exchangeAnother100(old100B.variant_id);
+
+    expect(exchangeB.difference_amount).toBe(-14);
+    expect(exchangeB.amount_to_refund).toBe(14);
+
+    const finalState = getSaleCurrentState(sale.saleId);
+
+    expect(finalState.financials.current_sub_total).toBe(240);
+    expect(finalState.financials.current_normal_discount_value).toBe(0);
+    expect(finalState.financials.net_grand_total).toBe(240);
+
+    // إجمالي الرد = صافي الفاتورة الأصلية - صافي الفاتورة النهائي.
+    expect(
+      exchange.amount_to_refund +
+        exchangeA.amount_to_refund +
+        exchangeB.amount_to_refund,
+    ).toBe(60);
+
+    /*
+     * إعادة استبدال نفس الوحدة الأصلية:
+     * 80 -> 120
+     *
+     * نصيبها الأصلي من الخصم اتشال بالفعل،
+     * فلا يجوز إزالته مرة ثانية.
+     */
+    const repeatedExchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(group120.units[0].id),
+          new_variant_id: old120.variant_id,
+        },
+      ],
+    });
+
+    expect(repeatedExchange.difference_amount).toBe(40);
+    expect(repeatedExchange.amount_to_collect).toBe(40);
+
+    const afterRepeated = getSaleCurrentState(sale.saleId);
+
+    expect(afterRepeated.financials.current_normal_discount_value).toBe(0);
+    expect(afterRepeated.financials.net_grand_total).toBe(280);
+
+    /*
+     * إلغاء الاستبدال المتكرر:
+     * نرجع إلى حالة الثلاث قطع بسعر 80.
+     */
+    cancelSaleExchange({
+      exchange_id: repeatedExchange.exchangeId,
+      actor_id: 1,
+      reason: 'Cancel repeated exchange',
+    });
+
+    const afterRepeatedCancellation = getSaleCurrentState(sale.saleId);
+
+    expect(
+      afterRepeatedCancellation.financials.current_normal_discount_value,
+    ).toBe(0);
+
+    expect(afterRepeatedCancellation.financials.net_grand_total).toBe(240);
+
+    /*
+     * إلغاء العمليات الأقدم بالترتيب العكسي.
+     */
+    cancelSaleExchange({
+      exchange_id: exchangeB.exchangeId,
+      actor_id: 1,
+      reason: 'Restore B',
+    });
+
+    const restoredB = getSaleCurrentState(sale.saleId);
+
+    expect(restoredB.financials.current_normal_discount_value).toBe(6);
+    expect(restoredB.financials.net_grand_total).toBe(254);
+
+    cancelSaleExchange({
+      exchange_id: exchangeA.exchangeId,
+      actor_id: 1,
+      reason: 'Restore A',
+    });
+
+    const restoredA = getSaleCurrentState(sale.saleId);
+
+    expect(restoredA.financials.current_normal_discount_value).toBe(12);
+    expect(restoredA.financials.net_grand_total).toBe(268);
+
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore original invoice',
+    });
+
+    const restoredOriginal = getSaleCurrentState(sale.saleId);
+
+    expect(restoredOriginal.financials.current_sub_total).toBe(320);
+    expect(restoredOriginal.financials.current_normal_discount_value).toBe(20);
+    expect(restoredOriginal.financials.net_grand_total).toBe(300);
+  });
+
+  it('preserves fixed invoice discount allocation across exchange and returns', () => {
+    createProduct({
+      name: 'Fixed Invoice Discount Return',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'FIX-100-A',
+          size: 'A',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'FIX-100-B',
+          size: 'B',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'FIX-100-C',
+          size: 'C',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'FIX-80',
+          size: 'New',
+          color: 'Blue',
+          buy_price: 40,
+          sell_price: 80,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const a = getVariantByBarcode('FIX-100-A')!;
+    const b = getVariantByBarcode('FIX-100-B')!;
+    const c = getVariantByBarcode('FIX-100-C')!;
+    const replacement = getVariantByBarcode('FIX-80')!;
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 1,
+      grand_total: 299,
+      paid: 299,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [a, b, c].map((variant) => ({
+        variant_id: variant.variant_id,
+        product_name: variant.product_name,
+        barcode: variant.barcode,
+        size: variant.size,
+        color: variant.color,
+        quantity: 1,
+        unit_price: 100,
+      })),
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const groupB = state.groups.find(
+      (group: any) =>
+        group.group_kind === 'regular' &&
+        Number(group.units[0]?.current_variant_id) === Number(b.variant_id),
+    );
+
+    if (!groupB) {
+      throw new Error('Regular group B missing');
+    }
+
+    // خصم الجنيه يخص A، وليس B.
+    expect(groupB.retained_normal_discount_after_exchange).toBe(1);
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(groupB.units[0].id),
+          new_variant_id: replacement.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-20);
+
+    const itemA = getDb()
+      .prepare(
+        `
+        SELECT id
+        FROM sale_items
+        WHERE sale_id = ?
+          AND variant_id = ?
+      `,
+      )
+      .get(sale.saleId, a.variant_id) as { id: number };
+
+    const firstReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: itemA.id,
+          variant_id: a.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    // A سعره 100، ونصيبه الثابت من الخصم 1.
+    expect(firstReturn.return_value).toBe(99);
+
+    const firstReturnRow = getDb()
+      .prepare(
+        `
+        SELECT normal_discount_value
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(firstReturn.returnId) as {
+      normal_discount_value: number;
+    };
+
+    expect(Number(firstReturnRow.normal_discount_value)).toBe(1);
+
+    const itemC = getDb()
+      .prepare(
+        `
+        SELECT id
+        FROM sale_items
+        WHERE sale_id = ?
+          AND variant_id = ?
+      `,
+      )
+      .get(sale.saleId, c.variant_id) as { id: number };
+
+    const secondReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: itemC.id,
+          variant_id: c.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    // C ليس عليه خصم، فلا نخصم منه جنيه A مرة ثانية.
+    expect(secondReturn.return_value).toBe(100);
+
+    expect(firstReturn.return_value + secondReturn.return_value).toBe(199);
+  });
+
+  it('preserves percentage invoice discount through exchange and returns', () => {
+    const { variants } = seedExchangeCatalog();
+
+    const first = variants.EX150;
+    const second = variants.EX200;
+    const third = variants.EX350;
+    const replacement = variants.EX300;
+
+    /*
+     * 7.5% من 700 = 52.5
+     * الخصم النقدي بعد التقريب = 53
+     *
+     * توزيعه الثابت:
+     * 150 -> 11
+     * 200 -> 15
+     * 350 -> 27
+     */
+    const subTotal = 700;
+    const discountPercent = 7.5;
+    const discountValue = Math.round((subTotal * discountPercent) / 100);
+
+    expect(discountValue).toBe(53);
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: subTotal,
+      discount_value: discountValue,
+      grand_total: 647,
+      paid: 647,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [first, second, third].map((variant) => ({
+        variant_id: variant.variant_id,
+        product_name: variant.product_name,
+        barcode: variant.barcode,
+        size: variant.size,
+        color: variant.color,
+        quantity: 1,
+        unit_price: variant.sell_price,
+      })),
+    });
+
+    const before = getSaleCurrentState(sale.saleId);
+
+    expect(before.financials.net_grand_total).toBe(647);
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const group = state.groups.find(
+      (entry: any) =>
+        entry.group_kind === 'regular' &&
+        Number(entry.units[0]?.current_variant_id) === Number(third.variant_id),
+    );
+
+    if (!group) {
+      throw new Error('350-pound exchange group missing');
+    }
+
+    // بعد إزالة نصيب 350، يظل خصم 11 + 15.
+    expect(group.retained_normal_discount_after_exchange).toBe(26);
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(group.units[0].id),
+          new_variant_id: replacement.variant_id,
+        },
+      ],
+    });
+
+    /*
+     * الإجمالي الجديد:
+     * 150 + 200 + 300 - 26 = 624
+     *
+     * الرد:
+     * 647 - 624 = 23
+     */
+    expect(exchange.difference_amount).toBe(-23);
+    expect(exchange.amount_to_refund).toBe(23);
+
+    const afterExchange = getSaleCurrentState(sale.saleId);
+
+    expect(afterExchange.financials.current_normal_discount_value).toBe(26);
+
+    expect(afterExchange.financials.net_grand_total).toBe(624);
+
+    const returnOriginalItem = (variant: TestVariant) => {
+      const item = getDb()
+        .prepare(
+          `
+          SELECT id
+          FROM sale_items
+          WHERE sale_id = ?
+            AND variant_id = ?
+          LIMIT 1
+        `,
+        )
+        .get(sale.saleId, variant.variant_id) as { id: number } | undefined;
+
+      if (!item) {
+        throw new Error('Original sale item missing');
+      }
+
+      return createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        refund_payment_method: 'store_cash',
+        items: [
+          {
+            sale_item_id: item.id,
+            variant_id: variant.variant_id,
+            quantity: 1,
+          },
+        ],
+      });
+    };
+
+    const firstReturn = returnOriginalItem(first);
+
+    // المنتج 150 نصيبه من الخصم 11.
+    expect(firstReturn.return_value).toBe(139);
+
+    const secondReturn = returnOriginalItem(second);
+
+    // المنتج 200 نصيبه من الخصم 15.
+    expect(secondReturn.return_value).toBe(185);
+
+    const finalState = getSaleCurrentState(sale.saleId);
+
+    // البديل 300 بدون أي خصم فاتورة موروث.
+    expect(finalState.financials.net_grand_total).toBe(300);
+
+    /*
+     * إجمالي الأموال التي خرجت:
+     * 23 + 139 + 185 = 347
+     *
+     * المتبقي من أصل 647 = 300.
+     */
+    expect(
+      exchange.amount_to_refund +
+        firstReturn.return_value +
+        secondReturn.return_value,
+    ).toBe(347);
+  });
+
+  it('preserves invoice discount when regular exchange and promotion return coexist', () => {
+    const { promoCategoryId, variants } = seedExchangeCatalog();
+
+    createProduct({
+      name: 'Mixed Promotion Invoice Discount',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'MIX-PROMO-OLD100',
+          size: 'Old',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'MIX-PROMO-NEW120',
+          size: 'New',
+          color: 'Blue',
+          buy_price: 60,
+          sell_price: 120,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const regularOld = getVariantByBarcode('MIX-PROMO-OLD100')!;
+    const regularNew = getVariantByBarcode('MIX-PROMO-NEW120')!;
+
+    const promotion = createPromotion({
+      name: 'Mixed Invoice Buy 2 Get 1',
+      type: 'buy_x_get_y',
+      value: 0,
+      buy_qty: 2,
+      free_qty: 1,
+      scope_type: 'category',
+      category_id: promoCategoryId,
+      product_ids: [],
+      actor_id: 1,
+    });
+
+    togglePromotion(promotion.promotionId, 1);
+
+    /*
+     * الأسعار: 250 + 200 + 150 + 100 = 700
+     *
+     * خصم العرض = 150
+     * المتبقي بعد العرض = 550
+     * خصم الفاتورة = 20
+     * الصافي = 530
+     *
+     * توزيع الخصم الثابت:
+     * 250 -> 9
+     * 200 -> 7
+     * 150 (هدية) -> 0
+     * 100 -> 4
+     */
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      promotion_id: promotion.promotionId,
+      sub_total: 700,
+      discount_value: 20,
+      grand_total: 530,
+      paid: 530,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [variants.EX250, variants.EX200, variants.EX150, regularOld].map(
+        (variant) => ({
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: variant.sell_price,
+        }),
+      ),
+    });
+
+    const original = getSaleCurrentState(sale.saleId);
+
+    expect(original.financials.current_sub_total).toBe(700);
+    expect(original.financials.current_promotion_discount_value).toBe(150);
+    expect(original.financials.current_normal_discount_value).toBe(20);
+    expect(original.financials.net_grand_total).toBe(530);
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) =>
+        group.group_kind === 'regular' &&
+        Number(group.units[0]?.current_variant_id) ===
+          Number(regularOld.variant_id),
+    );
+
+    if (!regularGroup) {
+      throw new Error('Regular item outside promotion is missing');
+    }
+
+    // استبدال 100 يلغي نصيبه 4 من الخصم.
+    // الخصم المتبقي = 9 + 7 = 16.
+    expect(regularGroup.retained_normal_discount_after_exchange).toBe(16);
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup.units[0].id),
+          new_variant_id: regularNew.variant_id,
+        },
+      ],
+    });
+
+    /*
+     * الفاتورة بعد الاستبدال:
+     * 250 + 200 + 150 + 120 = 720
+     * خصم العرض = 150
+     * خصم الفاتورة المتبقي = 16
+     *
+     * الصافي الجديد = 554
+     * فرق الاستبدال = 554 - 530 = 24
+     */
+    expect(exchange.difference_amount).toBe(24);
+    expect(exchange.amount_to_collect).toBe(24);
+
+    const afterExchange = getSaleCurrentState(sale.saleId);
+
+    expect(afterExchange.financials.current_sub_total).toBe(720);
+    expect(afterExchange.financials.current_promotion_discount_value).toBe(150);
+    expect(afterExchange.financials.current_normal_discount_value).toBe(16);
+    expect(afterExchange.financials.net_grand_total).toBe(554);
+
+    /*
+     * إرجاع مجموعة العرض كاملة:
+     *
+     * قيمتها بعد خصم الهدية = 450
+     * نصيبها من خصم الفاتورة = 16
+     * المستحق للعميل = 434
+     */
+    const promotionItems = getFullReturnInput(sale.saleId);
+
+    expect(promotionItems).toHaveLength(3);
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: promotionItems,
+    });
+
+    expect(saleReturn.return_value).toBe(434);
+
+    const returnRow = getDb()
+      .prepare(
+        `
+        SELECT
+          promotion_discount_value,
+          normal_discount_value
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as {
+      promotion_discount_value: number;
+      normal_discount_value: number;
+    };
+
+    expect(Number(returnRow.promotion_discount_value)).toBe(150);
+    expect(Number(returnRow.normal_discount_value)).toBe(16);
+
+    const finalState = getSaleCurrentState(sale.saleId);
+
+    // المتبقي هو المنتج البديل 120 بلا خصم موروث.
+    expect(finalState.financials.net_grand_total).toBe(120);
+
+    // مراجعة التسوية النقدية كاملة.
+    expect(530 + exchange.amount_to_collect - saleReturn.return_value).toBe(
+      120,
+    );
+  });
+
+  it('does not transfer an untouched item discount to a promotion return', () => {
+    const { promoCategoryId, variants } = seedExchangeCatalog();
+
+    createProduct({
+      name: 'Mixed One Pound Discount',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'MIX-ONE-100',
+          size: 'Old',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'MIX-ONE-120',
+          size: 'New',
+          color: 'Blue',
+          buy_price: 60,
+          sell_price: 120,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'MIX-ONE-300',
+          size: 'Other',
+          color: 'White',
+          buy_price: 150,
+          sell_price: 300,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const old100 = getVariantByBarcode('MIX-ONE-100')!;
+    const new120 = getVariantByBarcode('MIX-ONE-120')!;
+    const other300 = getVariantByBarcode('MIX-ONE-300')!;
+
+    const promotion = createPromotion({
+      name: 'Mixed One Pound Buy 2 Get 1',
+      type: 'buy_x_get_y',
+      value: 0,
+      buy_qty: 2,
+      free_qty: 1,
+      scope_type: 'category',
+      category_id: promoCategoryId,
+      product_ids: [],
+      actor_id: 1,
+    });
+
+    togglePromotion(promotion.promotionId, 1);
+
+    /*
+     * الإجمالي = 1000
+     * خصم الهدية = 150
+     * خصم الفاتورة = 1
+     * الصافي = 849
+     *
+     * جنيه الخصم يخص المنتج 300،
+     * لأنه صاحب أكبر وزن فردي.
+     */
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      promotion_id: promotion.promotionId,
+      sub_total: 1000,
+      discount_value: 1,
+      grand_total: 849,
+      paid: 849,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        variants.EX250,
+        variants.EX200,
+        variants.EX150,
+        old100,
+        other300,
+      ].map((variant) => ({
+        variant_id: variant.variant_id,
+        product_name: variant.product_name,
+        barcode: variant.barcode,
+        size: variant.size,
+        color: variant.color,
+        quantity: 1,
+        unit_price: variant.sell_price,
+      })),
+    });
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const regularGroup = state.groups.find(
+      (group: any) =>
+        group.group_kind === 'regular' &&
+        Number(group.units[0]?.current_variant_id) ===
+          Number(old100.variant_id),
+    );
+
+    if (!regularGroup) {
+      throw new Error('Regular 100-pound group missing');
+    }
+
+    // استبدال 100 لا يلغي جنيه خصم المنتج 300.
+    expect(regularGroup.retained_normal_discount_after_exchange).toBe(1);
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(regularGroup.units[0].id),
+          new_variant_id: new120.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(20);
+    expect(exchange.amount_to_collect).toBe(20);
+
+    /*
+     * العرض قيمته بعد الهدية = 450.
+     * لا يوجد أي خصم فاتورة مخصص له.
+     *
+     * لذلك مرتجعه الصحيح = 450 بالكامل.
+     */
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: getFullReturnInput(sale.saleId),
+    });
+
+    expect(saleReturn.return_value).toBe(450);
+
+    const returnRow = getDb()
+      .prepare(
+        `
+        SELECT normal_discount_value
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as {
+      normal_discount_value: number;
+    };
+
+    expect(Number(returnRow.normal_discount_value)).toBe(0);
+
+    const finalState = getSaleCurrentState(sale.saleId);
+
+    // المتبقي: البديل 120 + المنتج 300 - خصمه 1.
+    expect(finalState.financials.net_grand_total).toBe(419);
+
+    expect(849 + exchange.amount_to_collect - saleReturn.return_value).toBe(
+      419,
+    );
+
+    /*
+     * إلغاء مرتجع العرض:
+     * يرجع كامل قيمة العرض 450 للفاتورة،
+     * ويظل جنيه الخصم مخصصًا للمنتج 300.
+     */
+    cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Restore promotion return',
+    });
+
+    const afterReturnCancellation = getSaleCurrentState(sale.saleId);
+
+    expect(
+      afterReturnCancellation.financials.current_normal_discount_value,
+    ).toBe(1);
+
+    expect(
+      afterReturnCancellation.financials.current_promotion_discount_value,
+    ).toBe(150);
+
+    expect(afterReturnCancellation.financials.net_grand_total).toBe(869);
+
+    /*
+     * إلغاء الاستبدال:
+     * ترجع الفاتورة لحالتها الأصلية بالكامل،
+     * دون زيادة أو فقدان أي جنيه خصم.
+     */
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore original mixed invoice',
+    });
+
+    const restored = getSaleCurrentState(sale.saleId);
+
+    expect(restored.financials.current_sub_total).toBe(1000);
+    expect(restored.financials.current_promotion_discount_value).toBe(150);
+    expect(restored.financials.current_normal_discount_value).toBe(1);
+    expect(restored.financials.total_return_value).toBe(0);
+    expect(restored.financials.net_grand_total).toBe(849);
+
+    /*
+     * بعد إلغاء الاستبدال والمرتجع السابقين،
+     * نختبر مرتجعين متتاليين بدون استبدال نشط.
+     *
+     * جنيه الخصم مخصص للمنتج 300 فقط.
+     */
+
+    const old100Item = getDb()
+      .prepare(
+        `
+        SELECT id
+        FROM sale_items
+        WHERE sale_id = ?
+          AND variant_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(sale.saleId, old100.variant_id) as { id: number } | undefined;
+
+    if (!old100Item) {
+      throw new Error('Original 100-pound item missing');
+    }
+
+    // المرتجع الأول: منتج 100 بدون نصيب خصم.
+    const regularReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: old100Item.id,
+          variant_id: old100.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(regularReturn.return_value).toBe(100);
+
+    // المرتجع الثاني: العرض كاملًا بدون خصم فاتورة.
+    const promotionReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: getFullReturnInput(sale.saleId),
+    });
+
+    expect(promotionReturn.return_value).toBe(450);
+
+    const promotionReturnRow = getDb()
+      .prepare(
+        `
+        SELECT normal_discount_value
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(promotionReturn.returnId) as {
+      normal_discount_value: number;
+    };
+
+    expect(Number(promotionReturnRow.normal_discount_value)).toBe(0);
+
+    const afterSequentialReturns = getSaleCurrentState(sale.saleId);
+
+    expect(afterSequentialReturns.financials.total_return_value).toBe(550);
+    expect(afterSequentialReturns.financials.net_grand_total).toBe(299);
+
+    // المجموع المحاسبي لازم يقفل بدون جنيه زيادة أو ناقص.
+    expect(
+      849 - regularReturn.return_value - promotionReturn.return_value,
+    ).toBe(299);
+  });
+
+  it('keeps fixed invoice discount when a return precedes an exchange', () => {
+    const { variants } = seedExchangeCatalog();
+
+    const first = variants.EX150;
+    const second = variants.EX200;
+    const third = variants.EX250;
+    const replacement = variants.EX300;
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 600,
+      discount_value: 1,
+      grand_total: 599,
+      paid: 599,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [first, second, third].map((variant) => ({
+        variant_id: variant.variant_id,
+        product_name: variant.product_name,
+        barcode: variant.barcode,
+        size: variant.size,
+        color: variant.color,
+        quantity: 1,
+        unit_price: variant.sell_price,
+      })),
+    });
+
+    // تجهيز وحدات الفاتورة قبل أول مرتجع.
+    getSaleExchangeState(sale.saleId);
+
+    const returnedItem = getDb()
+      .prepare(
+        `
+        SELECT id
+        FROM sale_items
+        WHERE sale_id = ?
+          AND variant_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(sale.saleId, third.variant_id) as { id: number } | undefined;
+
+    if (!returnedItem) {
+      throw new Error('Original 250-pound item missing');
+    }
+
+    /*
+     * الجنيه الأصلي مخصص للمنتج 250.
+     *
+     * مرتجعه الصحيح = 250 - 1 = 249.
+     */
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: returnedItem.id,
+          variant_id: third.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(saleReturn.return_value).toBe(249);
+
+    const returnRow = getDb()
+      .prepare(
+        `
+        SELECT normal_discount_value
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(saleReturn.returnId) as {
+      normal_discount_value: number;
+    };
+
+    expect(Number(returnRow.normal_discount_value)).toBe(1);
+
+    const afterReturn = getSaleCurrentState(sale.saleId);
+
+    // المتبقي: 150 + 200 = 350.
+    expect(afterReturn.financials.net_grand_total).toBe(350);
+
+    /*
+     * استبدال منتج 150 بـ300 بعد المرتجع.
+     * فرق الاستبدال = 150 جنيه.
+     */
+    const state = getSaleExchangeState(sale.saleId);
+
+    const group = state.groups.find(
+      (entry: any) =>
+        entry.group_kind === 'regular' &&
+        Number(entry.units[0]?.current_variant_id) === Number(first.variant_id),
+    );
+
+    if (!group) {
+      throw new Error('150-pound exchange group missing');
+    }
+
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(group.units[0].id),
+          new_variant_id: replacement.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(150);
+    expect(exchange.amount_to_collect).toBe(150);
+
+    const afterExchange = getSaleCurrentState(sale.saleId);
+
+    // المتبقي: البديل 300 + المنتج 200.
+    expect(afterExchange.financials.net_grand_total).toBe(500);
+
+    // 599 - 249 + 150 = 500.
+    expect(599 - saleReturn.return_value + exchange.amount_to_collect).toBe(
+      500,
+    );
+
+    /*
+     * إلغاء الاستبدال ثم المرتجع
+     * يرجع الفاتورة الأصلية بالكامل.
+     */
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore exchange after earlier return',
+    });
+
+    expect(getSaleCurrentState(sale.saleId).financials.net_grand_total).toBe(
+      350,
+    );
+
+    cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Restore earlier return',
+    });
+
+    const restored = getSaleCurrentState(sale.saleId);
+
+    expect(restored.financials.current_normal_discount_value).toBe(1);
+    expect(restored.financials.total_return_value).toBe(0);
+    expect(restored.financials.net_grand_total).toBe(599);
+  });
+
+  it('preserves fixed discount across quantity-three returns and exchange', () => {
+    createProduct({
+      name: 'Quantity Three Invoice Discount',
+      category_id: null,
+      image_path: null,
+      description: null,
+      variants: [
+        {
+          barcode: 'QTY3-OLD100',
+          size: 'Old',
+          color: 'Black',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+        {
+          barcode: 'QTY3-NEW80',
+          size: 'New',
+          color: 'Blue',
+          buy_price: 40,
+          sell_price: 80,
+          min_stock: 1,
+          opening_qty: 10,
+        },
+      ],
+    });
+
+    const oldVariant = getVariantByBarcode('QTY3-OLD100')!;
+    const newVariant = getVariantByBarcode('QTY3-NEW80')!;
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 2,
+      grand_total: 298,
+      paid: 298,
+      change_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: oldVariant.variant_id,
+          product_name: oldVariant.product_name,
+          barcode: oldVariant.barcode,
+          size: oldVariant.size,
+          color: oldVariant.color,
+          quantity: 3,
+          unit_price: 100,
+        },
+      ],
+    });
+
+    const originalItem = getDb()
+      .prepare(
+        `
+        SELECT id
+        FROM sale_items
+        WHERE sale_id = ?
+          AND variant_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(sale.saleId, oldVariant.variant_id) as {
+      id: number;
+    };
+
+    const state = getSaleExchangeState(sale.saleId);
+
+    const groups = state.groups
+      .filter((group: any) => group.group_kind === 'regular')
+      .sort((a: any, b: any) => Number(a.units[0].id) - Number(b.units[0].id));
+
+    expect(groups).toHaveLength(3);
+
+    /*
+     * خصم الفاتورة = 2 جنيه.
+     *
+     * الوحدة الأولى نصيبها 1
+     * الوحدة الثانية نصيبها 1
+     * الوحدة الثالثة نصيبها 0
+     *
+     * القيم هنا تمثل الخصم الذي
+     * سيظل بعد استبدال كل وحدة.
+     */
+    expect(
+      groups.map((group) =>
+        Number(group.retained_normal_discount_after_exchange),
+      ),
+    ).toEqual([1, 1, 2]);
+
+    /*
+     * 1. مرتجع الوحدة الأولى.
+     * السعر 100 - خصم 1 = 99.
+     */
+    const firstReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: originalItem.id,
+          variant_id: oldVariant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(firstReturn.return_value).toBe(99);
+
+    const firstReturnItem = getDb()
+      .prepare(
+        `
+        SELECT promotion_unit_id
+        FROM sale_return_items
+        WHERE return_id = ?
+        LIMIT 1
+      `,
+      )
+      .get(firstReturn.returnId) as {
+      promotion_unit_id: number;
+    };
+
+    expect(Number(firstReturnItem.promotion_unit_id)).toBe(
+      Number(groups[0].units[0].id),
+    );
+
+    expect(getSaleCurrentState(sale.saleId).financials.net_grand_total).toBe(
+      199,
+    );
+
+    /*
+     * 2. استبدال الوحدة الثانية:
+     * 100 -> 80.
+     *
+     * نصيبها من الخصم = 1.
+     * قيمتها الفعلية القديمة = 99.
+     * البديل = 80.
+     *
+     * رد العميل = 19.
+     */
+    const exchange = createSaleExchange({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      items: [
+        {
+          promotion_unit_id: Number(groups[1].units[0].id),
+          new_variant_id: newVariant.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(-19);
+    expect(exchange.amount_to_refund).toBe(19);
+
+    const afterExchange = getSaleCurrentState(sale.saleId);
+
+    expect(afterExchange.financials.current_normal_discount_value).toBe(1);
+    expect(afterExchange.financials.net_grand_total).toBe(180);
+
+    /*
+     * 3. مرتجع الوحدة الثالثة.
+     *
+     * نصيبها الأصلي من الخصم = 0.
+     * الرد الصحيح = 100 كاملين.
+     */
+    const secondReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      refund_payment_method: 'store_cash',
+      items: [
+        {
+          sale_item_id: originalItem.id,
+          variant_id: oldVariant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(secondReturn.return_value).toBe(100);
+
+    const secondReturnRow = getDb()
+      .prepare(
+        `
+        SELECT normal_discount_value
+        FROM sale_returns
+        WHERE id = ?
+      `,
+      )
+      .get(secondReturn.returnId) as {
+      normal_discount_value: number;
+    };
+
+    expect(Number(secondReturnRow.normal_discount_value)).toBe(0);
+
+    const finalState = getSaleCurrentState(sale.saleId);
+
+    expect(finalState.financials.current_normal_discount_value).toBe(1);
+    expect(finalState.financials.net_grand_total).toBe(80);
+
+    /*
+     * مراجعة إجمالي الأموال:
+     *
+     * 298 - 99 - 19 - 100 = 80
+     */
+    expect(
+      298 -
+        firstReturn.return_value -
+        exchange.amount_to_refund -
+        secondReturn.return_value,
+    ).toBe(80);
+
+    /*
+     * 4. إلغاء العمليات بالترتيب العكسي.
+     */
+    cancelSaleReturn({
+      return_id: secondReturn.returnId,
+      actor_id: 1,
+      reason: 'Restore third unit',
+    });
+
+    expect(getSaleCurrentState(sale.saleId).financials.net_grand_total).toBe(
+      180,
+    );
+
+    cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Restore second unit',
+    });
+
+    expect(getSaleCurrentState(sale.saleId).financials.net_grand_total).toBe(
+      199,
+    );
+
+    cancelSaleReturn({
+      return_id: firstReturn.returnId,
+      actor_id: 1,
+      reason: 'Restore first unit',
+    });
+
+    const restored = getSaleCurrentState(sale.saleId);
+
+    expect(restored.financials.current_sub_total).toBe(300);
+    expect(restored.financials.current_normal_discount_value).toBe(2);
+    expect(restored.financials.total_return_value).toBe(0);
+    expect(restored.financials.net_grand_total).toBe(298);
+  });
+
   it('restores original product discount snapshots when a discounted exchange is cancelled', () => {
     createProduct({
       name: 'Cancel Product Discount Exchange',

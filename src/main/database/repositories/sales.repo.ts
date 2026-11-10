@@ -19,6 +19,7 @@ import {
 import { roundCost, roundMoney } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 import { getOrCreateSalespersonForUser } from './salespeople.repo';
+import { getRetainedOriginalNormalDiscount } from './sales-normal-discount.repo';
 
 function splitCostValueAcrossWholeUnits(
   totalCostInput: number,
@@ -3284,7 +3285,23 @@ export function createSaleReturn(input: {
     let targetNormalDiscount = 0;
     let saleDiscountPart = 0;
 
-    if (exchangedRegularUnits.length === 0) {
+    /*
+     * التوزيع الثابت ينطبق على أي مرتجع
+     * له وحدات محفوظة، سواء كانت:
+     *
+     * - قطعة عادية
+     * - قطعة ضمن عرض
+     *
+     * ولا يشترط حدوث استبدال سابق.
+     *
+     * الفواتير التي لا تحتوي على
+     * وحدات محفوظة تظل على المسار القديم.
+     */
+    const hasUnitBasedReturn = preparedItems.some(
+      (item) => item.promotionUnitId !== null,
+    );
+
+    if (exchangedRegularUnits.length === 0 && !hasUnitBasedReturn) {
       /*
        * لا توجد استبدالات عادية نشطة.
        * نحافظ على حساب المرتجعات الأصلي
@@ -3420,8 +3437,69 @@ export function createSaleReturn(input: {
         Number(originalSale.discount_value || 0),
       );
 
-      const calculatedCumulativeDiscount =
-        originalEligibleTotal > 0
+      /*
+       * عند وجود استبدال عادي، المرتجعات المرتبطة
+       * بوحدات عادية تستخدم نفس توزيع الخصم الثابت
+       * المستخدم في الاستبدال.
+       *
+       * مثال: خصم 1 جنيه على 3 قطع متساوية
+       * يوزع 1 + 0 + 0، وليس 0 + 0 + 0.
+       */
+      const allReturnedItems = [
+        ...previousReturnedItems,
+        ...currentReturnedItems,
+      ];
+
+      /*
+       * نستخدم نفس توزيع الخصم الثابت
+       * للقطع العادية وقطع العروض.
+       *
+       * الفواتير القديمة التي لا تحتوي
+       * على Unit Snapshots تظل على
+       * مسار الحساب التراكمي السابق.
+       */
+      const originalUnitRows = db
+        .prepare(
+          `
+          SELECT id
+          FROM sale_promotion_units
+          WHERE sale_id = ?
+        `,
+        )
+        .all(originalSaleId) as Array<{ id: number }>;
+
+      const originalUnitIds = new Set(
+        originalUnitRows.map((unit) => Number(unit.id)),
+      );
+
+      const allReturnsHaveOriginalUnits =
+        allReturnedItems.length > 0 &&
+        allReturnedItems.every(
+          (item) =>
+            Number(item.quantity) === 1 &&
+            item.promotion_unit_id != null &&
+            originalUnitIds.has(Number(item.promotion_unit_id)),
+        );
+
+      const calculatedCumulativeDiscount = allReturnsHaveOriginalUnits
+        ? Math.max(
+            0,
+            roundMoney(
+              currentNormalDiscount -
+                getRetainedOriginalNormalDiscount(
+                  originalSaleId,
+                  originalDiscount,
+                  Array.from(
+                    new Set(
+                      allReturnedItems.map((item) =>
+                        Number(item.promotion_unit_id),
+                      ),
+                    ),
+                  ),
+                ),
+            ),
+          )
+        : originalEligibleTotal > 0
           ? roundMoney(
               originalDiscount *
                 Math.min(
