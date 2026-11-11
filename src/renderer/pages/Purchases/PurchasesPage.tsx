@@ -5,6 +5,7 @@ import { hasUserPermission } from '../../utils/permissions';
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
+import { printPurchaseInvoiceBarcodes } from '../../utils/purchase-barcode-print';
 import {
   allocateTruncatedMoneyAcrossWeights,
   truncateMoney,
@@ -125,6 +126,11 @@ export default function PurchasesPage() {
   const [discountDraft, setDiscountDraft] = useState('');
 
   const [saving, setSaving] = useState(false);
+  const [barcodePurchaseId, setBarcodePurchaseId] = useState<number | null>(
+    null,
+  );
+  const [barcodePrinting, setBarcodePrinting] = useState(false);
+  const [barcodePurchaseCopies, setBarcodePurchaseCopies] = useState(0);
   const [message, setMessage] = useState('');
   const [purchaseOrdersOpen, setPurchaseOrdersOpen] = useState(false);
   const [draftHydrated, setDraftHydrated] = useState(false);
@@ -954,6 +960,29 @@ export default function PurchasesPage() {
     setLines((prev) => prev.filter((line) => line.variant_id !== variantId));
   }
 
+  async function printSavedPurchaseBarcodes() {
+    if (barcodePurchaseId === null || barcodePrinting) return;
+
+    const savedId = barcodePurchaseId;
+    setBarcodePrinting(true);
+    try {
+      const result = await printPurchaseInvoiceBarcodes(savedId);
+      if (result.ok) {
+        setBarcodePurchaseId(null);
+        showMessage(
+          `تم إرسال ${result.total} ملصق باركود للطباعة لفاتورة #${savedId}`,
+        );
+      } else if (!result.canceled) {
+        showMessage(result.message || 'تعذر طباعة باركود المشتريات');
+      }
+    } catch (error) {
+      console.error('Purchase barcode printing failed:', error);
+      showMessage(getErrorMessage(error, 'تعذر طباعة باركود المشتريات'));
+    } finally {
+      setBarcodePrinting(false);
+    }
+  }
+
   async function savePurchase() {
     if (saving) return;
 
@@ -1042,6 +1071,12 @@ export default function PurchasesPage() {
           : 'تم حفظ فاتورة الشراء مدفوعة بالكامل',
       );
 
+      setBarcodePurchaseId(
+        Number('purchaseId' in result ? result.purchaseId : editPurchaseId),
+      );
+      setBarcodePurchaseCopies(
+        lines.reduce((total, line) => total + Number(line.quantity || 0), 0),
+      );
       clearPurchaseDraftStorage();
 
       setSupplierId('');
@@ -1764,6 +1799,80 @@ export default function PurchasesPage() {
           </div>
         </div>
       </div>
+
+      {barcodePurchaseId !== null && (
+        <div
+          className="theme-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="طباعة باركود المشتريات بعد الحفظ"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100001,
+            background: 'rgba(0,0,0,0.70)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: '18px',
+            direction: 'rtl',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: 'min(520px, 100%)',
+              padding: '24px',
+              borderRadius: '18px',
+              display: 'grid',
+              gap: '14px',
+              background: '#111827',
+              border: '1px solid rgba(255,255,255,0.12)',
+            }}
+          >
+            <h3 style={{ margin: 0, color: '#86efac' }}>
+              تم حفظ فاتورة الشراء #{barcodePurchaseId}
+            </h3>
+            <p style={{ margin: 0, color: '#cbd5e1', lineHeight: 1.8 }}>
+              هل تريد طباعة باركود الأصناف المشتراة؟ كل قطعة لها ملصق واحد حسب
+              الكمية المحفوظة في الفاتورة.
+            </p>
+            <strong style={{ color: '#93c5fd' }}>
+              إجمالي الملصقات: {barcodePurchaseCopies}
+            </strong>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+              <button
+                type="button"
+                disabled={barcodePrinting}
+                onClick={() => void printSavedPurchaseBarcodes()}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: barcodePrinting ? 0.6 : 1,
+                }}
+              >
+                {barcodePrinting
+                  ? 'جاري تجهيز الطباعة...'
+                  : 'طباعة باركود المشتريات'}
+              </button>
+              <button
+                type="button"
+                disabled={barcodePrinting}
+                onClick={() => setBarcodePurchaseId(null)}
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.20)',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontWeight: 800,
+                }}
+              >
+                تخطي الطباعة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <PurchaseOrdersPanel
         open={purchaseOrdersOpen}

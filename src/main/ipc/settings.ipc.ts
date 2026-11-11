@@ -8,6 +8,7 @@ import {
   clearAuthSession,
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
+  requireAnyPermission,
 } from '../auth-session';
 import { logAction, runCriticalActionWithAudit } from './activity-helper';
 import fs from 'node:fs';
@@ -488,7 +489,7 @@ function normalizeReceiptPrintSettings(input: unknown) {
 
 export function registerSettingsIpc(): void {
   ipcMain.handle('settings:get-barcode-print', (event) => {
-    requireAuthenticatedAdmin(event);
+    requireAnyPermission(event, ['products.manage', 'purchases.manage']);
 
     return getBarcodePrintSettings();
   });

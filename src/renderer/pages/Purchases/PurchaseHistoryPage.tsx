@@ -5,6 +5,7 @@ import {
   getPaymentMethodLabel,
 } from '../../utils/payment-method';
 import { useNavigate } from 'react-router-dom';
+import { printPurchaseInvoiceBarcodes } from '../../utils/purchase-barcode-print';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
@@ -99,6 +100,9 @@ export default function PurchaseHistoryPage() {
   const [message, setMessage] = useState('');
 
   const [selectedPurchase, setSelectedPurchase] = useState<any | null>(null);
+  const [printingPurchaseId, setPrintingPurchaseId] = useState<number | null>(
+    null,
+  );
   const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
 
   const [paymentPurchase, setPaymentPurchase] = useState<PurchaseRow | null>(
@@ -250,6 +254,24 @@ export default function PurchaseHistoryPage() {
 
     return () => clearTimeout(handle);
   }, [search, activeTab, paymentFilter, dateFrom, dateTo]);
+
+  async function printHistoryPurchaseBarcodes(purchaseId: number) {
+    if (printingPurchaseId !== null) return;
+    setPrintingPurchaseId(purchaseId);
+    try {
+      const result = await printPurchaseInvoiceBarcodes(purchaseId);
+      if (result.ok) {
+        showMessage(`تم إرسال ${result.total} ملصق باركود للطباعة`);
+      } else if (!result.canceled) {
+        showMessage(result.message || 'تعذر طباعة باركود المشتريات');
+      }
+    } catch (error) {
+      console.error('Purchase barcode reprint failed:', error);
+      showMessage(getErrorMessage(error, 'تعذر طباعة باركود المشتريات'));
+    } finally {
+      setPrintingPurchaseId(null);
+    }
+  }
 
   async function openDetails(purchaseId: number) {
     try {
@@ -2036,6 +2058,28 @@ export default function PurchaseHistoryPage() {
                   إنشاء مرتجع
                 </button>
               )}
+
+              {selectedPurchase.purchase.status !== 'cancelled' &&
+                selectedPurchase.purchase.status !== 'opening_balance' && (
+                  <button
+                    type="button"
+                    disabled={printingPurchaseId !== null}
+                    onClick={() =>
+                      void printHistoryPurchaseBarcodes(
+                        Number(selectedPurchase.purchase.id),
+                      )
+                    }
+                    style={{
+                      ...secondaryButtonStyle,
+                      borderColor: '#22c55e',
+                      color: '#86efac',
+                    }}
+                  >
+                    {printingPurchaseId === Number(selectedPurchase.purchase.id)
+                      ? 'جاري الطباعة...'
+                      : 'طباعة باركود أصناف الفاتورة'}
+                  </button>
+                )}
 
               <button
                 type="button"
