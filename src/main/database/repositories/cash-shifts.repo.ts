@@ -1944,8 +1944,16 @@ export function getCashShiftDetails(shiftIdInput: number) {
           s.cancelled_at IS NOT NULL
 
           AND (
-            s.cancelled_shift_id IS NULL
-            OR s.cancelled_shift_id = s.shift_id
+            s.cancelled_shift_id = s.shift_id
+
+            OR (
+              s.cancelled_shift_id IS NULL
+
+              AND IFNULL(
+                s.cancelled_outside_shift,
+                0
+              ) = 0
+            )
           )
 
         THEN s.cancelled_at
@@ -1958,8 +1966,16 @@ export function getCashShiftDetails(shiftIdInput: number) {
           s.cancelled_at IS NOT NULL
 
           AND (
-            s.cancelled_shift_id IS NULL
-            OR s.cancelled_shift_id = s.shift_id
+            s.cancelled_shift_id = s.shift_id
+
+            OR (
+              s.cancelled_shift_id IS NULL
+
+              AND IFNULL(
+                s.cancelled_outside_shift,
+                0
+              ) = 0
+            )
           )
 
         THEN s.cancel_reason
@@ -2053,6 +2069,13 @@ export function getCashShiftDetails(shiftIdInput: number) {
       current_net_total: currentNetTotal,
 
       paid_amount: Math.min(currentNetTotal, paidAmount),
+      payment_status: sale.cancelled_at
+        ? 'cancelled'
+        : remainingAmount === 0
+          ? 'paid'
+          : paidAmount > 0
+            ? 'partial'
+            : 'unpaid',
     };
   });
 
@@ -2129,6 +2152,11 @@ export function getCashShiftDetails(shiftIdInput: number) {
           s.cancelled_shift_id IS NULL
 
           AND s.shift_id = ?
+
+          AND IFNULL(
+            s.cancelled_outside_shift,
+            0
+          ) = 0
         )
       )
     `,

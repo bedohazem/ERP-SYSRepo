@@ -27,6 +27,7 @@ import {
 import {
   getOpenCashShift,
   resolveFinancialOperationShift,
+  getAttributableOpenCashShift,
 } from './cash-shifts.repo';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 import { getShiftBusinessDate } from '../shift-business-date';
@@ -3323,16 +3324,17 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
     const resolvedRefundAccount = resolveCashAccount(refundPaymentMethod);
 
-    const openShift =
-      refundMode === 'cash' && cashRefundAmount > 0
-        ? resolveFinancialOperationShift(
-            actorId,
+    const financialShift = resolveFinancialOperationShift(
+      actorId,
 
-            [resolvedRefundAccount],
+      [resolvedRefundAccount],
 
-            'لا يمكن استلام كاش مرتجع شراء في درج المحل بدون شفت مفتوح',
-          )
-        : null;
+      'لا يمكن استلام كاش مرتجع شراء في درج المحل بدون شفت مفتوح',
+
+      refundMode === 'cash' && cashRefundAmount > 0,
+    );
+
+    const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
     const businessDate = resolveFinancialBusinessDate(openShift?.id ?? null);
 
@@ -3820,16 +3822,17 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       'store_cash',
   );
 
-  const openShift =
-    cashRefundAmount > 0
-      ? resolveFinancialOperationShift(
-          actorId,
+  const financialShift = resolveFinancialOperationShift(
+    actorId,
 
-          [refundAccount],
+    [refundAccount],
 
-          'لا يمكن إلغاء مرتجع شراء يؤثر على درج المحل بدون شفت مفتوح',
-        )
-      : null;
+    'لا يمكن إلغاء مرتجع شراء يؤثر على درج المحل بدون شفت مفتوح',
+
+    cashRefundAmount > 0,
+  );
+
+  const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   const cancellationBusinessDate = resolveFinancialBusinessDate(
     openShift?.id ?? null,
@@ -3963,6 +3966,8 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
           cancelled_shift_id = ?,
 
+          cancelled_outside_shift = ?,
+
           cancel_reason = ?
 
         WHERE id = ?
@@ -3971,6 +3976,8 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
       actorId,
 
       openShift?.id ?? null,
+
+      openShift ? 0 : 1,
 
       reason,
 

@@ -6,6 +6,10 @@ import {
   preciseAdd,
   preciseSubtract,
 } from '../../../shared/money';
+import {
+  getSalesHistoryReport,
+  getSalesTodaySummary,
+} from './sales-history-report.repo';
 
 type ReportFilter = {
   date_from?: string;
@@ -330,15 +334,12 @@ export function getAdminDashboardTodaySummary(businessDate: string) {
       }
     | undefined;
 
-  return {
-    sales_count: Number(row?.sales_count || 0),
-
-    net_sales: reportMoney(row?.net_sales || 0),
-  };
+  return getSalesTodaySummary(businessDate);
 }
 
 export function getReportsSummary(input?: ReportFilter) {
   const db = getDb();
+  const history = getSalesHistoryReport(input);
 
   const saleBusinessDate = buildShiftBusinessDateExpression(
     's.shift_id',
@@ -401,6 +402,28 @@ export function getReportsSummary(input?: ReportFilter) {
     'pr.created_at',
     'pr.business_date',
   );
+
+  const purchaseReturnCancelledBusinessDate = buildShiftBusinessDateExpression(
+    'pr.cancelled_shift_id',
+    'pr.cancelled_at',
+  );
+
+  const purchaseReturnCancelledLaterSql = `
+    pr.cancelled_at IS NOT NULL
+
+    AND (
+      IFNULL(pr.cancelled_outside_shift, 0) = 1
+
+      OR (
+        pr.cancelled_shift_id IS NOT NULL
+
+        AND (
+          pr.shift_id IS NULL
+          OR pr.cancelled_shift_id <> pr.shift_id
+        )
+      )
+    )
+  `;
 
   const supplierPaymentBusinessDate = buildShiftBusinessDateExpression(
     'spb.shift_id',
@@ -1272,14 +1295,23 @@ export function getReportsSummary(input?: ReportFilter) {
 
   const purchaseReturnsWhere = buildWhere(
     'pr',
-
     input,
-
-    [`pr.cancelled_at IS NULL`],
-
+    [
+      `(
+        pr.cancelled_at IS NULL
+        OR (${purchaseReturnCancelledLaterSql})
+      )`,
+    ],
     undefined,
-
     purchaseReturnBusinessDate,
+  );
+
+  const cancelledPurchaseReturnsWhere = buildWhere(
+    'pr',
+    input,
+    [`(${purchaseReturnCancelledLaterSql})`],
+    undefined,
+    purchaseReturnCancelledBusinessDate,
   );
 
   const supplierPaymentBatchesWhere = buildWhere(
@@ -1507,6 +1539,25 @@ export function getReportsSummary(input?: ReportFilter) {
            pr.purchase_id
 
       ${purchaseReturnsWhere.whereSql}
+
+      UNION ALL
+
+      /*
+      * عكس فرق تقريب مرتجع الشراء
+      * في تاريخ إلغائه الفعلي.
+      */
+      SELECT
+        -IFNULL(
+          pr.rounding_adjustment,
+          0
+        ) AS adjustment
+
+      FROM purchase_returns pr
+
+      JOIN purchase_invoices pi
+        ON pi.id = pr.purchase_id
+
+      ${cancelledPurchaseReturnsWhere.whereSql}
     ) x
     `,
     )
@@ -1516,6 +1567,7 @@ export function getReportsSummary(input?: ReportFilter) {
       ...supplierPaymentBatchesWhere.params,
 
       ...purchaseReturnsWhere.params,
+      ...cancelledPurchaseReturnsWhere.params,
     ) as {
     purchase_rounding_increase: number;
 
@@ -1690,7 +1742,10 @@ export function getReportsSummary(input?: ReportFilter) {
   const finalNetProfit = preciseSubtract(
     preciseAdd(
       preciseSubtract(
-        preciseSubtract(netProfitAfterDiscounts, totalExpenses),
+        preciseSubtract(
+          history.summary.net_profit_after_discounts,
+          totalExpenses,
+        ),
         purchaseRoundingNet,
       ),
       approvedClosingSurplus,
@@ -2990,22 +3045,17 @@ export function getReportsSummary(input?: ReportFilter) {
 
   return {
     summary: {
-      sales_count: Number(salesSummary.sales_count || 0),
-      exchange_count: Number(exchangeSummary.exchange_count || 0),
-      exchange_adjustment: exchangeAdjustment,
+      sales_count: history.summary.sales_count,
+      exchange_count: history.summary.exchange_count,
+      exchange_adjustment: history.summary.exchange_adjustment,
       approved_closing_surplus: approvedClosingSurplus,
       approved_closing_shortage: approvedClosingShortage,
-      exchange_cash_collection: Number(
-        exchangeSummary.exchange_cash_collection || 0,
-      ),
-
-      exchange_cash_refund: Number(exchangeSummary.exchange_cash_refund || 0),
-
-      exchange_debt_reduction: Number(
-        exchangeSummary.exchange_debt_reduction || 0,
-      ),
-      exchange_discount_adjustment: exchangeDiscountAdjustment,
-      returns_count: Number(returnsSummary.returns_count || 0),
+      exchange_cash_collection: history.summary.exchange_cash_collection,
+      exchange_cash_refund: history.summary.exchange_cash_refund,
+      exchange_debt_reduction: history.summary.exchange_debt_reduction,
+      exchange_discount_adjustment:
+        history.summary.exchange_discount_adjustment,
+      returns_count: history.summary.returns_count,
       cancelled_sales_count: Number(
         cancelledSalesRow.cancelled_sales_count || 0,
       ),
@@ -3013,16 +3063,17 @@ export function getReportsSummary(input?: ReportFilter) {
       cancelled_returns_count: Number(
         cancelledReturnsRow.cancelled_returns_count || 0,
       ),
-      gross_sales: grossSales,
-      total_returns: totalReturns,
-      product_discounts: productDiscounts,
-      normal_discounts: normalDiscounts,
-      promotion_discounts: promotionDiscounts,
-      loyalty_discounts: loyaltyDiscounts,
-      total_discounts: totalDiscounts,
-      net_sales: grossSales - totalReturns,
-      gross_profit_before_discounts: grossProfitBeforeDiscounts,
-      net_profit_after_discounts: netProfitAfterDiscounts,
+      gross_sales: history.summary.gross_sales,
+      total_returns: history.summary.total_returns,
+      product_discounts: history.summary.product_discounts,
+      normal_discounts: history.summary.normal_discounts,
+      promotion_discounts: history.summary.promotion_discounts,
+      loyalty_discounts: history.summary.loyalty_discounts,
+      total_discounts: history.summary.total_discounts,
+      net_sales: history.summary.net_sales,
+      gross_profit_before_discounts:
+        history.summary.gross_profit_before_discounts,
+      net_profit_after_discounts: history.summary.net_profit_after_discounts,
       total_expenses: totalExpenses,
       total_liability_payments: totalLiabilityPayments,
       total_purchase_invoices: totalPurchaseInvoices,
@@ -3038,13 +3089,13 @@ export function getReportsSummary(input?: ReportFilter) {
     },
     cashAccounts,
     cashAccountsTotalBalance,
-    topProducts,
-    dailySales,
+    topProducts: history.topProducts,
+    dailySales: history.dailySales,
     paymentMethods,
-    cashierSales,
-    salespersonSales,
+    cashierSales: history.cashierSales,
+    salespersonSales: history.salespersonSales,
     lowStock,
-    topCustomers,
+    topCustomers: history.topCustomers,
   };
 }
 

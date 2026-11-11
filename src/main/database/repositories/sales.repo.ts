@@ -5205,12 +5205,19 @@ export function cancelSaleInvoice(input: {
         cancelled_at = CURRENT_TIMESTAMP,
         cancelled_by = ?,
         cancelled_shift_id = ?,
+        cancelled_outside_shift = ?,
         cancel_reason = ?,
         payment_status = 'cancelled',
         remaining_amount = 0
       WHERE id = ?
       `,
-    ).run(input.actor_id ?? null, openShift?.id ?? null, reason, saleId);
+    ).run(
+      input.actor_id ?? null,
+      openShift?.id ?? null,
+      openShift ? 0 : 1,
+      reason,
+      saleId,
+    );
 
     if (customerId) {
       syncCustomerTotalSpent(customerId);

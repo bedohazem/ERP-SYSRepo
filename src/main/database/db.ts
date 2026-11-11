@@ -4413,6 +4413,29 @@ export function getDb(): Database.Database {
           );
         },
       },
+
+      {
+        version: 37,
+        name: 'track-sale-cancellation-outside-shift',
+
+        up: () => {
+          safeAddColumn(db, 'sales', 'cancelled_outside_shift', 'INTEGER');
+        },
+      },
+
+      {
+        version: 38,
+        name: 'track-purchase-return-cancellation-outside-shift',
+
+        up: () => {
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'cancelled_outside_shift',
+            'INTEGER',
+          );
+        },
+      },
     ]);
 
     seedTestAdminUser(db);
