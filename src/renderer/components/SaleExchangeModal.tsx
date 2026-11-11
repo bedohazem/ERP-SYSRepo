@@ -279,8 +279,24 @@ export default function SaleExchangeModal({
 
   const [error, setError] = useState('');
 
+  const [pendingSearch, setPendingSearch] = useState<{
+    unitId: number;
+    query: string;
+  } | null>(null);
+
+  const [activeSearchUnitId, setActiveSearchUnitId] = useState<number | null>(
+    null,
+  );
+
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeResultIndex, setActiveResultIndex] = useState(-1);
+
   useEffect(() => {
     if (!saleId) {
+      setPendingSearch(null);
+      setActiveSearchUnitId(null);
+      setActiveResultIndex(-1);
+      setIsSearching(false);
       setState(null);
       setGroupId('');
       setDrafts([]);
@@ -663,43 +679,101 @@ export default function SaleExchangeModal({
     };
   }, [state, selectedGroup, selectedIsPromotion, drafts, activePromotions]);
 
-  function isEligibleVariant(variant: any) {
-    if (!state || !selectedGroup) {
-      return false;
+  useEffect(() => {
+    if (!pendingSearch?.query.trim() || !selectedGroup) {
+      return;
     }
 
-    /*
-     * الفاتورة العادية:
-     * أي Variant فعال مسموح.
-     */
-    if (selectedGroup.group_kind === 'regular') {
-      return true;
-    }
+    let active = true;
 
-    const snapshot = selectedGroup.promotion_snapshot;
+    const unitId = pendingSearch.unitId;
+    const query = pendingSearch.query.trim();
 
-    if (!snapshot) {
-      return false;
-    }
+    const unit = selectedGroup.units.find((item) => Number(item.id) === unitId);
 
-    if (snapshot.scope_type === 'all') {
-      return true;
-    }
+    if (!unit) return;
 
-    if (snapshot.scope_type === 'category') {
-      return Number(variant.category_id) === Number(snapshot.category_id);
-    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const results = await window.api.searchSaleVariants({
+          query,
+          categoryId:
+            selectedGroup.group_kind === 'promotion' &&
+            selectedGroup.promotion_snapshot?.scope_type === 'category'
+              ? selectedGroup.promotion_snapshot.category_id
+              : null,
+          limit: 30,
+        });
 
-    if (snapshot.scope_type === 'products') {
-      return (snapshot.product_ids || [])
-        .map(Number)
-        .includes(Number(variant.product_id));
-    }
+        if (!active) return;
 
-    return false;
-  }
+        const eligible = (Array.isArray(results) ? results : []).filter(
+          (variant: any) => {
+            if (
+              Number(variant.variant_id) === Number(unit.current_variant_id)
+            ) {
+              return false;
+            }
+
+            if (selectedGroup.group_kind === 'regular') {
+              return true;
+            }
+
+            const snapshot = selectedGroup.promotion_snapshot;
+
+            if (!snapshot) return false;
+
+            if (snapshot.scope_type === 'all') {
+              return true;
+            }
+
+            if (snapshot.scope_type === 'category') {
+              return (
+                Number(variant.category_id) === Number(snapshot.category_id)
+              );
+            }
+
+            if (snapshot.scope_type === 'products') {
+              return (snapshot.product_ids || [])
+                .map(Number)
+                .includes(Number(variant.product_id));
+            }
+
+            return false;
+          },
+        );
+
+        setDrafts((previous) =>
+          previous.map((draft) =>
+            draft.promotion_unit_id === unitId &&
+            draft.query === pendingSearch.query &&
+            !draft.new_variant
+              ? { ...draft, results: eligible }
+              : draft,
+          ),
+        );
+      } catch (searchError) {
+        if (!active) return;
+
+        setError(getErrorMessage(searchError, 'تعذر البحث عن الصنف البديل'));
+      } finally {
+        if (active) {
+          setIsSearching(false);
+        }
+      }
+    }, 160);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [pendingSearch, selectedGroup]);
 
   function startSingleExchange(group: ExchangeGroup, unit: ExchangeUnit) {
+    setPendingSearch(null);
+    setActiveSearchUnitId(null);
+    setActiveResultIndex(-1);
+    setIsSearching(false);
     setGroupId(String(group.promotion_group_id));
 
     setDrafts([createDraft(unit)]);
@@ -708,6 +782,10 @@ export default function SaleExchangeModal({
   }
 
   function startWholeGroupExchange(group: ExchangeGroup) {
+    setPendingSearch(null);
+    setActiveSearchUnitId(null);
+    setActiveResultIndex(-1);
+    setIsSearching(false);
     setGroupId(String(group.promotion_group_id));
 
     setDrafts(group.units.map(createDraft));
@@ -728,71 +806,13 @@ export default function SaleExchangeModal({
           : draft,
       ),
     );
-  }
 
-  async function searchReplacement(promotionUnitId: number) {
-    if (!state) {
-      return;
-    }
+    setPendingSearch(query.trim() ? { unitId: promotionUnitId, query } : null);
 
-    const draft = drafts.find(
-      (item) => item.promotion_unit_id === promotionUnitId,
-    );
-
-    if (!draft) {
-      return;
-    }
-
-    const query = draft.query.trim();
-
-    if (!query) {
-      setError('اكتب اسم أو باركود الصنف البديل');
-      return;
-    }
-
-    try {
-      setError('');
-
-      const results = await window.api.searchSaleVariants({
-        query,
-
-        categoryId:
-          selectedGroup?.group_kind === 'promotion' &&
-          selectedGroup?.promotion_snapshot?.scope_type === 'category'
-            ? selectedGroup.promotion_snapshot?.category_id
-            : null,
-
-        limit: 30,
-      });
-
-      const eligible = (results || []).filter(
-        (variant: any) =>
-          Number(variant.variant_id) !== Number(draft.current_variant_id) &&
-          isEligibleVariant(variant),
-      );
-
-      setDrafts((previous) =>
-        previous.map((item) =>
-          item.promotion_unit_id === promotionUnitId
-            ? {
-                ...item,
-                results: eligible,
-                new_variant: eligible.length === 1 ? eligible[0] : null,
-              }
-            : item,
-        ),
-      );
-
-      if (eligible.length === 0) {
-        setError(
-          selectedGroup?.group_kind === 'promotion'
-            ? 'لم يتم العثور على صنف بديل مؤهل لنفس العرض الأصلي'
-            : 'لم يتم العثور على صنف بديل متاح',
-        );
-      }
-    } catch (searchError) {
-      setError(getErrorMessage(searchError, 'تعذر البحث عن الصنف البديل'));
-    }
+    setActiveSearchUnitId(promotionUnitId);
+    setActiveResultIndex(-1);
+    setIsSearching(Boolean(query.trim()));
+    setError('');
   }
 
   function chooseReplacement(promotionUnitId: number, variantId: number) {
@@ -806,12 +826,24 @@ export default function SaleExchangeModal({
           (item: any) => Number(item.variant_id) === Number(variantId),
         );
 
+        if (!variant) return draft;
+
         return {
           ...draft,
-          new_variant: variant || null,
+          query: [variant.product_name, variant.size, variant.color]
+            .filter(Boolean)
+            .join(' — '),
+          results: [],
+          new_variant: variant,
         };
       }),
     );
+
+    setPendingSearch(null);
+    setActiveSearchUnitId(null);
+    setActiveResultIndex(-1);
+    setIsSearching(false);
+    setError('');
   }
 
   async function submitExchange() {
@@ -1449,14 +1481,25 @@ export default function SaleExchangeModal({
 
                     <div
                       style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'minmax(200px, 1fr) 110px',
-                        gap: '8px',
+                        position: 'relative',
+                        width: '100%',
+                        minWidth: 0,
                       }}
                     >
                       <input
-                        placeholder="اسم أو باركود الصنف البديل"
+                        autoComplete="off"
+                        placeholder="اكتب اسم الصنف او الباركود البديل..."
                         value={draft.query}
+                        onFocus={() =>
+                          setActiveSearchUnitId(draft.promotion_unit_id)
+                        }
+                        onBlur={() =>
+                          setActiveSearchUnitId((current) =>
+                            current === draft.promotion_unit_id
+                              ? null
+                              : current,
+                          )
+                        }
                         onChange={(event) =>
                           updateDraftQuery(
                             draft.promotion_unit_id,
@@ -1464,52 +1507,158 @@ export default function SaleExchangeModal({
                           )
                         }
                         onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            setActiveSearchUnitId(null);
+                            return;
+                          }
+
+                          if (
+                            event.key === 'ArrowDown' &&
+                            draft.results.length > 0
+                          ) {
+                            event.preventDefault();
+                            setActiveResultIndex((index) =>
+                              Math.min(index + 1, draft.results.length - 1),
+                            );
+                          }
+
+                          if (
+                            event.key === 'ArrowUp' &&
+                            draft.results.length > 0
+                          ) {
+                            event.preventDefault();
+                            setActiveResultIndex((index) =>
+                              Math.max(-1, index - 1),
+                            );
+                          }
+
                           if (event.key === 'Enter') {
                             event.preventDefault();
 
-                            void searchReplacement(draft.promotion_unit_id);
+                            if (
+                              activeSearchUnitId === draft.promotion_unit_id &&
+                              draft.results.length > 0
+                            ) {
+                              const variant =
+                                draft.results[Math.max(0, activeResultIndex)];
+
+                              if (variant) {
+                                chooseReplacement(
+                                  draft.promotion_unit_id,
+                                  Number(variant.variant_id),
+                                );
+                              }
+                            }
                           }
                         }}
-                        style={inputStyle}
+                        style={{
+                          ...inputStyle,
+                          width: '100%',
+                        }}
                       />
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void searchReplacement(draft.promotion_unit_id)
-                        }
-                        style={smallButtonStyle}
-                      >
-                        بحث
-                      </button>
-                    </div>
-
-                    {draft.results.length > 0 && (
-                      <select
-                        value={draft.new_variant?.variant_id || ''}
-                        onChange={(event) =>
-                          chooseReplacement(
-                            draft.promotion_unit_id,
-                            Number(event.target.value),
-                          )
-                        }
-                        style={inputStyle}
-                      >
-                        <option value="">اختار الصنف البديل</option>
-
-                        {draft.results.map((variant: any) => (
-                          <option
-                            key={variant.variant_id}
-                            value={variant.variant_id}
+                      {activeSearchUnitId === draft.promotion_unit_id &&
+                        Boolean(draft.query.trim()) &&
+                        !draft.new_variant && (
+                          <div
+                            className="theme-popover theme-dropdown"
+                            style={{
+                              position: 'absolute',
+                              top: 'calc(100% + 5px)',
+                              right: 0,
+                              left: 0,
+                              zIndex: 100,
+                              maxHeight: '260px',
+                              overflowY: 'auto',
+                              background: '#111827',
+                              border: '1px solid rgba(148,163,184,0.25)',
+                              borderRadius: '12px',
+                              boxShadow: '0 18px 40px rgba(0,0,0,0.45)',
+                              direction: 'rtl',
+                            }}
                           >
-                            {variant.product_name} — {variant.size || '—'} /{' '}
-                            {variant.color || '—'} — {money(variant.sell_price)}
-                            {' — مخزون '}
-                            {Number(variant.stock || 0)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                            {isSearching &&
+                            pendingSearch?.unitId ===
+                              draft.promotion_unit_id ? (
+                              <div
+                                style={{
+                                  padding: '14px',
+                                  color: '#94a3b8',
+                                }}
+                              >
+                                جاري البحث...
+                              </div>
+                            ) : draft.results.length === 0 ? (
+                              <div
+                                style={{
+                                  padding: '14px',
+                                  color: '#94a3b8',
+                                }}
+                              >
+                                لا توجد أصناف بديلة مطابقة
+                              </div>
+                            ) : (
+                              draft.results.map(
+                                (variant: any, index: number) => (
+                                  <button
+                                    key={variant.variant_id}
+                                    type="button"
+                                    onMouseDown={(event) =>
+                                      event.preventDefault()
+                                    }
+                                    onMouseEnter={() =>
+                                      setActiveResultIndex(index)
+                                    }
+                                    onClick={() =>
+                                      chooseReplacement(
+                                        draft.promotion_unit_id,
+                                        Number(variant.variant_id),
+                                      )
+                                    }
+                                    style={{
+                                      display: 'grid',
+                                      gap: '5px',
+                                      width: '100%',
+                                      border: 'none',
+                                      borderBottom:
+                                        '1px solid rgba(148,163,184,0.10)',
+                                      background:
+                                        activeResultIndex === index
+                                          ? 'rgba(96,165,250,0.15)'
+                                          : 'transparent',
+                                      color: '#f8fafc',
+                                      padding: '12px 14px',
+                                      textAlign: 'right',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    <strong
+                                      style={{ overflowWrap: 'anywhere' }}
+                                    >
+                                      {variant.product_name}
+                                      {' — '}
+                                      {variant.size || '—'}
+                                      {' / '}
+                                      {variant.color || '—'}
+                                    </strong>
+
+                                    <span
+                                      style={{
+                                        color: '#94a3b8',
+                                        fontSize: '12px',
+                                      }}
+                                    >
+                                      سعر البيع: {money(variant.sell_price)}
+                                      {' • '}
+                                      المخزون: {Number(variant.stock || 0)}
+                                    </span>
+                                  </button>
+                                ),
+                              )
+                            )}
+                          </div>
+                        )}
+                    </div>
 
                     {!selectedIsPromotion &&
                       draft.new_variant &&
