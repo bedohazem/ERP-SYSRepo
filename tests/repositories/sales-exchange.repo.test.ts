@@ -34,6 +34,7 @@ import {
   getCashSummary,
 } from '../../src/main/database/repositories/cash.repo';
 import { createUser } from '../../src/main/database/repositories/user.repo';
+import { getReportsSummary } from '../../src/main/database/repositories/reports.repo';
 
 type TestVariant = {
   variant_id: number;
@@ -2793,6 +2794,10 @@ describe('sale promotion exchanges', () => {
     expect(original.financials.current_normal_discount_value).toBe(20);
     expect(original.financials.net_grand_total).toBe(530);
 
+    const profitBeforeExchange = getReportsSummary();
+
+    expect(profitBeforeExchange.summary.net_profit_after_discounts).toBe(210);
+
     const state = getSaleExchangeState(sale.saleId);
 
     const regularGroup = state.groups.find(
@@ -2841,6 +2846,10 @@ describe('sale promotion exchanges', () => {
     expect(afterExchange.financials.current_normal_discount_value).toBe(16);
     expect(afterExchange.financials.net_grand_total).toBe(554);
 
+    const profitAfterExchange = getReportsSummary();
+
+    expect(profitAfterExchange.summary.net_profit_after_discounts).toBe(224);
+
     /*
      * إرجاع مجموعة العرض كاملة:
      *
@@ -2883,6 +2892,11 @@ describe('sale promotion exchanges', () => {
 
     // المتبقي هو المنتج البديل 120 بلا خصم موروث.
     expect(finalState.financials.net_grand_total).toBe(120);
+
+    const profitAfterReturn = getReportsSummary();
+
+    expect(profitAfterReturn.summary.net_profit_after_discounts).toBe(60);
+    expect(profitAfterReturn.summary.final_net_profit).toBe(60);
 
     // مراجعة التسوية النقدية كاملة.
     expect(530 + exchange.amount_to_collect - saleReturn.return_value).toBe(
