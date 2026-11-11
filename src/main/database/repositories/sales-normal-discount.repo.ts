@@ -144,35 +144,74 @@ export function getRetainedOriginalNormalDiscount(
     return 0;
   }
 
+  /*
+   * نقرب نصيب كل صنف أولًا لأقرب جنيه،
+   * ثم نسوّي أي فرق حتى يساوي مجموع
+   * الأنصبة خصم الفاتورة بالضبط.
+   *
+   * نحافظ على أولوية أول صنف عند
+   * معالجة الزيادة، لتتوافق المرتجعات
+   * مع ترتيب التقريب التاريخي.
+   *
+   * التوزيع ثابت ولا يتأثر بترتيب
+   * الاستبدالات أو المرتجعات اللاحقة.
+   */
   let allocatedTotal = 0;
 
   for (const item of allocations) {
     const numerator = originalDiscount * item.weight;
 
-    item.discount = Math.floor(numerator / totalWeight);
+    item.discount = roundMoney(numerator / totalWeight);
 
     item.remainder = numerator - item.discount * totalWeight;
 
     allocatedTotal += item.discount;
   }
 
-  /*
-   * نوزع الجنيهات المتبقية على أكبر
-   * كسور، مع ترتيب ثابت عند التساوي.
-   */
-  const byRemainder = [...allocations].sort(
-    (a, b) => b.remainder - a.remainder || a.itemId - b.itemId,
-  );
+  const firstItemId = allocations[0]?.itemId;
 
-  let undistributed = originalDiscount - allocatedTotal;
+  while (allocatedTotal !== originalDiscount) {
+    if (allocatedTotal < originalDiscount) {
+      /*
+       * لو ناقص جنيه:
+       * نضيفه للصنف صاحب أكبر عجز
+       * عن نصيبه الدقيق.
+       */
+      const next = allocations
+        .filter((item) => item.discount < item.weight)
+        .sort((a, b) => b.remainder - a.remainder || a.itemId - b.itemId)[0];
 
-  for (const item of byRemainder) {
-    if (undistributed <= 0) {
-      break;
+      if (!next) {
+        throw new Error('تعذر استكمال توزيع خصم الفاتورة');
+      }
+
+      next.discount += 1;
+      next.remainder -= totalWeight;
+      allocatedTotal += 1;
+    } else {
+      /*
+       * لو التقريب زوّد جنيه:
+       * نزيله من الأنصبة المقربة للأعلى،
+       * مع الحفاظ على أولوية الصنف الأول.
+       */
+      const next = allocations
+        .filter((item) => item.discount > 0)
+        .sort(
+          (a, b) =>
+            Number(a.itemId === firstItemId) -
+              Number(b.itemId === firstItemId) ||
+            a.remainder - b.remainder ||
+            a.itemId - b.itemId,
+        )[0];
+
+      if (!next) {
+        throw new Error('تعذر تصحيح توزيع خصم الفاتورة');
+      }
+
+      next.discount -= 1;
+      next.remainder += totalWeight;
+      allocatedTotal -= 1;
     }
-
-    item.discount += 1;
-    undistributed -= 1;
   }
 
   /*

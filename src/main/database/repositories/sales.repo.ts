@@ -46,6 +46,199 @@ function splitCostValueAcrossWholeUnits(
   );
 }
 
+function buildRegularExchangeGroupId(saleItemId: number, unitIndex: number) {
+  return `regular:${saleItemId}:${unitIndex}`;
+}
+
+export function ensureRegularSaleUnits(
+  db: ReturnType<typeof getDb>,
+  saleId: number,
+) {
+  const apply = () => {
+    const items = db
+      .prepare(
+        `
+        SELECT
+          si.*,
+
+          IFNULL(
+            (
+              SELECT
+                SUM(sri.quantity)
+
+              FROM sale_returns sr
+
+              JOIN sale_return_items sri
+                ON sri.return_id =
+                  sr.id
+
+              WHERE
+                sr.original_sale_id =
+                  si.sale_id
+
+                AND sr.cancelled_at
+                  IS NULL
+
+                AND
+                  sri.original_sale_item_id
+                  = si.id
+            ),
+            0
+          ) AS returned_quantity
+
+        FROM sale_items si
+
+        WHERE
+          si.sale_id = ?
+
+          AND
+            si.promotion_group_id
+            IS NULL
+
+        ORDER BY si.id ASC
+        `,
+      )
+      .all(saleId) as any[];
+
+    const getExistingCount = db.prepare(
+      `
+        SELECT
+          COUNT(*) AS count
+
+        FROM sale_promotion_units
+
+        WHERE
+          sale_id = ?
+
+          AND
+            original_sale_item_id = ?
+
+          AND
+            promotion_group_id
+            LIKE 'regular:%'
+        `,
+    );
+
+    const insertUnit = db.prepare(
+      `
+        INSERT INTO sale_promotion_units (
+          sale_id,
+          original_sale_item_id,
+          promotion_group_id,
+
+          original_variant_id,
+          current_variant_id,
+
+          original_unit_price,
+          current_unit_price,
+          original_list_unit_price,
+          current_list_unit_price,
+          original_unit_cost,
+          current_unit_cost,
+          original_cost_value,
+          current_cost_value,
+          original_is_gift,
+          current_is_gift,
+
+          is_returned
+        )
+
+        VALUES (
+          ?, ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          0, 0,
+          ?
+        )
+        `,
+    );
+
+    for (const item of items) {
+      const quantity = Number(item.quantity || 0);
+
+      /*
+       * الاستبدال هنا Piece-based.
+       * أي كمية كسرية تفضل على مسار
+       * المرتجع التقليدي ولا ننشئ لها Units.
+       */
+      if (quantity <= 0 || !Number.isInteger(quantity)) {
+        continue;
+      }
+
+      const itemCostValue = roundCost(
+        Number(item.cost_value ?? Number(item.unit_cost || 0) * quantity),
+      );
+
+      const unitCostValues = splitCostValueAcrossWholeUnits(
+        itemCostValue,
+        quantity,
+      );
+
+      const existing = getExistingCount.get(saleId, Number(item.id)) as {
+        count: number;
+      };
+
+      const existingCount = Number(existing?.count || 0);
+
+      if (existingCount > 0) {
+        if (existingCount !== quantity) {
+          throw new Error('بيانات وحدات الفاتورة غير مكتملة');
+        }
+
+        continue;
+      }
+
+      const returnedQuantity = Math.min(
+        quantity,
+        Math.max(0, Math.floor(Number(item.returned_quantity || 0))),
+      );
+
+      for (let index = 0; index < quantity; index += 1) {
+        insertUnit.run(
+          saleId,
+
+          Number(item.id),
+
+          buildRegularExchangeGroupId(Number(item.id), index + 1),
+
+          Number(item.variant_id),
+          Number(item.variant_id),
+
+          Number(item.unit_price || 0),
+
+          Number(item.unit_price || 0),
+          Math.max(
+            Number(item.unit_price || 0),
+            Number(item.list_unit_price ?? item.unit_price ?? 0),
+          ),
+
+          Math.max(
+            Number(item.unit_price || 0),
+            Number(item.list_unit_price ?? item.unit_price ?? 0),
+          ),
+          Number(item.unit_cost || 0),
+
+          Number(item.unit_cost || 0),
+          unitCostValues[index],
+
+          unitCostValues[index],
+          index < returnedQuantity ? 1 : 0,
+        );
+      }
+    }
+  };
+
+  if (db.inTransaction) {
+    apply();
+    return;
+  }
+
+  db.transaction(apply)();
+}
+
 export type CreateSaleLineInput = {
   variant_id: number;
   product_name: string;
@@ -2533,6 +2726,16 @@ export function createSaleReturn(input: {
     if (originalSale.cancelled_at) {
       throw new Error('لا يمكن عمل مرتجع على فاتورة ملغاة');
     }
+
+    /*
+     * تجهيز وحدات الأصناف العادية قبل حساب المرتجع.
+     *
+     * نفس الدالة المستخدمة في الاستبدال،
+     * وتعمل داخل Transaction الحالية.
+     *
+     * تكرار استدعائها لا ينشئ وحدات مكررة.
+     */
+    ensureRegularSaleUnits(db, originalSaleId);
 
     const rawRefundPaymentMethod =
       input.refund_payment_method?.trim() ||

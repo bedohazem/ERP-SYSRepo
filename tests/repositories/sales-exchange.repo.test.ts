@@ -3196,9 +3196,6 @@ describe('sale promotion exchanges', () => {
       })),
     });
 
-    // تجهيز وحدات الفاتورة قبل أول مرتجع.
-    getSaleExchangeState(sale.saleId);
-
     const returnedItem = getDb()
       .prepare(
         `
