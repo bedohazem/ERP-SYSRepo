@@ -23,6 +23,7 @@
     "preload.cjs",
     "src/main/index.ts",
     "preload.cjs",
-    "tests/setup.ts"
+    "tests/setup.ts",
+    "erp_purchase_barcodes_feature/purchase-barcode-print.ts"
   ]
 }

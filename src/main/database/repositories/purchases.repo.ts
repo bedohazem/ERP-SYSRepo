@@ -4566,6 +4566,7 @@ export function getPurchaseInvoice(purchaseId: number) {
         pii.*,
         pv.buy_price AS current_buy_price,
         pv.sell_price AS sell_price,
+        pv.discount_price AS discount_price,
 
         IFNULL((
           SELECT SUM(
