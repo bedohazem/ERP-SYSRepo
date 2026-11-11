@@ -5716,6 +5716,131 @@ export function cancelSaleReturn(input: {
       returnId,
     );
 
+    /*
+     * توافق المرتجعات القديمة:
+     *
+     * بعض المرتجعات اتسجلت قبل وجود
+     * Unit Snapshots، وبالتالي
+     * promotion_unit_id = NULL.
+     *
+     * عند تجهيز الوحدات لاحقًا، النظام
+     * يحجز أول N وحدات كمرتجعة.
+     *
+     * بعد إلغاء مرتجع قديم، نعيد مزامنة
+     * هذه الوحدات مع المرتجعات القديمة
+     * التي لا تزال نشطة.
+     *
+     * لا نعدل أي وحدة مرتبطة بمرتجع
+     * حديث نشط، حفاظًا على الربط الدقيق.
+     */
+
+    const affectedLegacyItemIds = new Set(
+      items
+        .filter((item) => Number(item.promotion_unit_id || 0) === 0)
+        .map((item) => Number(item.original_sale_item_id))
+        .filter((id) => Number.isInteger(id) && id > 0),
+    );
+
+    if (affectedLegacyItemIds.size > 0) {
+      const getRemainingLegacyQuantity = db.prepare(`
+        SELECT
+          COALESCE(SUM(sri.quantity), 0) AS quantity
+
+        FROM sale_return_items sri
+
+        JOIN sale_returns sr
+          ON sr.id = sri.return_id
+
+        WHERE sr.original_sale_id = ?
+          AND sr.cancelled_at IS NULL
+          AND sri.original_sale_item_id = ?
+          AND (
+            sri.promotion_unit_id IS NULL
+            OR sri.promotion_unit_id = 0
+          )
+      `);
+
+      const getAvailableSnapshotUnits = db.prepare(`
+        SELECT spu.id
+
+        FROM sale_promotion_units spu
+
+        WHERE spu.sale_id = ?
+          AND spu.original_sale_item_id = ?
+          AND spu.promotion_group_id LIKE 'regular:%'
+
+          AND NOT EXISTS (
+            SELECT 1
+
+            FROM sale_return_items sri
+
+            JOIN sale_returns sr
+              ON sr.id = sri.return_id
+
+            WHERE sr.original_sale_id = spu.sale_id
+              AND sr.cancelled_at IS NULL
+              AND sri.promotion_unit_id = spu.id
+          )
+
+        ORDER BY spu.id ASC
+      `);
+
+      const updateLegacyUnit = db.prepare(`
+        UPDATE sale_promotion_units
+
+        SET
+          is_returned = ?,
+          updated_at = CURRENT_TIMESTAMP
+
+        WHERE id = ?
+          AND sale_id = ?
+      `);
+
+      for (const itemId of affectedLegacyItemIds) {
+        const remaining = getRemainingLegacyQuantity.get(saleId, itemId) as {
+          quantity: number;
+        };
+
+        const remainingQuantity = Number(remaining?.quantity || 0);
+
+        const units = getAvailableSnapshotUnits.all(saleId, itemId) as Array<{
+          id: number;
+        }>;
+
+        /*
+         * فاتورة Legacy بدون وحدات:
+         * مفيش Snapshot محتاج يتعدل.
+         */
+        if (units.length === 0 && remainingQuantity === 0) {
+          continue;
+        }
+
+        if (
+          !Number.isInteger(remainingQuantity) ||
+          remainingQuantity < 0 ||
+          remainingQuantity > units.length
+        ) {
+          throw new Error(
+            'بيانات المرتجعات القديمة لا تتطابق مع وحدات الفاتورة',
+          );
+        }
+
+        /*
+         * أول N وحدات تظل مرتبطة
+         * بالمرتجعات القديمة النشطة.
+         *
+         * باقي الوحدات ترجع متاحة.
+         */
+        for (let index = 0; index < units.length; index += 1) {
+          updateLegacyUnit.run(
+            index < remainingQuantity ? 1 : 0,
+            units[index].id,
+            saleId,
+          );
+        }
+      }
+    }
+
     if (saleReturn.customer_id) {
       syncCustomerTotalSpent(Number(saleReturn.customer_id));
     }

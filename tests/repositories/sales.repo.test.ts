@@ -2160,6 +2160,167 @@ describe('sales repository', () => {
     expect(getCashMovementTotal('out')).toBe(1);
   });
 
+  it('restores lazily created units after cancelling a legacy return', () => {
+    const variant = seedProduct();
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 300,
+      discount_value: 0,
+      grand_total: 300,
+      paid: 300,
+      change_amount: 0,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 2,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+    const saleItemId = receipt.items[0].id;
+
+    const returnOneUnit = () =>
+      createSaleReturn({
+        original_sale_id: sale.saleId,
+        user_id: 1,
+        items: [
+          {
+            sale_item_id: saleItemId,
+            variant_id: variant.variant_id,
+            quantity: 1,
+          },
+        ],
+      });
+
+    const oldReturn = returnOneUnit();
+
+    // محاكاة مرتجع قديم قبل وجود Unit Snapshots.
+    const db = getDb();
+
+    db.prepare(
+      `
+      UPDATE sale_return_items
+      SET promotion_unit_id = NULL
+      WHERE return_id = ?
+    `,
+    ).run(oldReturn.returnId);
+
+    db.prepare(
+      `
+      DELETE FROM sale_promotion_units
+      WHERE sale_id = ?
+    `,
+    ).run(sale.saleId);
+
+    // مرتجع جديد يجبر النظام على تجهيز الوحدات.
+    const newReturn = returnOneUnit();
+
+    const getUnitStates = () =>
+      db
+        .prepare(
+          `
+        SELECT id, is_returned
+        FROM sale_promotion_units
+        WHERE sale_id = ?
+        ORDER BY id ASC
+      `,
+        )
+        .all(sale.saleId) as Array<{
+        id: number;
+        is_returned: number;
+      }>;
+
+    /*
+     * القديم والحديث نشطان معًا.
+     * كل مرتجع لازم يحجز وحدة مستقلة.
+     */
+    const unitsWithBothReturns = getUnitStates();
+
+    expect(unitsWithBothReturns).toHaveLength(2);
+    expect(unitsWithBothReturns.map((unit) => unit.is_returned)).toEqual([
+      1, 1,
+    ]);
+
+    /*
+     * المرتجع الحديث لازم يكون مرتبطًا
+     * بالوحدة الثانية تحديدًا.
+     */
+    const modernReturnItem = db
+      .prepare(
+        `
+      SELECT promotion_unit_id
+      FROM sale_return_items
+      WHERE return_id = ?
+      LIMIT 1
+    `,
+      )
+      .get(newReturn.returnId) as {
+      promotion_unit_id: number | null;
+    };
+
+    expect(Number(modernReturnItem.promotion_unit_id)).toBe(
+      Number(unitsWithBothReturns[1].id),
+    );
+
+    /*
+     * ممنوع إلغاء المرتجع القديم
+     * قبل إلغاء المرتجع الأحدث.
+     */
+    expect(() =>
+      cancelSaleReturn({
+        return_id: oldReturn.returnId,
+        actor_id: 1,
+      }),
+    ).toThrow('يجب إلغاء المرتجع الأحدث');
+
+    expect(getUnitStates().map((unit) => unit.is_returned)).toEqual([1, 1]);
+
+    /*
+     * نلغي الحديث أولًا.
+     * الوحدة القديمة تظل مرتجعة.
+     */
+    cancelSaleReturn({
+      return_id: newReturn.returnId,
+      actor_id: 1,
+    });
+
+    expect(getUnitStates().map((unit) => unit.is_returned)).toEqual([1, 0]);
+
+    /*
+     * نلغي القديم أخيرًا.
+     * الوحدتان ترجعان متاحتين.
+     */
+    cancelSaleReturn({
+      return_id: oldReturn.returnId,
+      actor_id: 1,
+    });
+
+    const units = db
+      .prepare(
+        `
+      SELECT is_returned
+      FROM sale_promotion_units
+      WHERE sale_id = ?
+      ORDER BY id
+    `,
+      )
+      .all(sale.saleId) as Array<{ is_returned: number }>;
+
+    expect(units).toHaveLength(2);
+
+    // القطعتان لازم ترجعان متاحتين بالكامل.
+    expect(units.map((unit) => unit.is_returned)).toEqual([0, 0]);
+  });
+
   it('rounds debt settlement to whole pounds and restores it on return cancellation', () => {
     const variant = seedProduct();
     const customerId = createTestCustomer();
