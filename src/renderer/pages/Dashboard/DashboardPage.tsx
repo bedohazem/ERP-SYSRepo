@@ -1425,6 +1425,26 @@ function CashierRevenueView({
   onExpenses: () => void;
   onStockCount: () => void;
 }) {
+  const hasSalesNotes = [
+    summary.sales.paid_sales_total,
+
+    Math.max(
+      0,
+      summary.sales.cross_shift_cancelled_returns_total -
+        summary.sales.cross_shift_cancelled_returns_debt_restored,
+    ),
+
+    summary.sales.cross_shift_cancelled_returns_debt_restored,
+
+    summary.sales.cross_shift_cancelled_exchanges_cash_in_total,
+
+    summary.sales.cross_shift_cancelled_exchanges_cash_out_total,
+
+    summary.sales.cross_shift_cancelled_exchanges_debt_restored,
+
+    summary.sales.outstanding_debt_total,
+  ].some((amount) => roundFinancial(amount) > 0);
+
   return (
     <div
       style={{
@@ -1676,31 +1696,30 @@ function CashierRevenueView({
       </section>
 
       <section>
-        <CashierMiniCard
-          title="رصيد بداية الشفت"
-          value={
-            summary.shift ? money(summary.shift.opening_counted_amount) : '—'
-          }
-          subtitle={
-            summary.shift
-              ? `شفت #${summary.shift.id} • ${
-                  summary.shift.status === 'open' ? 'مفتوح حاليًا' : 'مغلق'
-                }`
-              : 'لا يوجد شفت مفتوح'
-          }
-          tone="blue"
-        />
+        <div style={statsGridStyle}>
+          <CashierMiniCard
+            title="رصيد بداية الشفت"
+            value={
+              summary.shift ? money(summary.shift.opening_counted_amount) : '—'
+            }
+            subtitle={
+              summary.shift
+                ? `شفت #${summary.shift.id} • ${
+                    summary.shift.status === 'open' ? 'مفتوح حاليًا' : 'مغلق'
+                  }`
+                : 'لا يوجد شفت مفتوح'
+            }
+            tone="blue"
+          />
 
-        <div
-          style={{
-            ...statsGridStyle,
-            marginTop: '12px',
-          }}
-        >
           <CashierMiniCard
             title="فواتير البيع"
             value={String(summary.sales.invoices_count)}
-            subtitle={`ملغاة: ${summary.sales.cancelled_invoices_count}`}
+            subtitle={
+              summary.sales.cancelled_invoices_count > 0
+                ? `ملغاة: ${summary.sales.cancelled_invoices_count}`
+                : ''
+            }
             tone="blue"
           />
 
@@ -1708,151 +1727,158 @@ function CashierRevenueView({
             title="إجمالي المبيعات"
             value={money(summary.sales.net_sales)}
             subtitle={
-              <div style={{ display: 'grid', gap: '8px' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '7px',
-                    color: '#94a3b8',
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <span style={{ color: '#86efac' }}>✓</span>
-                  <span>
-                    محصل من فواتير الشيفت:{' '}
-                    {money(summary.sales.paid_sales_total)}
-                  </span>
-                </div>
+              hasSalesNotes ? (
+                <div style={{ display: 'grid', gap: '8px' }}>
+                  {summary.sales.paid_sales_total > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '7px',
+                        color: '#94a3b8',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <span style={{ color: '#86efac' }}>✓</span>
 
-                {summary.sales.cross_shift_cancelled_returns_total >
-                  summary.sales.cross_shift_cancelled_returns_debt_restored && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '6px',
-                      color: '#86efac',
-                    }}
-                  >
-                    <span>↩ فلوس رجعت للحساب (إلغاء مرتجع)</span>
+                      <span>
+                        محصل من فواتير الشيفت:{' '}
+                        {money(summary.sales.paid_sales_total)}
+                      </span>
+                    </div>
+                  )}
 
-                    <strong style={{ color: '#86efac' }}>
-                      {money(
-                        Math.max(
-                          0,
-                          roundFinancial(
-                            summary.sales.cross_shift_cancelled_returns_total -
+                  {summary.sales.cross_shift_cancelled_returns_total >
+                    summary.sales
+                      .cross_shift_cancelled_returns_debt_restored && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        color: '#86efac',
+                      }}
+                    >
+                      <span>↩ فلوس رجعت للحساب (إلغاء مرتجع)</span>
+
+                      <strong style={{ color: '#86efac' }}>
+                        {money(
+                          Math.max(
+                            0,
+                            roundFinancial(
                               summary.sales
-                                .cross_shift_cancelled_returns_debt_restored,
+                                .cross_shift_cancelled_returns_total -
+                                summary.sales
+                                  .cross_shift_cancelled_returns_debt_restored,
+                            ),
                           ),
-                        ),
-                      )}
-                    </strong>
-                  </div>
-                )}
+                        )}
+                      </strong>
+                    </div>
+                  )}
 
-                {summary.sales.cross_shift_cancelled_returns_debt_restored >
-                  0 && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '6px',
-                      color: '#fbbf24',
-                    }}
-                  >
-                    <span>⚠ زيادة مديونية (إلغاء مرتجع)</span>
+                  {summary.sales.cross_shift_cancelled_returns_debt_restored >
+                    0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        color: '#fbbf24',
+                      }}
+                    >
+                      <span>⚠ زيادة مديونية (إلغاء مرتجع)</span>
 
-                    <strong style={{ color: '#fbbf24' }}>
-                      {money(
-                        summary.sales
-                          .cross_shift_cancelled_returns_debt_restored,
-                      )}
-                    </strong>
-                  </div>
-                )}
+                      <strong style={{ color: '#fbbf24' }}>
+                        {money(
+                          summary.sales
+                            .cross_shift_cancelled_returns_debt_restored,
+                        )}
+                      </strong>
+                    </div>
+                  )}
 
-                {summary.sales.cross_shift_cancelled_exchanges_cash_in_total >
-                  0 && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '6px',
-                      color: '#86efac',
-                    }}
-                  >
-                    <span>↩ فلوس رجعت للحساب (إلغاء استبدال)</span>
+                  {summary.sales.cross_shift_cancelled_exchanges_cash_in_total >
+                    0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        color: '#86efac',
+                      }}
+                    >
+                      <span>↩ فلوس رجعت للحساب (إلغاء استبدال)</span>
 
-                    <strong style={{ color: '#86efac' }}>
-                      {money(
-                        summary.sales
-                          .cross_shift_cancelled_exchanges_cash_in_total,
-                      )}
-                    </strong>
-                  </div>
-                )}
+                      <strong style={{ color: '#86efac' }}>
+                        {money(
+                          summary.sales
+                            .cross_shift_cancelled_exchanges_cash_in_total,
+                        )}
+                      </strong>
+                    </div>
+                  )}
 
-                {summary.sales.cross_shift_cancelled_exchanges_cash_out_total >
-                  0 && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '6px',
-                      color: '#fca5a5',
-                    }}
-                  >
-                    <span>↪ رد للعميل بسبب إلغاء استبدال</span>
+                  {summary.sales
+                    .cross_shift_cancelled_exchanges_cash_out_total > 0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        color: '#fca5a5',
+                      }}
+                    >
+                      <span>↪ رد للعميل بسبب إلغاء استبدال</span>
 
-                    <strong style={{ color: '#fca5a5' }}>
-                      {money(
-                        summary.sales
-                          .cross_shift_cancelled_exchanges_cash_out_total,
-                      )}
-                    </strong>
-                  </div>
-                )}
+                      <strong style={{ color: '#fca5a5' }}>
+                        {money(
+                          summary.sales
+                            .cross_shift_cancelled_exchanges_cash_out_total,
+                        )}
+                      </strong>
+                    </div>
+                  )}
 
-                {summary.sales.cross_shift_cancelled_exchanges_debt_restored >
-                  0 && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '6px',
-                      color: '#fbbf24',
-                    }}
-                  >
-                    <span>⚠ زيادة مديونية (إلغاء استبدال)</span>
+                  {summary.sales.cross_shift_cancelled_exchanges_debt_restored >
+                    0 && (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        color: '#fbbf24',
+                      }}
+                    >
+                      <span>⚠ زيادة مديونية (إلغاء استبدال)</span>
 
-                    <strong style={{ color: '#fbbf24' }}>
-                      {money(
-                        summary.sales
-                          .cross_shift_cancelled_exchanges_debt_restored,
-                      )}
-                    </strong>
-                  </div>
-                )}
+                      <strong style={{ color: '#fbbf24' }}>
+                        {money(
+                          summary.sales
+                            .cross_shift_cancelled_exchanges_debt_restored,
+                        )}
+                      </strong>
+                    </div>
+                  )}
 
-                {summary.sales.outstanding_debt_total > 0 && (
-                  <div style={{ color: '#fbbf24' }}>
-                    ⚠ باقي على فواتير الشفت:{' '}
-                    {money(summary.sales.outstanding_debt_total)}
-                  </div>
-                )}
-              </div>
+                  {summary.sales.outstanding_debt_total > 0 && (
+                    <div style={{ color: '#fbbf24' }}>
+                      ⚠ باقي على فواتير الشفت:{' '}
+                      {money(summary.sales.outstanding_debt_total)}
+                    </div>
+                  )}
+                </div>
+              ) : null
             }
             tone="green"
           />
@@ -1861,7 +1887,9 @@ function CashierRevenueView({
             title="المرتجعات"
             value={money(summary.sales.returns_total)}
             subtitle={[
-              `${summary.sales.returns_count} عملية`,
+              summary.sales.returns_count > 0
+                ? `${summary.sales.returns_count} عملية`
+                : null,
 
               summary.sales.return_cash_refund > 0
                 ? `رد نقدي: ${money(summary.sales.return_cash_refund)}`
@@ -1884,7 +1912,9 @@ function CashierRevenueView({
             title="فرق الاستبدال النقدي"
             value={signedMoney(summary.sales.exchange_cash_difference)}
             subtitle={[
-              `${summary.sales.exchanges_count} عملية`,
+              summary.sales.exchanges_count > 0
+                ? `${summary.sales.exchanges_count} عملية`
+                : null,
 
               summary.sales.exchange_cash_collection > 0
                 ? `تحصيل فرق: ${money(summary.sales.exchange_cash_collection)}`
@@ -1916,12 +1946,25 @@ function CashierRevenueView({
           <CashierMiniCard
             title="الخصومات الفعلية"
             value={money(summary.discounts.total)}
-            subtitle={
-              `منتجات: ${money(summary.discounts.product)}` +
-              ` • عادي: ${money(summary.discounts.normal)}` +
-              ` • عروض: ${money(summary.discounts.promotion)}` +
-              ` • نقاط: ${money(summary.discounts.loyalty)}`
-            }
+            subtitle={[
+              summary.discounts.product > 0
+                ? `منتجات: ${money(summary.discounts.product)}`
+                : null,
+
+              summary.discounts.normal > 0
+                ? `خصم عادي: ${money(summary.discounts.normal)}`
+                : null,
+
+              summary.discounts.promotion > 0
+                ? `عروض: ${money(summary.discounts.promotion)}`
+                : null,
+
+              summary.discounts.loyalty > 0
+                ? `نقاط: ${money(summary.discounts.loyalty)}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' • ')}
             tone="amber"
           />
 
@@ -1929,7 +1972,9 @@ function CashierRevenueView({
             title="المصروفات المسجلة"
             value={money(summary.operations.expenses_total)}
             subtitle={[
-              `${summary.operations.expenses_count} عملية`,
+              summary.operations.expenses_count > 0
+                ? `${summary.operations.expenses_count} عملية`
+                : null,
 
               summary.operations.cancelled_expenses_count > 0
                 ? `ملغاة: ${summary.operations.cancelled_expenses_count}`
@@ -1944,7 +1989,9 @@ function CashierRevenueView({
             title="دفعات العملاء"
             value={money(summary.operations.customer_payments_total)}
             subtitle={[
-              `${summary.operations.customer_payments_count} دفعة`,
+              summary.operations.customer_payments_count > 0
+                ? `${summary.operations.customer_payments_count} دفعة`
+                : null,
 
               summary.operations.cancelled_customer_payments_count > 0
                 ? `ملغاة: ${
@@ -1960,7 +2007,11 @@ function CashierRevenueView({
           <CashierMiniCard
             title="جلسات الجرد"
             value={String(summary.operations.stock_count_sessions_count)}
-            subtitle="جلسات الجرد التي عملت عليها خلال الشفت"
+            subtitle={
+              summary.operations.stock_count_sessions_count > 0
+                ? 'جلسات الجرد التي عملت عليها خلال الشفت'
+                : ''
+            }
             tone="blue"
           />
         </div>
@@ -2164,19 +2215,19 @@ function CashierMiniCard({
         {value}
       </strong>
 
-      <div
-        style={{
-          color: '#64748b',
-
-          fontSize: '13px',
-
-          fontWeight: 700,
-
-          lineHeight: 1.6,
-        }}
-      >
-        {subtitle}
-      </div>
+      {Boolean(subtitle) && (
+        <div
+          style={{
+            color: '#64748b',
+            fontSize: '13px',
+            fontWeight: 700,
+            lineHeight: 1.6,
+            overflowWrap: 'anywhere',
+          }}
+        >
+          {subtitle}
+        </div>
+      )}
     </div>
   );
 }
