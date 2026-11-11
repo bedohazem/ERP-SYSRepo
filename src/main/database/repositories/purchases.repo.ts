@@ -4621,7 +4621,28 @@ export function getPurchaseInvoice(purchaseId: number) {
       ORDER BY pii.id ASC
     `,
     )
-    .all(Number(purchaseId));
+    .all(Number(purchaseId)) as Array<{
+    stock: number;
+    returnable_quantity: number;
+    [key: string]: unknown;
+  }>;
+
+  /*
+   * المتاح للمرتجع لا يمكن يتجاوز:
+   *
+   * 1. الكمية المتبقية من فاتورة الشراء.
+   * 2. المخزون الفعلي الموجود حاليًا.
+   *
+   * الكمية المباعة أو الخارجة من المخزون
+   * لا تعتبر متاحة للرجوع إلى المورد.
+   */
+  for (const item of items) {
+    const invoiceRemaining = Math.max(0, Number(item.returnable_quantity || 0));
+
+    const actualStock = Math.max(0, Number(item.stock || 0));
+
+    item.returnable_quantity = Math.min(invoiceRemaining, actualStock);
+  }
 
   const payments = db
     .prepare(

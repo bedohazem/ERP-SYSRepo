@@ -25,7 +25,7 @@ import {
   updatePurchaseInvoice,
   getPurchaseReturn,
 } from '../../src/main/database/repositories/purchases.repo';
-
+import { issueStockAtCost } from '../../src/main/database/inventory-cost';
 import {
   closeCashShift,
   getOpenCashShift,
@@ -6843,5 +6843,104 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBeCloseTo(0, 8);
 
     expectSupplierAccountingInvariant(supplierId);
+  });
+
+  it('limits available purchase return quantity to actual stock after sales', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    // اشترينا 35 قطعة.
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      paid_amount: 0,
+      actor_id: 1,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 35,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const originalInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseItemId = Number(originalInvoice.items[0].id);
+
+    expect(Number(originalInvoice.items[0].returnable_quantity)).toBe(35);
+
+    // رجعنا قطعة واحدة للمورد.
+    createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+      actor_id: 1,
+      refund_mode: 'credit',
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(34);
+
+    // خرجت 3 قطع بسبب بيع فعلي.
+    issueStockAtCost(getDb(), {
+      variant_id: variant.variant_id,
+      quantity: 3,
+      unit_cost: 100,
+      cost_value: 300,
+      reference_type: 'test_sale',
+      created_by: 1,
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const item = invoice.items[0];
+
+    expect(Number(item.quantity)).toBe(35);
+    expect(Number(item.returned_quantity)).toBe(1);
+    expect(Number(item.stock)).toBe(31);
+
+    // المطلوب: 31 وليس 34.
+    expect(Number(item.returnable_quantity)).toBe(31);
+
+    // محاولة مرتجع 32 قطعة لازم تترفض.
+    expect(() =>
+      createPurchaseReturn({
+        purchase_id: purchase.purchaseId,
+        actor_id: 1,
+        refund_mode: 'credit',
+        items: [
+          {
+            purchase_item_id: purchaseItemId,
+            quantity: 32,
+          },
+        ],
+      }),
+    ).toThrow('المخزون الحالي غير كافٍ');
+
+    // الـ31 قطعة المتاحة يمكن إرجاعها بالكامل.
+    createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+      actor_id: 1,
+      refund_mode: 'credit',
+      items: [
+        {
+          purchase_item_id: purchaseItemId,
+          quantity: 31,
+        },
+      ],
+    });
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(0);
+
+    const finalInvoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(finalInvoice.items[0].returnable_quantity)).toBe(0);
+
+    // باقي 3 قطع تم بيعها، وليس إرجاعها.
+    expect(Number(finalInvoice.items[0].returned_quantity)).toBe(32);
   });
 });
