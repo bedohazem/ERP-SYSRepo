@@ -24,6 +24,7 @@ import {
 import { formatMoney, roundMoney } from '../../../shared/money';
 import { canUseRecordAction } from '../../utils/action-visibility';
 import { useOpenShiftId } from '../../utils/use-open-shift-id';
+import SaleAuditChanges from '../../components/SaleAuditChanges';
 
 type SaleRow = {
   id: number;
@@ -2281,7 +2282,7 @@ export default function InvoicesPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(90px, 1fr))',
+                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                         gap: '7px',
                         width: '100%',
                         alignItems: 'stretch',
@@ -2307,6 +2308,16 @@ export default function InvoicesPage() {
                             color: '#fcd34d',
 
                             background: 'rgba(245,158,11,0.10)',
+                            width: '100%',
+                            maxWidth: '100%',
+                            minWidth: 0,
+                            boxSizing: 'border-box',
+                            whiteSpace: 'normal',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                            textAlign: 'center',
+                            lineHeight: 1.5,
+                            fontSize: '12px',
                           }}
                         >
                           سجل التعديلات ({Number(sale.update_count)})
@@ -4514,7 +4525,10 @@ export default function InvoicesPage() {
             style={{
               width: 'min(1000px, calc(100vw - 48px))',
               maxHeight: '90vh',
-              overflow: 'auto',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              boxSizing: 'border-box',
+              maxWidth: 'calc(100vw - 40px)',
               borderRadius: '18px',
               border: '1px solid rgba(255,255,255,0.10)',
               background: '#111827',
@@ -4542,6 +4556,8 @@ export default function InvoicesPage() {
                     color: '#94a3b8',
                     fontSize: '13px',
                     fontWeight: 700,
+                    minWidth: 0,
+                    overflowWrap: 'anywhere',
                   }}
                 >
                   كل إنشاء أو تعديل أو إلغاء تم على الفاتورة
@@ -4668,7 +4684,16 @@ export default function InvoicesPage() {
                             color: '#fde68a',
                           }}
                         >
-                          سبب التعديل: {details.reason}
+                          <strong>سبب التعديل: </strong>
+                          <span
+                            style={{
+                              overflowWrap: 'anywhere',
+                              wordBreak: 'break-word',
+                              whiteSpace: 'pre-wrap',
+                            }}
+                          >
+                            {details.reason}
+                          </span>
                         </div>
                       )}
 
@@ -4690,101 +4715,10 @@ export default function InvoicesPage() {
                       {item.action === 'sale_updated' &&
                         beforeSale &&
                         afterSale && (
-                          <div
-                            style={{
-                              overflow: 'auto',
-                            }}
-                          >
-                            <table
-                              style={{
-                                width: '100%',
-                                minWidth: '650px',
-                                borderCollapse: 'collapse',
-                              }}
-                            >
-                              <thead>
-                                <tr>
-                                  <th style={thStyle}>البيان</th>
-
-                                  <th style={thStyle}>قبل</th>
-
-                                  <th style={thStyle}>بعد</th>
-                                </tr>
-                              </thead>
-
-                              <tbody>
-                                <tr>
-                                  <td style={tdStyle}>الإجمالي</td>
-
-                                  <td style={tdStyle}>
-                                    {money(beforeSale.grand_total)}
-                                  </td>
-
-                                  <td style={tdStyle}>
-                                    {money(afterSale.grand_total)}
-                                  </td>
-                                </tr>
-
-                                <tr>
-                                  <td style={tdStyle}>المدفوع</td>
-
-                                  <td style={tdStyle}>
-                                    {money(beforeSale.paid)}
-                                  </td>
-
-                                  <td style={tdStyle}>
-                                    {money(afterSale.paid)}
-                                  </td>
-                                </tr>
-
-                                <tr>
-                                  <td style={tdStyle}>المتبقي</td>
-
-                                  <td style={tdStyle}>
-                                    {money(beforeSale.remaining_amount)}
-                                  </td>
-
-                                  <td style={tdStyle}>
-                                    {money(afterSale.remaining_amount)}
-                                  </td>
-                                </tr>
-
-                                <tr>
-                                  <td style={tdStyle}>طريقة الدفع</td>
-
-                                  <td style={tdStyle}>
-                                    {getPaymentMethodLabel(
-                                      beforeSale.payment_method,
-                                    )}
-                                  </td>
-
-                                  <td style={tdStyle}>
-                                    {getPaymentMethodLabel(
-                                      afterSale.payment_method,
-                                    )}
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-
-                            <div
-                              style={{
-                                marginTop: '10px',
-                                color: '#94a3b8',
-                                fontSize: '12px',
-                              }}
-                            >
-                              الأصناف قبل التعديل:{' '}
-                              {Array.isArray(details.before?.items)
-                                ? details.before.items.length
-                                : 0}
-                              {' • '}
-                              بعد التعديل:{' '}
-                              {Array.isArray(details.after?.items)
-                                ? details.after.items.length
-                                : 0}
-                            </div>
-                          </div>
+                          <SaleAuditChanges
+                            before={details.before}
+                            after={details.after}
+                          />
                         )}
 
                       {item.action === 'sale_cancelled' && (
