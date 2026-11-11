@@ -2704,6 +2704,7 @@ export function getCustomerStatement(
       b.payment_method AS batch_payment_method,
       b.notes AS batch_notes,
       b.created_by AS batch_created_by,
+      b.shift_id AS batch_shift_id,
       b.created_at AS batch_created_at,
       b.cancelled_at AS batch_cancelled_at,
       b.cancelled_by AS batch_cancelled_by,
@@ -2967,7 +2968,8 @@ export function getCustomerStatement(
         credit: cancelled ? 0 : totalAmount,
 
         batch_id: batchId,
-
+        batch_shift_id:
+          first.batch_shift_id == null ? null : Number(first.batch_shift_id),
         batch_created_by:
           first.batch_created_by == null
             ? null

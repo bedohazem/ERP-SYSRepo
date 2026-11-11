@@ -10,6 +10,8 @@ import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
 import { formatMoney } from '../../../shared/money';
+import { canUseRecordAction } from '../../utils/action-visibility';
+import { useOpenShiftId } from '../../utils/use-open-shift-id';
 
 type CustomerRow = {
   id: number;
@@ -64,6 +66,7 @@ function isErrorMessage(text: string) {
 
 export default function CustomersPage() {
   const currentUser = useAuthStore((s) => s.user);
+  const openShiftId = useOpenShiftId();
   const isAdmin = currentUser?.role === 'admin';
   const canManageCustomers = hasUserPermission(currentUser, 'customers.manage');
 
@@ -628,6 +631,10 @@ export default function CustomersPage() {
   }
 
   function canManageStatementPayment(entry: any) {
+    if (!canManageCustomerPayments) {
+      return false;
+    }
+
     if (!entry?.batch_id) {
       return false;
     }
@@ -640,10 +647,12 @@ export default function CustomersPage() {
       return false;
     }
 
-    return (
-      isAdmin ||
-      Number(entry.batch_created_by || 0) === Number(currentUser?.id || 0)
-    );
+    return canUseRecordAction({
+      user: currentUser,
+      recordOwnerId: entry.batch_created_by,
+      recordShiftId: entry.batch_shift_id,
+      openShiftId,
+    });
   }
 
   function openPaymentEdit(entry: any) {

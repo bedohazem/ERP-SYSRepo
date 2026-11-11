@@ -11,10 +11,13 @@ import {
 import FinancialCancelModal from '../../components/FinancialCancelModal';
 import { hasUserPermission } from '../../utils/permissions';
 import { formatMoney } from '../../../shared/money';
+import { canUseRecordAction } from '../../utils/action-visibility';
+import { useOpenShiftId } from '../../utils/use-open-shift-id';
 
 type Expense = {
   id: number;
   title: string;
+  shift_id?: number | null;
   category?: string;
   amount: number;
   payment_method: string;
@@ -42,6 +45,7 @@ export default function ExpensesPage() {
     text: string;
   } | null>(null);
   const currentUser = useAuthStore((s) => s.user);
+  const openShiftId = useOpenShiftId();
   const isAdmin = currentUser?.role === 'admin';
   const canManageExpenses = hasUserPermission(currentUser, 'expenses.manage');
   const [title, setTitle] = useState('');
@@ -1068,9 +1072,12 @@ export default function ExpensesPage() {
                     <td style={tdStyle}>
                       {canManageExpenses &&
                       !expense.cancelled_at &&
-                      (isAdmin ||
-                        Number(expense.created_by || 0) ===
-                          Number(currentUser?.id || 0)) ? (
+                      canUseRecordAction({
+                        user: currentUser,
+                        recordOwnerId: expense.created_by,
+                        recordShiftId: expense.shift_id,
+                        openShiftId,
+                      }) ? (
                         <div
                           style={{
                             display: 'flex',

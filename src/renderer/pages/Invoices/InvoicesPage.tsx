@@ -22,6 +22,8 @@ import {
   getPromotionTypeLabel,
 } from '../../utils/promotion-display';
 import { formatMoney, roundMoney } from '../../../shared/money';
+import { canUseRecordAction } from '../../utils/action-visibility';
+import { useOpenShiftId } from '../../utils/use-open-shift-id';
 
 type SaleRow = {
   id: number;
@@ -131,7 +133,7 @@ type ExchangeRow = {
   id: number;
 
   code: string;
-
+  shift_id?: number | null;
   original_sale_id: number;
 
   user_id?: number | null;
@@ -194,6 +196,7 @@ type ExchangeRow = {
 type ReturnRow = {
   id: number;
   code: string;
+  shift_id?: number | null;
   original_sale_id: number;
   customer_name?: string | null;
   customer_phone?: string | null;
@@ -628,6 +631,8 @@ export default function InvoicesPage() {
   const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([]);
   const [message, setMessage] = useState('');
   const user = useAuthStore((s) => s.user);
+  const openShiftId = useOpenShiftId();
+  const canManageSaleHistory = hasUserPermission(user, 'sales.history');
   const isAdmin = user?.role === 'admin';
   const canReturnSales = hasUserPermission(user, 'sales.returns');
 
@@ -2317,9 +2322,14 @@ export default function InvoicesPage() {
                         Number(sale.cancelled_exchange_count || 0) === 0 &&
                         Number(sale.customer_payment_history_count || 0) ===
                           0 &&
-                        (isAdmin ||
-                          Number(sale.user_id || 0) ===
-                            Number(user?.id || 0)) && (
+                        canManageSaleHistory &&
+                        canUseRecordAction({
+                          user,
+                          recordOwnerId: sale.user_id,
+                          recordShiftId: sale.shift_id,
+                          openShiftId,
+                          adminRequiresSameShift: true,
+                        }) && (
                           <button
                             type="button"
                             onClick={() => navigate(`/sales?edit=${sale.id}`)}
@@ -2391,9 +2401,13 @@ export default function InvoicesPage() {
                       {!sale.cancelled_at &&
                         Number(sale.return_count || 0) === 0 &&
                         Number(sale.exchange_count || 0) === 0 &&
-                        (isAdmin ||
-                          Number(sale.user_id || 0) ===
-                            Number(user?.id || 0)) && (
+                        canManageSaleHistory &&
+                        canUseRecordAction({
+                          user,
+                          recordOwnerId: sale.user_id,
+                          recordShiftId: sale.shift_id,
+                          openShiftId,
+                        }) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -2663,9 +2677,12 @@ export default function InvoicesPage() {
 
                       {canReturnSales &&
                         !ret.cancelled_at &&
-                        (isAdmin ||
-                          Number(ret.user_id || 0) ===
-                            Number(user?.id || 0)) && (
+                        canUseRecordAction({
+                          user,
+                          recordOwnerId: ret.user_id,
+                          recordShiftId: ret.shift_id,
+                          openShiftId,
+                        }) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -3182,9 +3199,12 @@ export default function InvoicesPage() {
                       {canExchangeSales &&
                         !exchange.cancelled_at &&
                         exchange.can_cancel &&
-                        (isAdmin ||
-                          Number(exchange.user_id || 0) ===
-                            Number(user?.id || 0)) && (
+                        canUseRecordAction({
+                          user,
+                          recordOwnerId: exchange.user_id,
+                          recordShiftId: exchange.shift_id,
+                          openShiftId,
+                        }) && (
                           <button
                             type="button"
                             onClick={() => {
