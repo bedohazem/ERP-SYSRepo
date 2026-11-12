@@ -153,13 +153,24 @@ export async function buildReceiptQrDataUrl(
   return '';
 }
 
-export async function openReceiptPrintWindow(html: string): Promise<boolean> {
+export async function openReceiptPrintWindow(
+  html: string,
+  saleId?: number,
+  onLogError?: (message: string) => void,
+  printSource?: 'sale' | 'history',
+): Promise<boolean> {
   try {
     const result = await window.api.printHtmlWithDialog({
       html,
+      sale_id: saleId,
+      print_source: printSource,
       previewHeight: 700,
       previewWidth: 420,
     });
+
+    if (result?.log_failed) {
+      onLogError?.(result.message || 'تعذر تسجيل عملية الطباعة في السجل');
+    }
 
     /*
      * الإلغاء اختيار طبيعي من المستخدم،
@@ -1116,12 +1127,14 @@ export function buildSaleReceiptHtml(
 export async function printSaleReceiptHtml(options: {
   receipt: SaleReceiptData;
   returnHistory?: any[];
+  printSource?: 'sale' | 'history';
   onBlocked?: () => void;
   onError?: (message: string) => void;
 }) {
   const storeInfo = await loadReceiptStoreInfo();
   const printSettings = await loadReceiptPrintSettings();
   const qrDataUrl = await buildReceiptQrDataUrl(storeInfo);
+  const saleId = Number(options.receipt.sale.id);
 
   const html = buildSaleReceiptHtml(
     options.receipt,
@@ -1135,7 +1148,15 @@ export async function printSaleReceiptHtml(options: {
     try {
       const result = await window.api.printHtmlSilent({
         html,
+        sale_id: saleId,
+        print_source: options.printSource,
       });
+
+      if (result?.log_failed) {
+        options.onError?.(
+          result.message || 'تعذر تسجيل عملية الطباعة في السجل',
+        );
+      }
 
       if (!result?.ok) {
         options.onError?.(result?.message || 'فشل تنفيذ الطباعة الصامتة');
@@ -1155,7 +1176,12 @@ export async function printSaleReceiptHtml(options: {
     }
   }
 
-  const opened = await openReceiptPrintWindow(html);
+  const opened = await openReceiptPrintWindow(
+    html,
+    saleId,
+    options.onError,
+    options.printSource,
+  );
 
   if (!opened) {
     options.onBlocked?.();

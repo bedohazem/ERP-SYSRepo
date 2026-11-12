@@ -760,6 +760,7 @@ export default function SalesPage() {
   } | null>(null);
 
   const [receiptData, setReceiptData] = useState<SaleReceipt | null>(null);
+  const [receiptPrintCount, setReceiptPrintCount] = useState(0);
   const [printingReceipt, setPrintingReceipt] = useState(false);
   const [salesDraftHydrated, setSalesDraftHydrated] = useState(false);
   const [heldSales, setHeldSales] = useState<HeldSaleListRow[]>([]);
@@ -2386,14 +2387,26 @@ export default function SalesPage() {
     try {
       await printSaleReceiptHtml({
         receipt: receiptData,
+        printSource: 'sale',
         returnHistory: [],
-
         onBlocked: () => showMessage('error', 'تعذر فتح نافذة الطباعة', false),
-
         onError: (message) =>
           showMessage('error', message || 'فشل طباعة الفاتورة', false),
       });
+    } catch (error) {
+      console.error('Failed to print receipt:', error);
+      showMessage('error', 'حدث خطأ أثناء طباعة الفاتورة', false);
     } finally {
+      try {
+        const history = await window.api.getSalePrintHistory(
+          Number(receiptData.sale.id),
+        );
+
+        setReceiptPrintCount(history.length);
+      } catch (error) {
+        console.error('Failed to refresh receipt print count:', error);
+      }
+
       setPrintingReceipt(false);
     }
   }
@@ -2682,8 +2695,21 @@ export default function SalesPage() {
       try {
         const savedSaleId = Number(result.saleId || editingSaleId);
         const receipt = await window.api.getSaleReceipt(Number(savedSaleId));
+
         setShowPaymentModal(false);
+        setReceiptPrintCount(0);
         setReceiptData(receipt);
+
+        void window.api
+          .getSalePrintHistory(savedSaleId)
+          .then((history) => {
+            setReceiptPrintCount((current) =>
+              Math.max(current, history.length),
+            );
+          })
+          .catch((error) => {
+            console.error('Failed to load receipt print count:', error);
+          });
 
         setReceiptWasEdit(wasEditing);
       } catch (receiptError) {
@@ -5709,7 +5735,9 @@ export default function SalesPage() {
                   opacity: printingReceipt ? 0.65 : 1,
                 }}
               >
-                {printingReceipt ? 'جاري الطباعة...' : 'طباعة الفاتورة F12'}
+                {printingReceipt
+                  ? 'جاري الطباعة...'
+                  : `طباعة الفاتورة (${receiptPrintCount}) F12`}
               </button>
 
               <button

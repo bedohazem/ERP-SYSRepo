@@ -2511,6 +2511,14 @@ export function listSales(input?: {
 
         IFNULL((
           SELECT COUNT(*)
+          FROM activity_logs print_log
+          WHERE print_log.entity = 'sales'
+            AND print_log.entity_id = s.id
+            AND print_log.action = 'sale_printed'
+        ), 0) AS print_count,
+
+        IFNULL((
+          SELECT COUNT(*)
 
           FROM sale_exchanges se
 
@@ -6045,6 +6053,15 @@ export function listSaleReturns(input?: {
         c.name AS customer_name,
         c.phone AS customer_phone,
         u.name AS cashier_name,
+
+        IFNULL((
+          SELECT COUNT(*)
+          FROM activity_logs print_log
+          WHERE print_log.entity = 'sales'
+            AND print_log.entity_id = sr.original_sale_id
+            AND print_log.action = 'sale_printed'
+        ), 0) AS print_count,
+
         COUNT(sri.id) AS items_count,
         IFNULL(SUM(sri.quantity), 0) AS total_quantity
       FROM sale_returns sr

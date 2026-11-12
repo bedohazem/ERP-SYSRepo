@@ -756,6 +756,18 @@ declare global {
         edited?: boolean;
       }>;
 
+      getSalePrintHistory: (saleId: number) => Promise<
+        Array<{
+          id: number;
+          user_id: number | null;
+          user_name: string | null;
+          username: string | null;
+          created_at: string;
+          method: 'silent' | 'dialog' | null;
+          source: 'sale' | 'history' | null;
+        }>
+      >;
+
       getSaleReceipt: (saleId: number) => Promise<{
         sale: any;
         items: any[];
@@ -2272,19 +2284,27 @@ declare global {
         filePath?: string;
       }>;
 
-      printHtmlSilent: (input: { html: string }) => Promise<{
+      printHtmlSilent: (input: {
+        html: string;
+        sale_id?: number;
+        print_source?: 'sale' | 'history';
+      }) => Promise<{
         ok: boolean;
+        log_failed?: boolean;
         message?: string;
       }>;
 
       printHtmlWithDialog: (input: {
         html: string;
+        sale_id?: number;
+        print_source?: 'sale' | 'history';
         previewWidth?: number;
         previewHeight?: number;
       }) => Promise<{
         ok: boolean;
         canceled?: boolean;
         busy?: boolean;
+        log_failed?: boolean;
         message?: string;
       }>;
 

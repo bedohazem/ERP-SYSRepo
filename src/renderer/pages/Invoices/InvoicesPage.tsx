@@ -58,6 +58,7 @@ type SaleRow = {
   return_count: number;
   customer_payment_history_count?: number;
   update_count?: number;
+  print_count?: number;
   cancelled_return_count?: number;
   total_return_amount: number;
   cancelled_at?: string | null;
@@ -77,6 +78,16 @@ type SaleRow = {
   exchange_count?: number;
   cancelled_exchange_count?: number;
   exchange_difference_total?: number;
+};
+
+type SalePrintHistoryRow = {
+  id: number;
+  user_id: number | null;
+  user_name: string | null;
+  username: string | null;
+  created_at: string;
+  method: 'silent' | 'dialog' | null;
+  source: 'sale' | 'history' | null;
 };
 
 type SaleAuditRow = {
@@ -220,6 +231,7 @@ type ReturnRow = {
   cancelled_at?: string | null;
   cancelled_by?: number | null;
   cancel_reason?: string | null;
+  print_count?: number;
   user_id?: number | null;
   requires_admin_password?: number | boolean;
 };
@@ -578,6 +590,19 @@ export default function InvoicesPage() {
   const [auditRows, setAuditRows] = useState<SaleAuditRow[]>([]);
 
   const [auditLoading, setAuditLoading] = useState(false);
+  const [printHistorySaleId, setPrintHistorySaleId] = useState<number | null>(
+    null,
+  );
+
+  const [printHistoryRows, setPrintHistoryRows] = useState<
+    SalePrintHistoryRow[]
+  >([]);
+
+  const [printHistoryLoading, setPrintHistoryLoading] = useState(false);
+
+  const [printCounts, setPrintCounts] = useState<Record<number, number>>({});
+
+  const [printingSaleId, setPrintingSaleId] = useState<number | null>(null);
   const [total, setTotal] = useState(0);
   const [salesPage, setSalesPage] = useState(1);
   const [activeTab, setActiveTab] = useState<InvoicesTab>('sales');
@@ -699,6 +724,50 @@ export default function InvoicesPage() {
       setTotal(0);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function getPrintCount(saleId: number, fallback = 0) {
+    return Math.max(Number(fallback || 0), Number(printCounts[saleId] || 0));
+  }
+
+  async function openPrintHistory(saleId: number) {
+    setPrintHistorySaleId(saleId);
+    setPrintHistoryRows([]);
+    setPrintHistoryLoading(true);
+
+    try {
+      const history = await window.api.getSalePrintHistory(saleId);
+      const records = Array.isArray(history) ? history : [];
+
+      setPrintHistoryRows(records);
+
+      setPrintCounts((current) => ({
+        ...current,
+        [saleId]: records.length,
+      }));
+    } catch (error) {
+      console.error('Failed to load sale print history:', error);
+      setMessage('تعذر تحميل سجل طباعة الفاتورة');
+      setPrintHistorySaleId(null);
+    } finally {
+      setPrintHistoryLoading(false);
+    }
+  }
+
+  async function printSaleById(saleId: number) {
+    if (printingSaleId !== null) return;
+
+    try {
+      const [receipt, history] = await Promise.all([
+        loadCurrentReceiptData(saleId),
+        window.api.getSaleReturnHistory(saleId),
+      ]);
+
+      await printReceipt(receipt, Array.isArray(history) ? history : []);
+    } catch (error) {
+      console.error('Failed to load invoice for printing:', error);
+      setMessage('تعذر تجهيز الفاتورة للطباعة');
     }
   }
 
@@ -828,11 +897,16 @@ export default function InvoicesPage() {
 
   async function openReceipt(saleId: number) {
     try {
-      const [receipt, history] = await Promise.all([
+      const [receipt, history, printHistory] = await Promise.all([
         loadCurrentReceiptData(saleId),
-
         window.api.getSaleReturnHistory(saleId),
+        window.api.getSalePrintHistory(saleId),
       ]);
+
+      setPrintCounts((current) => ({
+        ...current,
+        [saleId]: printHistory.length,
+      }));
       setSelectedReceipt(receipt);
 
       setSelectedReturnHistory(getActiveSaleReturnHistory(history));
@@ -843,12 +917,39 @@ export default function InvoicesPage() {
   }
 
   async function printReceipt(receipt: ReceiptData, returnHistory: any[] = []) {
-    await printSaleReceiptHtml({
-      receipt,
+    if (printingSaleId !== null) return;
 
-      returnHistory: getActiveSaleReturnHistory(returnHistory),
-      onBlocked: () => setMessage('لم يتم فتح نافذة الطباعة'),
-    });
+    const saleId = Number(receipt.sale.id);
+
+    setPrintingSaleId(saleId);
+
+    try {
+      await printSaleReceiptHtml({
+        receipt,
+        printSource: 'history',
+        returnHistory: getActiveSaleReturnHistory(returnHistory),
+        onBlocked: () => setMessage('لم يتم فتح نافذة الطباعة'),
+        onError: (message) => setMessage(message),
+      });
+    } catch (error) {
+      console.error('Failed to print sale receipt:', error);
+      setMessage('حدث خطأ أثناء طباعة الفاتورة');
+    } finally {
+      try {
+        // نقرأ العدد الحقيقي من قاعدة البيانات حتى لو المستخدم
+        // ألغى الطباعة أو فشل إرسالها للطابعة.
+        const history = await window.api.getSalePrintHistory(saleId);
+
+        setPrintCounts((current) => ({
+          ...current,
+          [saleId]: history.length,
+        }));
+      } catch (error) {
+        console.error('Failed to refresh print count:', error);
+      }
+
+      setPrintingSaleId(null);
+    }
   }
 
   function resolveRefundAccountFromPaymentMethod(method?: string | null) {
@@ -2368,21 +2469,19 @@ export default function InvoicesPage() {
 
                       <button
                         type="button"
-                        onClick={async () => {
-                          const [receipt, history] = await Promise.all([
-                            loadCurrentReceiptData(sale.id),
-
-                            window.api.getSaleReturnHistory(sale.id),
-                          ]);
-
-                          void printReceipt(
-                            receipt,
-                            Array.isArray(history) ? history : [],
-                          );
+                        onClick={() => void printSaleById(sale.id)}
+                        disabled={printingSaleId !== null}
+                        style={{
+                          ...smallButtonStyle,
+                          opacity: printingSaleId !== null ? 0.6 : 1,
                         }}
-                        style={smallButtonStyle}
                       >
-                        طباعة
+                        {printingSaleId === sale.id
+                          ? 'جاري الطباعة...'
+                          : `طباعة (${getPrintCount(
+                              sale.id,
+                              sale.print_count,
+                            )})`}
                       </button>
 
                       {canExchangeSales && !sale.cancelled_at && (
@@ -2674,24 +2773,22 @@ export default function InvoicesPage() {
                       >
                         عرض الفاتورة
                       </button>
+
                       <button
                         type="button"
-                        onClick={async () => {
-                          const [receipt, history] = await Promise.all([
-                            loadCurrentReceiptData(ret.original_sale_id),
-                            window.api.getSaleReturnHistory(
-                              ret.original_sale_id,
-                            ),
-                          ]);
-
-                          void printReceipt(
-                            receipt,
-                            Array.isArray(history) ? history : [],
-                          );
+                        onClick={() => void printSaleById(ret.original_sale_id)}
+                        disabled={printingSaleId !== null}
+                        style={{
+                          ...smallButtonStyle,
+                          opacity: printingSaleId !== null ? 0.6 : 1,
                         }}
-                        style={smallButtonStyle}
                       >
-                        طباعة الفاتورة
+                        {printingSaleId === ret.original_sale_id
+                          ? 'جاري الطباعة...'
+                          : `طباعة الفاتورة (${getPrintCount(
+                              ret.original_sale_id,
+                              ret.print_count,
+                            )})`}
                       </button>
 
                       {canReturnSales &&
@@ -4527,14 +4624,225 @@ export default function InvoicesPage() {
                 onClick={() =>
                   void printReceipt(selectedReceipt, selectedReturnHistory)
                 }
-                style={primaryButtonStyle}
+                disabled={printingSaleId !== null}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: printingSaleId !== null ? 0.6 : 1,
+                }}
               >
-                طباعة الفاتورة
+                {printingSaleId !== null
+                  ? 'جاري الطباعة...'
+                  : `طباعة الفاتورة (${getPrintCount(
+                      Number(selectedReceipt.sale.id),
+                    )})`}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void openPrintHistory(Number(selectedReceipt.sale.id))
+                }
+                style={{
+                  ...secondaryButtonStyle,
+                  borderColor: 'rgba(96,165,250,0.35)',
+                  color: '#93c5fd',
+                }}
+              >
+                سجل الطباعة ({getPrintCount(Number(selectedReceipt.sale.id))})
               </button>
 
               <button
                 type="button"
                 onClick={() => setSelectedReceipt(null)}
+                style={secondaryButtonStyle}
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {printHistorySaleId !== null && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100002,
+            background: 'rgba(0,0,0,0.72)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: 'min(650px, calc(100vw - 40px))',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              borderRadius: '16px',
+              border: '1px solid rgba(148,163,184,0.20)',
+              background: '#111827',
+              padding: '22px',
+              direction: 'rtl',
+              color: '#f8fafc',
+              boxShadow: '0 24px 70px rgba(0,0,0,0.55)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '14px',
+                marginBottom: '18px',
+              }}
+            >
+              <div style={{ display: 'grid', gap: '5px' }}>
+                <h3 style={{ margin: 0 }}>
+                  سجل طباعة الفاتورة #{printHistorySaleId}
+                </h3>
+
+                <span
+                  style={{
+                    color: '#94a3b8',
+                    fontSize: '13px',
+                  }}
+                >
+                  إجمالي مرات الطباعة: {printHistoryRows.length}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPrintHistorySaleId(null);
+                  setPrintHistoryRows([]);
+                }}
+                style={closeButtonStyle}
+              >
+                ×
+              </button>
+            </div>
+
+            {printHistoryLoading ? (
+              <div
+                style={{
+                  padding: '30px',
+                  textAlign: 'center',
+                  color: '#94a3b8',
+                }}
+              >
+                جاري تحميل سجل الطباعة...
+              </div>
+            ) : printHistoryRows.length === 0 ? (
+              <div
+                style={{
+                  padding: '30px 15px',
+                  textAlign: 'center',
+                  borderRadius: '12px',
+                  background: 'rgba(148,163,184,0.06)',
+                  color: '#94a3b8',
+                  fontSize: '14px',
+                }}
+              >
+                لم يتم تسجيل أي عملية طباعة لهذه الفاتورة بعد.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '9px',
+                }}
+              >
+                {printHistoryRows.map((item, index) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      padding: '13px 15px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(148,163,184,0.13)',
+                      background: 'rgba(255,255,255,0.035)',
+                      display: 'grid',
+                      gap: '9px',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                      }}
+                    >
+                      <strong style={{ color: '#86efac' }}>
+                        الطباعة رقم {printHistoryRows.length - index}
+                      </strong>
+
+                      <span
+                        style={{
+                          fontSize: '12px',
+                          color: '#cbd5e1',
+                        }}
+                      >
+                        {formatPrintTimestamp(item.created_at)}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                        fontSize: '13px',
+                        color: '#cbd5e1',
+                      }}
+                    >
+                      <span>
+                        المستخدم:{' '}
+                        <strong style={{ color: '#f8fafc' }}>
+                          {item.user_name || item.username || 'مستخدم غير متاح'}
+                        </strong>
+                        {item.username && (
+                          <span style={{ color: '#94a3b8' }}>
+                            {' '}
+                            ({item.username})
+                          </span>
+                        )}
+                      </span>
+
+                      <span style={{ color: '#94a3b8' }}>
+                        {item.source === 'sale'
+                          ? 'طباعة أثناء البيع'
+                          : item.source === 'history'
+                            ? 'طباعة من سجل الفواتير'
+                            : 'طباعة سابقة (المصدر غير مسجل)'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+                marginTop: '18px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setPrintHistorySaleId(null);
+                  setPrintHistoryRows([]);
+                }}
                 style={secondaryButtonStyle}
               >
                 إغلاق
@@ -5493,6 +5801,26 @@ function SummaryLine({
 
 function money(value: unknown) {
   return formatMoney(value);
+}
+
+function formatPrintTimestamp(value: string) {
+  if (!value) return '—';
+
+  const raw = String(value);
+  const normalized = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
+
+  const date = new Date(normalized);
+
+  if (Number.isNaN(date.getTime())) return raw;
+
+  return date.toLocaleString('ar-EG', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 function formatDate(value?: string) {

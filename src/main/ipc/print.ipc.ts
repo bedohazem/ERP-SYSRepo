@@ -18,11 +18,17 @@ import {
   optionalNonNegativeNumber,
   optionalStringValue,
   optionalTrimmedString,
+  optionalPositiveInteger,
+  optionalEnumValue,
   requireObjectInput,
 } from './input-validation';
+import {
+  assertSalePrintTarget,
+  recordSalePrint,
+} from '../database/repositories/sale-print.repo';
 
 let dialogPrintInProgress = false;
-
+const SALE_PRINT_SOURCES = ['sale', 'history'] as const;
 const PRINT_CSP = [
   "default-src 'none'",
   "style-src 'unsafe-inline'",
@@ -326,9 +332,27 @@ export function registerPrintIpc(): void {
   });
 
   ipcMain.handle('print:silent-html', async (event, input: unknown) => {
-    requireAuthenticatedUser(event);
+    const actor = requireAuthenticatedUser(event);
 
-    const { html } = normalizePrintHtmlInput(input, 'بيانات الطباعة الصامتة');
+    const { payload, html } = normalizePrintHtmlInput(
+      input,
+      'بيانات الطباعة الصامتة',
+    );
+
+    const saleId =
+      optionalPositiveInteger(payload.sale_id, 'رقم فاتورة البيع') ?? null;
+
+    const printSource =
+      optionalEnumValue(
+        payload.print_source,
+        SALE_PRINT_SOURCES,
+        'مصدر طباعة الفاتورة',
+      ) ?? null;
+
+    if (saleId !== null) {
+      requirePermission(event, 'sales.history');
+      assertSalePrintTarget(saleId);
+    }
 
     if (!html) {
       throw new Error('لا يوجد محتوى للطباعة');
@@ -392,6 +416,21 @@ export function registerPrintIpc(): void {
         );
       });
 
+      if (saleId !== null) {
+        try {
+          recordSalePrint(saleId, actor.id, 'silent', printSource);
+        } catch (error) {
+          console.error('Failed to record sale print:', error);
+
+          return {
+            ok: true,
+            log_failed: true,
+            message:
+              'تم إرسال الفاتورة للطابعة، لكن تعذر تسجيلها في سجل الطباعة',
+          };
+        }
+      }
+
       return {
         ok: true,
       };
@@ -413,10 +452,27 @@ export function registerPrintIpc(): void {
   ipcMain.handle('print:dialog-html', async (event, input: unknown) => {
     requireAuthenticatedUser(event);
 
+    const actor = requireAuthenticatedUser(event);
+
     const { payload, html } = normalizePrintHtmlInput(
       input,
       'بيانات معاينة الطباعة',
     );
+
+    const saleId =
+      optionalPositiveInteger(payload.sale_id, 'رقم فاتورة البيع') ?? null;
+
+    const printSource =
+      optionalEnumValue(
+        payload.print_source,
+        SALE_PRINT_SOURCES,
+        'مصدر طباعة الفاتورة',
+      ) ?? null;
+
+    if (saleId !== null) {
+      requirePermission(event, 'sales.history');
+      assertSalePrintTarget(saleId);
+    }
 
     const previewWidth = clampWindowDimension(
       optionalNonNegativeNumber(payload.previewWidth, 'عرض معاينة الطباعة'),
@@ -536,6 +592,21 @@ export function registerPrintIpc(): void {
           },
         );
       });
+
+      if (result.ok && saleId !== null) {
+        try {
+          recordSalePrint(saleId, actor.id, 'dialog', printSource);
+        } catch (error) {
+          console.error('Failed to record sale print:', error);
+
+          return {
+            ok: true,
+            log_failed: true,
+            message:
+              'تم إرسال الفاتورة للطابعة، لكن تعذر تسجيلها في سجل الطباعة',
+          };
+        }
+      }
 
       return result;
     } catch (error) {

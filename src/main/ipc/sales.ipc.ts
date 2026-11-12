@@ -73,6 +73,7 @@ import {
   setSalespersonMonthlyTarget,
 } from '../database/repositories/salespeople.repo';
 import { protectSalesCostData } from './sales-cost-protection';
+import { getSalePrintHistory } from '../database/repositories/sale-print.repo';
 
 const SALE_PAYMENT_METHOD_VALUES = [
   'cash',
@@ -1187,6 +1188,14 @@ export function registerSalesIpc(): void {
     );
 
     return protectSalesCostData(actor, result);
+  });
+
+  ipcMain.handle('sales:print-history', (event, saleId: unknown) => {
+    requirePermission(event, 'sales.history');
+
+    return getSalePrintHistory(
+      requirePositiveInteger(saleId, 'رقم فاتورة البيع'),
+    );
   });
 
   ipcMain.handle('sales:audit-trail', (event, saleId) => {
