@@ -444,6 +444,11 @@ describe('database migrations', () => {
         name: 'track-purchase-return-cancellation-outside-shift',
         version: 38,
       },
+
+      {
+        name: 'track-discretionary-exchange-discounts',
+        version: 39,
+      },
     ]);
 
     const performanceIndexes = database

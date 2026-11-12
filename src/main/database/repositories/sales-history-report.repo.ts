@@ -84,6 +84,7 @@ export function getSalesHistoryReport(input?: SalesHistoryFilter) {
       COALESCE(SUM(x.normal_discounts),0) AS normal_discounts,
       COALESCE(SUM(x.promotion_discounts),0) AS promotion_discounts,
       COALESCE(SUM(x.loyalty_discounts),0) AS loyalty_discounts,
+      COALESCE(SUM(x.exchange_discounts),0) AS exchange_discounts,
       COALESCE(SUM(x.gross_profit),0) AS gross_profit_before_discounts,
       COALESCE(SUM(x.net_profit),0) AS net_profit_after_discounts
     FROM (${journal}) x ${f.where}
@@ -98,7 +99,8 @@ export function getSalesHistoryReport(input?: SalesHistoryFilter) {
     summary.product_discounts +
       summary.normal_discounts +
       summary.promotion_discounts +
-      summary.loyalty_discounts,
+      summary.loyalty_discounts +
+      summary.exchange_discounts,
   );
 
   const dailySales = db

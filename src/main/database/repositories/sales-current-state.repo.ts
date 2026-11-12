@@ -532,6 +532,16 @@ export function getSaleCurrentState(saleIdInput: number) {
     ),
   );
 
+  // An exchange discount remains attached to its actual units (including returned units).
+  // Returns reverse their unit share separately, so the original sale is never over-refunded.
+  const currentExchangeDiscount = roundMoney(
+    promotionUnits.reduce(
+      (sum, unit) =>
+        sum + Math.max(0, Number(unit.current_exchange_discount_value || 0)),
+      0,
+    ),
+  );
+
   /*
    * Normal discount and loyalty discount keep
    * their ORIGINAL values after exchange.
@@ -603,7 +613,9 @@ export function getSaleCurrentState(saleIdInput: number) {
 
   const currentGrandTotal = Math.max(
     0,
-    roundMoney(afterNormalDiscount - currentLoyaltyDiscount),
+    roundMoney(
+      afterNormalDiscount - currentLoyaltyDiscount - currentExchangeDiscount,
+    ),
   );
 
   const returnSummary = db
@@ -927,7 +939,8 @@ export function getSaleCurrentState(saleIdInput: number) {
     currentProductDiscount +
       currentPromotionDiscount +
       currentNormalDiscount +
-      currentLoyaltyDiscount,
+      currentLoyaltyDiscount +
+      currentExchangeDiscount,
   );
 
   const exchangeDifferenceTotal = roundMoney(
@@ -980,6 +993,8 @@ export function getSaleCurrentState(saleIdInput: number) {
     current_normal_discount_value: currentNormalDiscount,
 
     current_loyalty_discount_value: currentLoyaltyDiscount,
+
+    current_exchange_discount_value: currentExchangeDiscount,
 
     current_total_discount: currentTotalDiscount,
 
@@ -1092,6 +1107,8 @@ export function getSaleCurrentState(saleIdInput: number) {
     promotion_discount_value: currentPromotionDiscount,
 
     loyalty_discount_value: currentLoyaltyDiscount,
+
+    exchange_discount_value: currentExchangeDiscount,
 
     grand_total: currentGrandTotal,
 

@@ -15,6 +15,7 @@ type ReportsData = {
     normal_discounts: number;
     promotion_discounts: number;
     loyalty_discounts: number;
+    exchange_discounts: number;
     total_discounts: number;
     net_sales: number;
     gross_profit_before_discounts: number;
@@ -128,6 +129,7 @@ type CashierDashboardSummary = {
     normal: number;
     promotion: number;
     loyalty: number;
+    exchange: number;
     total: number;
   };
 
@@ -188,6 +190,7 @@ const emptyCashierDashboard: CashierDashboardSummary = {
     normal: 0,
     promotion: 0,
     loyalty: 0,
+    exchange: 0,
     total: 0,
   },
 
@@ -214,6 +217,7 @@ const emptyReports: ReportsData = {
     normal_discounts: 0,
     promotion_discounts: 0,
     loyalty_discounts: 0,
+    exchange_discounts: 0,
     total_discounts: 0,
     net_sales: 0,
     gross_profit_before_discounts: 0,
@@ -1961,6 +1965,12 @@ function CashierRevenueView({
 
               summary.discounts.loyalty > 0
                 ? `نقاط: ${money(summary.discounts.loyalty)}`
+                : null,
+
+              summary.discounts.exchange !== 0
+                ? summary.discounts.exchange > 0
+                  ? `خصم استبدال: ${money(summary.discounts.exchange)}`
+                  : `عكس خصم استبدال: ${money(Math.abs(summary.discounts.exchange))}`
                 : null,
             ]
               .filter(Boolean)

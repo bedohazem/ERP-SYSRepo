@@ -115,6 +115,7 @@ export function buildSalesFinancialJournalSql(dates: FinancialJournalDates) {
         (${sign}) * COALESCE(s.discount_value, 0) AS normal_discounts,
         (${sign}) * COALESCE(s.promotion_discount_value, 0) AS promotion_discounts,
         (${sign}) * COALESCE(s.loyalty_discount_value, 0) AS loyalty_discounts,
+        0 AS exchange_discounts,
         (${sign}) * (${saleList} - ${saleCost}) AS gross_profit,
         (${sign}) * (s.grand_total - ${saleCost}) AS net_profit
       FROM sales s
@@ -143,6 +144,7 @@ export function buildSalesFinancialJournalSql(dates: FinancialJournalDates) {
         -(${sign}) * (${returnNormalDiscount}) AS normal_discounts,
         -(${sign}) * COALESCE(sr.promotion_discount_value, 0) AS promotion_discounts,
         -(${sign}) * COALESCE(sr.loyalty_discount_value, 0) AS loyalty_discounts,
+        -(${sign}) * COALESCE(sr.exchange_discount_value, 0) AS exchange_discounts,
         -(${sign}) * (${returnList} - ${returnCost}) AS gross_profit,
         -(${sign}) * (sr.refund_amount - ${returnCost}) AS net_profit
       FROM sale_returns sr
@@ -176,6 +178,7 @@ export function buildSalesFinancialJournalSql(dates: FinancialJournalDates) {
         (${sign}) * (${discount('normal')}) AS normal_discounts,
         (${sign}) * (${discount('promotion')}) AS promotion_discounts,
         (${sign}) * (${discount('loyalty')}) AS loyalty_discounts,
+        (${sign}) * COALESCE(se.exchange_discount_delta, 0) AS exchange_discounts,
         (${sign}) * (${exchangeList} - ${exchangeCost}) AS gross_profit,
         (${sign}) * (se.difference_amount - ${exchangeCost}) AS net_profit
       FROM sale_exchanges se

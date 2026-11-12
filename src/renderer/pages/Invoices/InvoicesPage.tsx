@@ -69,6 +69,7 @@ type SaleRow = {
   original_grand_total?: number;
 
   total_discount_value?: number;
+  exchange_discount_value?: number;
 
   current_net_total?: number;
   current_paid_amount?: number;
@@ -146,6 +147,7 @@ type ExchangeRow = {
   old_product_discount_value?: number;
   new_product_discount_value?: number;
   difference_amount: number;
+  exchange_discount_value?: number;
 
   cash_collection_amount: number;
 
@@ -2157,6 +2159,12 @@ export default function InvoicesPage() {
                               نقاط: {money(sale.loyalty_discount_value || 0)}
                             </span>
                           )}
+
+                          {Number(sale.exchange_discount_value || 0) > 0 && (
+                            <span style={{ color: '#86efac' }}>
+                              خصم استبدال: {money(sale.exchange_discount_value)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     ) : (
@@ -3468,8 +3476,25 @@ export default function InvoicesPage() {
                 value={money(selectedExchange.new_group_total)}
               />
 
+              {Number(selectedExchange.exchange_discount_value || 0) > 0 && (
+                <>
+                  <SummaryLine
+                    label="فرق الاستبدال قبل الخصم"
+                    value={money(
+                      Number(selectedExchange.difference_amount || 0) +
+                        Number(selectedExchange.exchange_discount_value || 0),
+                    )}
+                  />
+
+                  <SummaryLine
+                    label="خصم الاستبدال"
+                    value={money(selectedExchange.exchange_discount_value)}
+                  />
+                </>
+              )}
+
               <SummaryLine
-                label="فرق الاستبدال"
+                label="فرق الاستبدال النهائي"
                 value={money(selectedExchange.difference_amount)}
                 strong
               />
@@ -4429,6 +4454,19 @@ export default function InvoicesPage() {
                       ?.current_loyalty_discount_value ??
                       selectedReceipt.sale.loyalty_discount_value ??
                       0,
+                  )}
+                />
+              )}
+
+              {Number(
+                selectedReceipt.financials?.current_exchange_discount_value ??
+                  0,
+              ) > 0 && (
+                <SummaryLine
+                  label="خصم الاستبدال"
+                  value={money(
+                    selectedReceipt.financials
+                      ?.current_exchange_discount_value ?? 0,
                   )}
                 />
               )}

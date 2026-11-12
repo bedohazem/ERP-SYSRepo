@@ -2642,6 +2642,10 @@ export function listSales(input?: {
 
       total_discount_value: financials.current_total_discount,
 
+      exchange_discount_value: Number(
+        financials.current_exchange_discount_value || 0,
+      ),
+
       total_return_amount: financials.total_return_value,
 
       current_net_total: financials.net_grand_total,
@@ -2913,6 +2917,7 @@ export function createSaleReturn(input: {
       lineTotal: number;
       productDiscount: number;
       promotionDiscount: number;
+      exchangeDiscount: number;
     };
 
     let returnSubTotal = 0;
@@ -3053,6 +3058,10 @@ export function createSaleReturn(input: {
 
             productDiscount,
             promotionDiscount,
+            exchangeDiscount: Math.max(
+              0,
+              Number(unit.current_exchange_discount_value || 0),
+            ),
           });
         }
 
@@ -3182,6 +3191,10 @@ export function createSaleReturn(input: {
               productDiscount,
 
               promotionDiscount,
+              exchangeDiscount: Math.max(
+                0,
+                Number(unit.current_exchange_discount_value || 0),
+              ),
             });
           }
 
@@ -3312,6 +3325,7 @@ export function createSaleReturn(input: {
 
         productDiscount,
         promotionDiscount: itemPromotionDiscount,
+        exchangeDiscount: 0,
       });
     }
 
@@ -3322,6 +3336,13 @@ export function createSaleReturn(input: {
     returnProductDiscount = roundMoney(returnProductDiscount);
 
     returnPromotionDiscount = roundMoney(returnPromotionDiscount);
+
+    const returnExchangeDiscount = roundMoney(
+      preparedItems.reduce(
+        (sum, item) => sum + Number(item.exchangeDiscount || 0),
+        0,
+      ),
+    );
 
     if (preparedItems.length === 0) {
       throw new Error('لا توجد كميات صالحة للمرتجع');
@@ -3410,6 +3431,9 @@ export function createSaleReturn(input: {
             0
           )
             AS returned_loyalty_discount,
+
+          IFNULL(SUM(exchange_discount_value), 0)
+            AS returned_exchange_discount,
 
           IFNULL(
             SUM(
@@ -3781,7 +3805,12 @@ export function createSaleReturn(input: {
      */
     const cumulativeExactReturnValue = Math.max(
       0,
-      roundMoney(cumulativeBeforeLoyalty - targetLoyaltyDiscount),
+      roundMoney(
+        cumulativeBeforeLoyalty -
+          targetLoyaltyDiscount -
+          Number(previousReturns?.returned_exchange_discount || 0) -
+          returnExchangeDiscount,
+      ),
     );
 
     /*
@@ -4000,6 +4029,10 @@ export function createSaleReturn(input: {
 
     const returnId = Number(returnResult.lastInsertRowid);
 
+    db.prepare(
+      'UPDATE sale_returns SET exchange_discount_value = ? WHERE id = ?',
+    ).run(returnExchangeDiscount, returnId);
+
     if (cashRefundAmount > 0) {
       createCashMovement({
         type: 'sale_return',
@@ -4103,7 +4136,7 @@ export function createSaleReturn(input: {
       `);
 
     for (const item of preparedItems) {
-      insertReturnItem.run(
+      const createdReturnItem = insertReturnItem.run(
         returnId,
         item.originalItem.id,
         item.promotionUnitId,
@@ -4120,6 +4153,13 @@ export function createSaleReturn(input: {
         item.productDiscount,
         item.promotionDiscount,
         item.lineTotal,
+      );
+
+      db.prepare(
+        'UPDATE sale_return_items SET exchange_discount_value = ? WHERE id = ?',
+      ).run(
+        Number(item.exchangeDiscount || 0),
+        Number(createdReturnItem.lastInsertRowid),
       );
 
       receiveStockAtCost(db, {

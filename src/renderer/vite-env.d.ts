@@ -1178,6 +1178,7 @@ declare global {
 
             original_unit_price: number;
             current_unit_price: number;
+            current_exchange_discount_value: number;
 
             effective_promotion_discount_value: number;
 
@@ -1204,6 +1205,7 @@ declare global {
           current_promotion_discount_value: number;
           current_normal_discount_value: number;
           current_loyalty_discount_value: number;
+          current_exchange_discount_value: number;
           current_total_discount: number;
           current_grand_total: number;
 
@@ -1219,6 +1221,9 @@ declare global {
 
         payment_method?: string | null;
         reason?: string | null;
+
+        discount_type?: 'amount' | 'percent';
+        discount_input?: number;
 
         items: Array<{
           promotion_unit_id: number;
@@ -1236,6 +1241,9 @@ declare global {
         old_group_total: number;
         new_group_total: number;
         difference_amount: number;
+
+        exchange_discount_value: number;
+        exchange_discount_delta: number;
 
         amount_to_collect: number;
         amount_to_refund: number;
@@ -1959,6 +1967,7 @@ declare global {
           normal: number;
           promotion: number;
           loyalty: number;
+          exchange: number;
           total: number;
         };
 
@@ -2015,6 +2024,7 @@ declare global {
           exchange_cash_refund: number;
           exchange_debt_reduction: number;
           exchange_discount_adjustment: number;
+          exchange_discounts: number;
           approved_closing_surplus: number;
           approved_closing_shortage: number;
           approved_opening_surplus: number;

@@ -13,6 +13,7 @@ type ReportsData = {
     gross_sales: number;
     total_returns: number;
     loyalty_discounts: number;
+    exchange_discounts: number;
     net_sales: number;
     gross_profit_before_discounts: number;
     net_profit_after_discounts: number;
@@ -96,6 +97,7 @@ const emptyReports: ReportsData = {
     gross_sales: 0,
     total_returns: 0,
     loyalty_discounts: 0,
+    exchange_discounts: 0,
     net_sales: 0,
     gross_profit_before_discounts: 0,
     net_profit_after_discounts: 0,
@@ -659,6 +661,12 @@ export default function ReportsPage() {
           title="خصومات العروض"
           value={money(data.summary.promotion_discounts)}
         />
+        {Number(data.summary.exchange_discounts || 0) !== 0 && (
+          <StatCard
+            title="خصومات الاستبدال"
+            value={money(data.summary.exchange_discounts)}
+          />
+        )}
         <StatCard
           title="إجمالي الخصومات"
           value={money(data.summary.total_discounts)}

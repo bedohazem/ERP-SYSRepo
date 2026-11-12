@@ -453,6 +453,19 @@ export function buildSaleExchangeReceiptHtml(
                 : ''
             }
 
+            ${
+              Number(exchange.exchange_discount_value || 0) > 0
+                ? `
+                  <div class="summary-row">
+                    <span>خصم الاستبدال</span>
+                    <strong>
+                      ${money(exchange.exchange_discount_value)} ج.م
+                    </strong>
+                  </div>
+                `
+                : ''
+            }
+
             <div class="summary-row difference">
               <span>
                 فرق الاستبدال

@@ -8,6 +8,7 @@ import {
   getPromotionScopeLabel,
   getPromotionTypeLabel,
 } from '../utils/promotion-display';
+import { calculateExchangeDiscount } from '../../shared/exchange-discount';
 import { formatMoney, roundMoney } from '../../shared/money';
 
 type ExchangeUnit = {
@@ -19,6 +20,7 @@ type ExchangeUnit = {
   current_variant_id: number;
   current_unit_price: number;
   effective_promotion_discount_value: number;
+  current_exchange_discount_value: number;
   current_is_gift: number;
 
   is_returned: number;
@@ -97,6 +99,7 @@ type ExchangeState = {
     current_promotion_discount_value: number;
 
     current_grand_total: number;
+    current_exchange_discount_value: number;
 
     total_return_value: number;
     net_grand_total: number;
@@ -274,6 +277,16 @@ export default function SaleExchangeModal({
 
   const [reason, setReason] = useState('');
 
+  const [discountType, setDiscountType] = useState<'amount' | 'percent'>(
+    'amount',
+  );
+  const [discountInput, setDiscountInput] = useState('');
+  const discountInputNumber = Number(discountInput || 0);
+  const discountIsValid =
+    Number.isFinite(discountInputNumber) &&
+    discountInputNumber >= 0 &&
+    (discountType !== 'percent' || discountInputNumber <= 100);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -301,6 +314,8 @@ export default function SaleExchangeModal({
       setGroupId('');
       setDrafts([]);
       setReason('');
+      setDiscountType('amount');
+      setDiscountInput('');
       setError('');
       return;
     }
@@ -311,6 +326,8 @@ export default function SaleExchangeModal({
       setLoading(true);
       setError('');
       setDrafts([]);
+      setDiscountType('amount');
+      setDiscountInput('');
       setState(null);
       setActivePromotions([]);
 
@@ -430,6 +447,8 @@ export default function SaleExchangeModal({
         newTotal: 0,
 
         difference: 0,
+        exchangeDiscount: 0,
+        positiveDifference: 0,
 
         debtReduction: 0,
         cashRefund: 0,
@@ -625,9 +644,76 @@ export default function SaleExchangeModal({
           ),
         );
 
-    const nextGrandTotal = Math.max(
+    // Mirror createSaleExchange: retain grants on unchanged units,
+    // and cap any NEW grant by the POSITIVE amount due.
+    const beforeExchangeGrandTotal = Math.max(
       0,
       roundMoney(afterNormal - loyaltyDiscount),
+    );
+    const previousGroupDiscount = roundMoney(
+      selectedGroup.units.reduce(
+        (sum, unit) => sum + Number(unit.current_exchange_discount_value || 0),
+        0,
+      ),
+    );
+    const unchangedExchangeDiscount = Math.max(
+      0,
+      roundMoney(
+        Number(state.financials.current_exchange_discount_value || 0) -
+          previousGroupDiscount,
+      ),
+    );
+    const exchangePayableUnits = nextUnits.map((unit) => ({
+      id: unit.id,
+      payable: Math.max(
+        0,
+        roundMoney(
+          unit.price -
+            (selectedIsPromotion && giftIds.has(unit.id)
+              ? unit.price
+              : unit.promotionDiscount),
+        ),
+      ),
+      existingDiscount: Math.max(
+        0,
+        Number(
+          selectedGroup.units.find(
+            (original) => Number(original.id) === unit.id,
+          )?.current_exchange_discount_value || 0,
+        ),
+      ),
+    }));
+    const groupPayable = exchangePayableUnits.reduce(
+      (sum, unit) => sum + unit.payable,
+      0,
+    );
+    const retainedGroupDiscount = Math.min(previousGroupDiscount, groupPayable);
+    const currentInvoiceNet = Number(state.financials.net_grand_total || 0);
+    const provisionalNet = Math.max(
+      0,
+      roundMoney(
+        beforeExchangeGrandTotal -
+          unchangedExchangeDiscount -
+          retainedGroupDiscount -
+          Number(state.financials.total_return_value || 0),
+      ),
+    );
+    const positiveDifference = Math.max(
+      0,
+      roundMoney(provisionalNet - currentInvoiceNet),
+    );
+    const exchangeDiscount = calculateExchangeDiscount({
+      type: discountType,
+      value: discountIsValid ? discountInputNumber : 0,
+      positiveDifference,
+      units: exchangePayableUnits,
+    });
+    const nextExchangeDiscount = roundMoney(
+      unchangedExchangeDiscount + exchangeDiscount.nextGroupDiscount,
+    );
+    const nextGrandTotal = Math.max(
+      0,
+      roundMoney(beforeExchangeGrandTotal - nextExchangeDiscount),
     );
 
     const nextInvoiceNet = Math.max(
@@ -636,8 +722,6 @@ export default function SaleExchangeModal({
         nextGrandTotal - Number(state.financials.total_return_value || 0),
       ),
     );
-
-    const currentInvoiceNet = Number(state.financials.net_grand_total || 0);
 
     const difference = roundMoney(nextInvoiceNet - currentInvoiceNet);
 
@@ -668,6 +752,8 @@ export default function SaleExchangeModal({
       newTotal,
 
       difference,
+      exchangeDiscount: exchangeDiscount.appliedDiscount,
+      positiveDifference,
 
       debtReduction,
       cashRefund,
@@ -677,7 +763,16 @@ export default function SaleExchangeModal({
       currentInvoiceNet,
       nextInvoiceNet,
     };
-  }, [state, selectedGroup, selectedIsPromotion, drafts, activePromotions]);
+  }, [
+    state,
+    selectedGroup,
+    selectedIsPromotion,
+    drafts,
+    activePromotions,
+    discountType,
+    discountInput,
+    discountIsValid,
+  ]);
 
   useEffect(() => {
     if (!pendingSearch?.query.trim() || !selectedGroup) {
@@ -770,6 +865,8 @@ export default function SaleExchangeModal({
   }, [pendingSearch, selectedGroup]);
 
   function startSingleExchange(group: ExchangeGroup, unit: ExchangeUnit) {
+    setDiscountType('amount');
+    setDiscountInput('');
     setPendingSearch(null);
     setActiveSearchUnitId(null);
     setActiveResultIndex(-1);
@@ -782,6 +879,8 @@ export default function SaleExchangeModal({
   }
 
   function startWholeGroupExchange(group: ExchangeGroup) {
+    setDiscountType('amount');
+    setDiscountInput('');
     setPendingSearch(null);
     setActiveSearchUnitId(null);
     setActiveResultIndex(-1);
@@ -871,6 +970,11 @@ export default function SaleExchangeModal({
       return;
     }
 
+    if (!discountIsValid) {
+      setError('قيمة خصم الاستبدال غير صحيحة، ونسبة الخصم لا تتجاوز 100%');
+      return;
+    }
+
     if (
       (preview.cashCollection > 0 || preview.cashRefund > 0) &&
       !paymentAccount
@@ -892,6 +996,9 @@ export default function SaleExchangeModal({
         payment_method: paymentAccount,
 
         reason: reason.trim() || null,
+
+        discount_type: discountType,
+        discount_input: discountInputNumber,
 
         items: drafts.map((draft) => ({
           promotion_unit_id: draft.promotion_unit_id,
@@ -918,7 +1025,12 @@ export default function SaleExchangeModal({
         settlement = parts.join(' — ') || 'تم تسوية فرق الاستبدال';
       }
 
-      onSuccess(`تم الاستبدال ${result.exchangeCode} — ${settlement}`);
+      onSuccess(
+        `تم الاستبدال ${result.exchangeCode} — ${settlement}` +
+          (Number(result.exchange_discount_value || 0) > 0
+            ? ` — خصم استبدال ${money(result.exchange_discount_value)}`
+            : ''),
+      );
     } catch (submitError) {
       setError(getErrorMessage(submitError, 'تعذر حفظ الاستبدال'));
     } finally {
@@ -931,7 +1043,9 @@ export default function SaleExchangeModal({
   }
 
   const readyToSave =
-    drafts.length > 0 && drafts.every((draft) => Boolean(draft.new_variant));
+    discountIsValid &&
+    drafts.length > 0 &&
+    drafts.every((draft) => Boolean(draft.new_variant));
 
   return (
     <div
@@ -1727,6 +1841,66 @@ export default function SaleExchangeModal({
                 <div
                   style={{
                     display: 'grid',
+                    gridTemplateColumns:
+                      'minmax(130px, 1fr) minmax(160px, 1fr)',
+                    alignItems: 'end',
+                    gap: '10px',
+                  }}
+                >
+                  <div style={{ display: 'grid', gap: '7px' }}>
+                    <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
+                      نوع خصم الاستبدال
+                    </label>
+                    <select
+                      value={discountType}
+                      onChange={(event) =>
+                        setDiscountType(
+                          event.target.value as 'amount' | 'percent',
+                        )
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="amount">مبلغ ثابت</option>
+                      <option value="percent">نسبة من فرق الاستبدال</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'grid', gap: '7px' }}>
+                    <label style={{ color: '#cbd5e1', fontWeight: 800 }}>
+                      {discountType === 'amount'
+                        ? 'قيمة الخصم'
+                        : 'نسبة الخصم %'}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={discountType === 'percent' ? 100 : undefined}
+                      step="1"
+                      value={discountInput}
+                      onChange={(event) => setDiscountInput(event.target.value)}
+                      placeholder="0"
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      gridColumn: '1 / -1',
+                      color: discountIsValid ? '#94a3b8' : '#fca5a5',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {discountIsValid
+                      ? `الفرق الموجب قبل الخصم: ${money(preview.positiveDifference)}` +
+                        (preview.exchangeDiscount > 0
+                          ? ` — خصم الاستبدال الفعلي: ${money(preview.exchangeDiscount)}`
+                          : '')
+                      : 'قيمة خصم غير صحيحة: النسبة من 0 إلى 100 والمبلغ لا يكون سالبًا'}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
                     gridTemplateColumns: 'repeat(3, 1fr)',
                     gap: '10px',
                   }}
@@ -1764,6 +1938,15 @@ export default function SaleExchangeModal({
                           : money(0)}
                     </strong>
                   </div>
+
+                  {preview.exchangeDiscount > 0 && (
+                    <div style={summaryCardStyle}>
+                      خصم الاستبدال
+                      <strong style={{ color: '#86efac' }}>
+                        {money(preview.exchangeDiscount)}
+                      </strong>
+                    </div>
+                  )}
 
                   <div style={summaryCardStyle}>
                     تعديل قيمة الفاتورة

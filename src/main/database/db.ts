@@ -4436,6 +4436,67 @@ export function getDb(): Database.Database {
           );
         },
       },
+
+      {
+        version: 39,
+        name: 'track-discretionary-exchange-discounts',
+        up: () => {
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'discount_type',
+            "TEXT NOT NULL DEFAULT 'amount'",
+          );
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'discount_input',
+            'REAL NOT NULL DEFAULT 0',
+          );
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'exchange_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+          safeAddColumn(
+            db,
+            'sale_exchanges',
+            'exchange_discount_delta',
+            'REAL NOT NULL DEFAULT 0',
+          );
+          safeAddColumn(
+            db,
+            'sale_promotion_units',
+            'current_exchange_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+          safeAddColumn(
+            db,
+            'sale_return_items',
+            'exchange_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+          safeAddColumn(
+            db,
+            'sale_returns',
+            'exchange_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+          safeAddColumn(
+            db,
+            'sale_exchange_items',
+            'old_exchange_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+          safeAddColumn(
+            db,
+            'sale_exchange_items',
+            'new_exchange_discount_value',
+            'REAL NOT NULL DEFAULT 0',
+          );
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

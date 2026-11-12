@@ -458,6 +458,28 @@ function normalizeSaleExchangeInput(input: unknown) {
     throw new Error('لا توجد أصناف للاستبدال');
   }
 
+  const exchangeDiscountType =
+    payload.discount_type == null || payload.discount_type === ''
+      ? 'amount'
+      : requireEnumValue(
+          payload.discount_type,
+          HELD_SALE_DISCOUNT_TYPES,
+          'نوع خصم الاستبدال',
+        );
+  const exchangeDiscountInput =
+    exchangeDiscountType === 'percent'
+      ? (optionalNonNegativeNumber(
+          payload.discount_input,
+          'نسبة خصم الاستبدال',
+        ) ?? 0)
+      : (optionalNonNegativeMoney(
+          payload.discount_input,
+          'قيمة خصم الاستبدال',
+        ) ?? 0);
+  if (exchangeDiscountType === 'percent' && exchangeDiscountInput > 100) {
+    throw new Error('نسبة خصم الاستبدال لا يمكن أن تتجاوز 100%');
+  }
+
   return {
     original_sale_id: requirePositiveInteger(
       payload.original_sale_id,
@@ -471,6 +493,9 @@ function normalizeSaleExchangeInput(input: unknown) {
     ),
 
     reason: optionalTrimmedString(payload.reason, 'سبب الاستبدال', 500),
+
+    discount_type: exchangeDiscountType,
+    discount_input: exchangeDiscountInput,
 
     items: rawItems.map((rawItem) => {
       const item = requireObjectInput(rawItem, 'بيانات صنف الاستبدال');
@@ -1241,6 +1266,8 @@ export function registerSalesIpc(): void {
 
           new_group_total: result.new_group_total,
 
+          exchange_discount_value: result.exchange_discount_value,
+          exchange_discount_delta: result.exchange_discount_delta,
           difference_amount: result.difference_amount,
 
           amount_to_collect: result.amount_to_collect,

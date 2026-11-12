@@ -76,4 +76,45 @@ describe('sale exchange receipt', () => {
 
     expect(html).toContain('50');
   });
+
+  it('prints exchange discount only when the actual grant is positive', () => {
+    const baseExchange = {
+      id: 10,
+      code: 'EXC-00010',
+      original_sale_id: 20,
+      created_at: '2026-11-12 10:00:00',
+      old_group_total: 200,
+      new_group_total: 250,
+      payment_method: 'store_cash',
+      cash_refund_amount: 0,
+      debt_reduction_amount: 0,
+      items: [],
+    };
+
+    const withDiscount = buildSaleExchangeReceiptHtml({
+      ...baseExchange,
+      difference_amount: 40,
+      cash_collection_amount: 40,
+      exchange_discount_value: 10,
+    });
+
+    expect(withDiscount).toContain('خصم الاستبدال');
+
+    const discountSection = withDiscount.slice(
+      withDiscount.indexOf('خصم الاستبدال'),
+      withDiscount.indexOf('خصم الاستبدال') + 200,
+    );
+
+    expect(discountSection).toContain('10');
+
+    const withoutDiscount = buildSaleExchangeReceiptHtml({
+      ...baseExchange,
+      difference_amount: 50,
+      cash_collection_amount: 50,
+      exchange_discount_value: 0,
+    });
+
+    expect(withoutDiscount).not.toContain('خصم الاستبدال');
+    expect(withoutDiscount).toContain('فرق الاستبدال');
+  });
 });

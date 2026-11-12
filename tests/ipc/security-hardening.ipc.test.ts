@@ -223,12 +223,15 @@ describe('IPC security hardening', () => {
     expect(typeof loyaltySettings.loyalty_enabled).toBe('boolean');
 
     /*
-     * Barcode configuration
-     * إعداد إداري.
+     * إعدادات الباركود تتطلب صلاحية
+     * إدارة المنتجات أو المشتريات.
+     *
+     * الكاشير العادي لا يمتلك
+     * أيًا من الصلاحيتين.
      */
     await expect(
       invoke(client.event, 'settings:get-barcode-print'),
-    ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
+    ).rejects.toThrow('غير مصرح لك بتنفيذ هذه العملية');
 
     /*
      * إلغاء تفعيل البرنامج

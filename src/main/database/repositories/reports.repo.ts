@@ -3069,6 +3069,7 @@ export function getReportsSummary(input?: ReportFilter) {
       normal_discounts: history.summary.normal_discounts,
       promotion_discounts: history.summary.promotion_discounts,
       loyalty_discounts: history.summary.loyalty_discounts,
+      exchange_discounts: history.summary.exchange_discounts,
       total_discounts: history.summary.total_discounts,
       net_sales: history.summary.net_sales,
       gross_profit_before_discounts:
@@ -3216,6 +3217,7 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
         normal: 0,
         promotion: 0,
         loyalty: 0,
+        exchange: 0,
         total: 0,
       },
 
@@ -3583,7 +3585,10 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
             )
           ),
           0
-        ) AS returned_loyalty_discount
+        ) AS returned_loyalty_discount,
+
+        IFNULL(SUM(IFNULL(sr.exchange_discount_value, 0)), 0)
+          AS returned_exchange_discount
 
       FROM sale_returns sr
 
@@ -3634,7 +3639,13 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
             END
           ),
           0
-        ) AS cross_shift_debt_restored
+        ) AS cross_shift_debt_restored,
+
+        IFNULL(SUM(CASE
+          WHEN sr.shift_id IS NULL OR sr.shift_id <> sr.cancelled_shift_id
+          THEN IFNULL(sr.exchange_discount_value, 0)
+          ELSE 0
+        END), 0) AS cross_shift_return_exchange_discount_restored
 
       FROM sale_returns sr
 
@@ -3745,7 +3756,10 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
             )
           ),
           0
-        ) AS loyalty_discount_adjustment
+        ) AS loyalty_discount_adjustment,
+
+        IFNULL(SUM(IFNULL(se.exchange_discount_delta, 0)), 0)
+          AS exchange_discount_adjustment
 
       FROM sale_exchanges se
 
@@ -3820,7 +3834,13 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
             END
           ),
           0
-        ) AS cross_shift_debt_restored
+        ) AS cross_shift_debt_restored,
+
+        IFNULL(SUM(CASE
+          WHEN se.shift_id IS NULL OR se.shift_id <> se.cancelled_shift_id
+          THEN IFNULL(se.exchange_discount_delta, 0)
+          ELSE 0
+        END), 0) AS cross_shift_exchange_discount_reversal
 
       FROM sale_exchanges se
 
@@ -4036,8 +4056,21 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
     ),
   );
 
+  const exchangeDiscount = reportMoney(
+    Number(exchanges?.exchange_discount_adjustment || 0) -
+      Number(returns?.returned_exchange_discount || 0) -
+      Number(cancelledExchanges?.cross_shift_exchange_discount_reversal || 0) +
+      Number(
+        cancelledReturns?.cross_shift_return_exchange_discount_restored || 0,
+      ),
+  );
+
   const totalDiscount = reportMoney(
-    productDiscount + normalDiscount + promotionDiscount + loyaltyDiscount,
+    productDiscount +
+      normalDiscount +
+      promotionDiscount +
+      loyaltyDiscount +
+      exchangeDiscount,
   );
 
   const netSales = reportMoney(
@@ -4143,6 +4176,8 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
       promotion: promotionDiscount,
 
       loyalty: loyaltyDiscount,
+
+      exchange: exchangeDiscount,
 
       total: totalDiscount,
     },

@@ -28,10 +28,16 @@ import {
 
 import { getSaleCurrentState } from '../../src/main/database/repositories/sales-current-state.repo';
 
-import { getReportsSummary } from '../../src/main/database/repositories/reports.repo';
+import {
+  getCashierDashboardSummary,
+  getReportsSummary,
+} from '../../src/main/database/repositories/reports.repo';
+
+import { getSalesHistoryReport } from '../../src/main/database/repositories/sales-history-report.repo';
 
 import {
   closeCashShift,
+  getCashShiftDetails,
   getOpenCashShift,
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo';
@@ -568,6 +574,371 @@ describe('sale exchange cancellation', () => {
     ).toEqual([150, 200, 250]);
   });
 
+  it.each([
+    {
+      scenario: 'fully paid',
+      paid: 450,
+      expectedDebtReduction: 0,
+      expectedCashRefund: 540,
+    },
+    {
+      scenario: 'partially paid',
+      paid: 200,
+      expectedDebtReduction: 250,
+      expectedCashRefund: 290,
+    },
+  ])(
+    'reconciles a full return after discounted exchange ($scenario)',
+    ({ paid, expectedDebtReduction, expectedCashRefund }) => {
+      const db = getDb();
+      const customerId = createCustomer();
+
+      const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150'], {
+        customerId,
+        paid,
+      });
+
+      const saleId = result.sale.saleId;
+      const gift = getUnitByPrice(saleId, 150);
+
+      expect(customerBalance(customerId)).toBe(450 - paid);
+
+      const exchange = createSaleExchange({
+        original_sale_id: saleId,
+        user_id: 1,
+        payment_method: 'store_cash',
+        discount_type: 'amount',
+        discount_input: 10,
+        items: [
+          {
+            promotion_unit_id: Number(gift.id),
+            new_variant_id: result.variants.CEX300.variant_id,
+          },
+        ],
+      });
+
+      expect(exchange.exchange_discount_value).toBe(10);
+      expect(exchange.difference_amount).toBe(90);
+      expect(exchange.amount_to_collect).toBe(90);
+
+      const before = getSaleCurrentState(saleId);
+      const beforeReport = getSalesHistoryReport();
+
+      expect(before.financials.net_grand_total).toBe(540);
+      expect(before.financials.current_exchange_discount_value).toBe(10);
+
+      expect(beforeReport.summary.net_sales).toBe(540);
+      expect(beforeReport.summary.exchange_discounts).toBe(10);
+      expect(beforeReport.summary.net_profit_after_discounts).toBe(210);
+
+      expect(customerBalance(customerId)).toBe(450 - paid);
+
+      // Return the entire promotion, including the replacement.
+      const saleReturn = createSaleReturn({
+        original_sale_id: saleId,
+        user_id: 1,
+        refund_payment_method: 'store_cash',
+        reason: 'Discounted exchange full return',
+        items: fullBundleReturnItems(saleId),
+      });
+
+      expect(saleReturn.return_value).toBe(540);
+      expect(saleReturn.refundAmount).toBe(expectedCashRefund);
+      expect(saleReturn.debt_reduction_amount).toBe(expectedDebtReduction);
+
+      const returnRow = db
+        .prepare(
+          `
+        SELECT
+          refund_amount,
+          exchange_discount_value,
+          cash_refund_amount,
+          debt_reduction_amount
+        FROM sale_returns
+        WHERE id = ?
+      `,
+        )
+        .get(saleReturn.returnId) as any;
+
+      expect(Number(returnRow.refund_amount)).toBe(540);
+      expect(Number(returnRow.exchange_discount_value)).toBe(10);
+      expect(Number(returnRow.cash_refund_amount)).toBe(expectedCashRefund);
+      expect(Number(returnRow.debt_reduction_amount)).toBe(
+        expectedDebtReduction,
+      );
+
+      // All returned units must carry their actual discount shares.
+      const returnItems = db
+        .prepare(
+          `
+        SELECT
+          COUNT(*) AS item_count,
+          IFNULL(SUM(exchange_discount_value), 0)
+            AS exchange_discount,
+          IFNULL(SUM(cost_value), 0)
+            AS returned_cost
+        FROM sale_return_items
+        WHERE return_id = ?
+      `,
+        )
+        .get(saleReturn.returnId) as any;
+
+      expect(Number(returnItems.item_count)).toBe(3);
+      expect(Number(returnItems.exchange_discount)).toBe(10);
+      expect(Number(returnItems.returned_cost)).toBe(330);
+
+      // Only the actual cash refund leaves the drawer.
+      const refundMovement = db
+        .prepare(
+          `
+        SELECT
+          direction,
+          amount,
+          payment_method
+        FROM cash_movements
+        WHERE reference_type = 'sale_return'
+          AND reference_id = ?
+          AND cancelled_at IS NULL
+      `,
+        )
+        .get(saleReturn.returnId) as any;
+
+      expect(refundMovement).toBeTruthy();
+      expect(refundMovement.direction).toBe('out');
+      expect(Number(refundMovement.amount)).toBe(expectedCashRefund);
+      expect(refundMovement.payment_method).toBe('store_cash');
+
+      // No customer debt may remain after the full return.
+      expect(customerBalance(customerId)).toBe(0);
+
+      const after = getSaleCurrentState(saleId);
+
+      expect(after.financials.net_grand_total).toBe(0);
+
+      // Inventory must restore the actual returned variants.
+      expect(stock('CEX150')).toBe(20);
+      expect(stock('CEX200')).toBe(20);
+      expect(stock('CEX250')).toBe(20);
+      expect(stock('CEX300')).toBe(20);
+
+      // Financial reports must reverse the whole sale exactly once.
+      const history = getSalesHistoryReport();
+      const reports = getReportsSummary();
+
+      expect(history.summary.net_sales).toBe(0);
+      expect(history.summary.exchange_discounts).toBe(0);
+      expect(history.summary.promotion_discounts).toBe(0);
+      expect(history.summary.total_discounts).toBe(0);
+      expect(history.summary.net_profit_after_discounts).toBe(0);
+
+      expect(reports.summary.net_sales).toBe(0);
+      expect(reports.summary.exchange_discounts).toBe(0);
+      expect(reports.summary.net_profit_after_discounts).toBe(0);
+
+      // Cashier figures must reconcile with the same financial events.
+      const dashboard = getCashierDashboardSummary({
+        user_id: 1,
+      });
+
+      expect(dashboard.sales.net_sales).toBe(0);
+      expect(dashboard.sales.returns_total).toBe(540);
+      expect(dashboard.sales.return_cash_refund).toBe(expectedCashRefund);
+      expect(dashboard.sales.return_debt_reduction).toBe(expectedDebtReduction);
+      expect(dashboard.discounts.exchange).toBe(0);
+    },
+  );
+
+  it('retains exchange discounts across repeated exchanges and reverses each grant once', () => {
+    const db = getDb();
+
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
+
+    const saleId = result.sale.saleId;
+    const unit = getUnitByPrice(saleId, 150);
+
+    const checkFinancials = (
+      netSales: number,
+      exchangeDiscount: number,
+      promotionDiscount: number,
+      netProfit: number,
+    ) => {
+      const state = getSaleCurrentState(saleId);
+      const history = getSalesHistoryReport();
+      const reports = getReportsSummary();
+      const dashboard = getCashierDashboardSummary({
+        user_id: 1,
+      });
+
+      const unitDiscount = getUnits(saleId).reduce(
+        (sum, item) => sum + Number(item.current_exchange_discount_value || 0),
+        0,
+      );
+
+      expect(state.financials.net_grand_total).toBe(netSales);
+      expect(state.financials.current_exchange_discount_value).toBe(
+        exchangeDiscount,
+      );
+
+      expect(unitDiscount).toBe(exchangeDiscount);
+
+      expect(history.summary.net_sales).toBe(netSales);
+      expect(history.summary.exchange_discounts).toBe(exchangeDiscount);
+      expect(history.summary.promotion_discounts).toBe(promotionDiscount);
+      expect(history.summary.total_discounts).toBe(
+        promotionDiscount + exchangeDiscount,
+      );
+      expect(history.summary.net_profit_after_discounts).toBe(netProfit);
+
+      expect(reports.summary.net_sales).toBe(netSales);
+      expect(reports.summary.exchange_discounts).toBe(exchangeDiscount);
+      expect(reports.summary.net_profit_after_discounts).toBe(netProfit);
+
+      expect(dashboard.sales.net_sales).toBe(netSales);
+      expect(dashboard.discounts.exchange).toBe(exchangeDiscount);
+    };
+
+    // First exchange: 150 -> 300, granting 10.
+    const first = createSaleExchange({
+      original_sale_id: saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      discount_type: 'amount',
+      discount_input: 10,
+      items: [
+        {
+          promotion_unit_id: Number(unit.id),
+          new_variant_id: result.variants.CEX300.variant_id,
+        },
+      ],
+    });
+
+    expect(first.exchange_discount_value).toBe(10);
+    expect(first.exchange_discount_delta).toBe(10);
+    expect(first.difference_amount).toBe(90);
+    expect(first.amount_to_collect).toBe(90);
+
+    checkFinancials(540, 10, 200, 210);
+
+    // Second exchange: 300 -> 350.
+    // The old grant remains 10.
+    // New positive difference = 50.
+    // A 10% grant adds only 5.
+    const second = createSaleExchange({
+      original_sale_id: saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      discount_type: 'percent',
+      discount_input: 10,
+      items: [
+        {
+          promotion_unit_id: Number(unit.id),
+          new_variant_id: result.variants.CEX350.variant_id,
+        },
+      ],
+    });
+
+    expect(second.exchange_discount_value).toBe(5);
+    expect(second.exchange_discount_delta).toBe(5);
+    expect(second.difference_amount).toBe(45);
+    expect(second.amount_to_collect).toBe(45);
+
+    checkFinancials(585, 15, 200, 235);
+
+    // Verify independent historical discount grants.
+    const exchangeRows = db
+      .prepare(
+        `
+      SELECT
+        exchange_discount_value,
+        exchange_discount_delta
+      FROM sale_exchanges
+      WHERE id IN (?, ?)
+      ORDER BY id
+    `,
+      )
+      .all(first.exchangeId, second.exchangeId) as any[];
+
+    expect(
+      exchangeRows.map((row) => Number(row.exchange_discount_value)),
+    ).toEqual([10, 5]);
+
+    expect(
+      exchangeRows.map((row) => Number(row.exchange_discount_delta)),
+    ).toEqual([10, 5]);
+
+    // Cannot cancel the older exchange first.
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: first.exchangeId,
+        actor_id: 1,
+        reason: 'Invalid cancellation order',
+      }),
+    ).toThrow('يجب إلغاء آخر عملية استبدال أولًا');
+
+    checkFinancials(585, 15, 200, 235);
+
+    // Cancel second: restore first discount only.
+    const cancelSecond = cancelSaleExchange({
+      exchange_id: second.exchangeId,
+      actor_id: 1,
+      reason: 'Cancel second discounted exchange',
+    });
+
+    expect(cancelSecond.ok).toBe(true);
+
+    checkFinancials(540, 10, 200, 210);
+
+    // Cancel first: restore original invoice.
+    const cancelFirst = cancelSaleExchange({
+      exchange_id: first.exchangeId,
+      actor_id: 1,
+      reason: 'Cancel first discounted exchange',
+    });
+
+    expect(cancelFirst.ok).toBe(true);
+
+    checkFinancials(450, 0, 150, 180);
+
+    // Cash refunds must reverse each collection once.
+    const reverseMovements = db
+      .prepare(
+        `
+      SELECT reference_id, direction, amount
+      FROM cash_movements
+      WHERE reference_type = 'sale_exchange_cancel'
+        AND reference_id IN (?, ?)
+      ORDER BY reference_id
+    `,
+      )
+      .all(first.exchangeId, second.exchangeId) as any[];
+
+    expect(
+      reverseMovements.map((row) => ({
+        reference_id: Number(row.reference_id),
+        direction: row.direction,
+        amount: Number(row.amount),
+      })),
+    ).toEqual([
+      {
+        reference_id: first.exchangeId,
+        direction: 'out',
+        amount: 90,
+      },
+      {
+        reference_id: second.exchangeId,
+        direction: 'out',
+        amount: 45,
+      },
+    ]);
+
+    // Original stock must be fully restored.
+    expect(stock('CEX150')).toBe(19);
+    expect(stock('CEX200')).toBe(19);
+    expect(stock('CEX250')).toBe(19);
+    expect(stock('CEX300')).toBe(20);
+    expect(stock('CEX350')).toBe(20);
+  });
+
   it('blocks exchange cancellation while a newer active return exists', () => {
     const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
 
@@ -911,7 +1282,7 @@ describe('sale exchange cancellation', () => {
     expect(state.financials.current_loyalty_points_earned).toBe(4);
   });
 
-  it('allows admin to cancel a store safe exchange without an open shift', () => {
+  it('reconciles discounted safe exchange cancellation without an open shift', () => {
     const db = getDb();
 
     const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
@@ -933,14 +1304,14 @@ describe('sale exchange cancellation', () => {
     });
 
     expect(getOpenCashShift()).toBeNull();
-
+    const originalShiftSnapshot = getCashShiftDetails(currentShift!.id);
     const exchange = createSaleExchange({
       original_sale_id: result.sale.saleId,
 
       user_id: 1,
-
       payment_method: 'store_safe',
-
+      discount_type: 'amount',
+      discount_input: 10,
       items: [
         {
           promotion_unit_id: Number(gift.id),
@@ -951,7 +1322,14 @@ describe('sale exchange cancellation', () => {
     });
 
     expect(exchange.shift_id).toBeNull();
+    expect(exchange.exchange_discount_value).toBe(10);
+    expect(exchange.difference_amount).toBe(90);
+    expect(exchange.amount_to_collect).toBe(90);
 
+    const beforeCancel = getSalesHistoryReport();
+
+    expect(beforeCancel.summary.net_sales).toBe(540);
+    expect(beforeCancel.summary.exchange_discounts).toBe(10);
     const cancelled = cancelSaleExchange({
       exchange_id: exchange.exchangeId,
 
@@ -991,7 +1369,280 @@ describe('sale exchange cancellation', () => {
 
     expect(reverse.direction).toBe('out');
 
-    expect(Number(reverse.amount)).toBe(100);
+    expect(Number(reverse.amount)).toBe(90);
+
+    const exchangeRow = db
+      .prepare(
+        `
+      SELECT
+        shift_id,
+        cancelled_shift_id,
+        cancelled_outside_shift,
+        cancelled_at
+      FROM sale_exchanges
+      WHERE id = ?
+    `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(exchangeRow.shift_id).toBeNull();
+    expect(exchangeRow.cancelled_shift_id).toBeNull();
+    expect(Number(exchangeRow.cancelled_outside_shift)).toBe(1);
+    expect(exchangeRow.cancelled_at).toBeTruthy();
+
+    const oldShiftAfter = getCashShiftDetails(currentShift!.id);
+
+    expect(oldShiftAfter.sales).toEqual(originalShiftSnapshot.sales);
+    expect(oldShiftAfter.sales_summary).toEqual(
+      originalShiftSnapshot.sales_summary,
+    );
+    expect(oldShiftAfter.operations_summary).toEqual(
+      originalShiftSnapshot.operations_summary,
+    );
+    expect(oldShiftAfter.movements).toEqual(originalShiftSnapshot.movements);
+
+    const current = getSaleCurrentState(result.sale.saleId);
+
+    expect(current.financials.net_grand_total).toBe(450);
+    expect(current.financials.current_exchange_discount_value).toBe(0);
+
+    const history = getSalesHistoryReport();
+    const reports = getReportsSummary();
+
+    expect(history.summary.net_sales).toBe(450);
+    expect(history.summary.exchange_discounts).toBe(0);
+    expect(history.summary.total_discounts).toBe(150);
+    expect(history.summary.net_profit_after_discounts).toBe(180);
+
+    expect(reports.summary.net_sales).toBe(450);
+    expect(reports.summary.exchange_discounts).toBe(0);
+
+    expect(stock('CEX150')).toBe(19);
+    expect(stock('CEX300')).toBe(20);
+
+    expect(getOpenCashShift()).toBeNull();
+
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+        actor_id: 1,
+        reason: 'Duplicate cancellation',
+      }),
+    ).toThrow('عملية الاستبدال ملغاة بالفعل');
+  });
+
+  it('reconciles discounted exchange cancellation across closed and new shifts', () => {
+    const db = getDb();
+    const shiftA = getOpenCashShift()!;
+
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
+
+    const gift = getUnitByPrice(result.sale.saleId, 150);
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      discount_type: 'amount',
+      discount_input: 10,
+      items: [
+        {
+          promotion_unit_id: Number(gift.id),
+          new_variant_id: result.variants.CEX300.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.exchange_discount_value).toBe(10);
+    expect(exchange.difference_amount).toBe(90);
+    expect(exchange.amount_to_collect).toBe(90);
+
+    const dashboardA = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(dashboardA.sales.net_sales).toBe(540);
+    expect(dashboardA.discounts.exchange).toBe(10);
+
+    closeCashShift({
+      shift_id: shiftA.id,
+      closing_counted_amount: 540,
+      left_for_next_shift: 540,
+      closed_by: 1,
+    });
+
+    const closedSnapshot = getCashShiftDetails(shiftA.id);
+
+    const historicalSnapshot = {
+      sales: closedSnapshot.sales,
+      sales_summary: closedSnapshot.sales_summary,
+      operations_summary: closedSnapshot.operations_summary,
+      movements: closedSnapshot.movements,
+      preview: closedSnapshot.preview,
+    };
+
+    const shiftB = openCashShift({
+      opening_counted_amount: 540,
+      opened_by: 1,
+    });
+
+    expect(shiftB.id).not.toBe(shiftA.id);
+
+    const cancelled = cancelSaleExchange({
+      exchange_id: exchange.exchangeId,
+      actor_id: 1,
+      reason: 'Discounted exchange cross-shift regression',
+    });
+
+    expect(cancelled.cancelled_shift_id).toBe(shiftB.id);
+
+    // Closed shift must preserve its historical figures.
+    const afterCancellation = getCashShiftDetails(shiftA.id);
+
+    expect({
+      sales: afterCancellation.sales,
+      sales_summary: afterCancellation.sales_summary,
+      operations_summary: afterCancellation.operations_summary,
+      movements: afterCancellation.movements,
+      preview: afterCancellation.preview,
+    }).toEqual(historicalSnapshot);
+
+    // Cancellation must affect only the new shift.
+    const dashboardB = getCashierDashboardSummary({
+      user_id: 1,
+    });
+
+    expect(dashboardB.shift?.id).toBe(shiftB.id);
+    expect(dashboardB.sales.net_sales).toBe(-90);
+    expect(dashboardB.discounts.exchange).toBe(-10);
+    expect(dashboardB.discounts.total).toBe(-10);
+
+    const reverseMovements = db
+      .prepare(
+        `
+      SELECT shift_id, direction, amount
+      FROM cash_movements
+      WHERE reference_type = 'sale_exchange_cancel'
+        AND reference_id = ?
+      ORDER BY id
+    `,
+      )
+      .all(exchange.exchangeId) as Array<{
+      shift_id: number | null;
+      direction: string;
+      amount: number;
+    }>;
+
+    expect(reverseMovements).toHaveLength(1);
+    expect(Number(reverseMovements[0].shift_id)).toBe(shiftB.id);
+    expect(reverseMovements[0].direction).toBe('out');
+    expect(Number(reverseMovements[0].amount)).toBe(90);
+
+    // Original invoice and inventory must be restored.
+    const current = getSaleCurrentState(result.sale.saleId);
+
+    expect(current.financials.net_grand_total).toBe(450);
+    expect(current.financials.current_exchange_discount_value).toBe(0);
+
+    expect(stock('CEX150')).toBe(19);
+    expect(stock('CEX300')).toBe(20);
+
+    // Reports must reconcile after the reversal.
+    const history = getSalesHistoryReport();
+    const reports = getReportsSummary();
+
+    expect(history.summary.net_sales).toBe(450);
+    expect(history.summary.exchange_discounts).toBe(0);
+    expect(history.summary.promotion_discounts).toBe(150);
+    expect(history.summary.total_discounts).toBe(150);
+    expect(history.summary.net_profit_after_discounts).toBe(180);
+
+    expect(reports.summary.net_sales).toBe(450);
+    expect(reports.summary.exchange_discounts).toBe(0);
+    expect(reports.summary.total_discounts).toBe(150);
+
+    // A cancelled exchange cannot be cancelled twice.
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+        actor_id: 1,
+        reason: 'Duplicate cancellation',
+      }),
+    ).toThrow('عملية الاستبدال ملغاة بالفعل');
+  });
+
+  it('blocks discounted drawer exchange cancellation without a shift', () => {
+    const db = getDb();
+    const originalShift = getOpenCashShift()!;
+
+    const result = createPromotionSale(['CEX250', 'CEX200', 'CEX150']);
+
+    const gift = getUnitByPrice(result.sale.saleId, 150);
+
+    const exchange = createSaleExchange({
+      original_sale_id: result.sale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      discount_type: 'amount',
+      discount_input: 10,
+      items: [
+        {
+          promotion_unit_id: Number(gift.id),
+          new_variant_id: result.variants.CEX300.variant_id,
+        },
+      ],
+    });
+
+    expect(exchange.difference_amount).toBe(90);
+    expect(exchange.exchange_discount_value).toBe(10);
+
+    closeCashShift({
+      shift_id: originalShift.id,
+      closing_counted_amount: 540,
+      left_for_next_shift: 540,
+      closed_by: 1,
+    });
+
+    expect(getOpenCashShift()).toBeNull();
+
+    expect(() =>
+      cancelSaleExchange({
+        exchange_id: exchange.exchangeId,
+        actor_id: 1,
+        reason: 'Cancellation without drawer shift',
+      }),
+    ).toThrow('لا يمكن إلغاء استبدال بدون شفت مفتوح');
+
+    const row = db
+      .prepare(
+        `
+        SELECT cancelled_at, cancelled_shift_id
+        FROM sale_exchanges
+        WHERE id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(row.cancelled_at).toBeNull();
+    expect(row.cancelled_shift_id).toBeNull();
+
+    const reversals = db
+      .prepare(
+        `
+        SELECT COUNT(*) AS total
+        FROM cash_movements
+        WHERE reference_type = 'sale_exchange_cancel'
+          AND reference_id = ?
+      `,
+      )
+      .get(exchange.exchangeId) as any;
+
+    expect(Number(reversals.total)).toBe(0);
+
+    const history = getSalesHistoryReport();
+
+    expect(history.summary.net_sales).toBe(540);
+    expect(history.summary.exchange_discounts).toBe(10);
   });
 
   it('allows admin to cancel a previous-shift exchange in the current shift', () => {
