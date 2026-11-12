@@ -8,6 +8,13 @@ import {
 } from '../../src/main/database/repositories/product.repo';
 
 import { resetDatabaseKeepingSelectiveData } from '../../src/main/database/selective-reset';
+import {
+  createUser,
+  findUserByUsername,
+  setUserActive,
+} from '../../src/main/database/repositories/user.repo';
+
+import { verifyPassword } from '../../src/main/security/password';
 
 function ensureAdmin() {
   const db = getDb();
@@ -444,11 +451,11 @@ describe('selective reset', () => {
 
     expect(restoredCashier).toBeTruthy();
 
-    expect(restoredCashier.password).not.toBe('OLD-CASHIER-HASH');
+    expect(restoredCashier.password).toBe('OLD-CASHIER-HASH');
 
     expect(restoredCashier.is_active).toBe(0);
 
-    expect(restoredCashier.must_change_password).toBe(1);
+    expect(restoredCashier.must_change_password).toBe(0);
   }, 30_000);
 
   it('resets portable store settings when they are not selected and keeps device-local settings', () => {
@@ -650,4 +657,61 @@ describe('selective reset', () => {
 
     expect(backupDir.value).toBe('E:\\LOCAL-BACKUPS');
   }, 30_000);
+
+  it('preserves local cashier login after reset and reactivation', () => {
+    const db = getDb();
+    const admin = ensureAdmin();
+
+    const cashier = createUser(
+      'Preserved Cashier',
+      'preserved_cashier',
+      'Cashier1234',
+      'cashier',
+    );
+
+    const original = db
+      .prepare('SELECT password FROM users WHERE id = ?')
+      .get(cashier.id) as { password: string };
+
+    resetDatabaseKeepingSelectiveData({
+      sections: ['users_permissions'],
+      actorId: admin.id,
+      appVersion: 'selective-reset-test',
+    });
+
+    const restored = db
+      .prepare(
+        `
+        SELECT
+          id,
+          password,
+          is_active,
+          must_change_password
+        FROM users
+        WHERE username = 'preserved_cashier'
+      `,
+      )
+      .get() as {
+      id: number;
+      password: string;
+      is_active: number;
+      must_change_password: number;
+    };
+
+    expect(restored).toBeTruthy();
+    expect(restored.is_active).toBe(0);
+    expect(restored.must_change_password).toBe(0);
+    expect(restored.password).toBe(original.password);
+    expect(verifyPassword('Cashier1234', restored.password)).toBe(true);
+
+    expect(findUserByUsername('preserved_cashier')).toBeUndefined();
+
+    setUserActive(restored.id, 1);
+
+    const activated = findUserByUsername('preserved_cashier');
+
+    expect(activated).toBeTruthy();
+    expect(activated?.must_change_password).toBe(0);
+    expect(verifyPassword('Cashier1234', activated!.password)).toBe(true);
+  });
 });

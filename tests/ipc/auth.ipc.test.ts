@@ -282,6 +282,16 @@ describe('auth IPC authorization', () => {
     for (const row of logs) {
       expect(row.user_id).toBe(admin.id);
     }
+
+    const cashierClient = makeClient();
+
+    const cashierLogin = await invoke(cashierClient.event, 'auth:login', {
+      username: 'managed',
+      password: 'Reset9012',
+    });
+
+    expect(cashierLogin.success).toBe(true);
+    expect(cashierLogin.requires_password_change).toBe(false);
   });
 
   it('strictly validates users IPC inputs without changing user data', async () => {

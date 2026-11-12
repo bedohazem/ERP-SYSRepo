@@ -228,6 +228,28 @@ export function resetDatabaseKeepingSelectiveData(input: {
 
   const db = getDb();
 
+  // نحفظ كلمات المرور المشفرة في الذاكرة فقط أثناء التصفير المحلي.
+  // لا نضيفها للنسخة الاحتياطية الانتقائية.
+  const preservedUserCredentials = sections.includes('users_permissions')
+    ? (db
+        .prepare(
+          `
+          SELECT
+            username,
+            password,
+            IFNULL(must_change_password, 0) AS must_change_password
+          FROM users
+          WHERE id <> ?
+            AND LOWER(username) <> LOWER(?)
+        `,
+        )
+        .all(adminSnapshot.id, adminSnapshot.username) as Array<{
+        username: string;
+        password: string;
+        must_change_password: number;
+      }>)
+    : [];
+
   let restoreResult: SelectiveRestoreResult | null = null;
 
   /*
@@ -252,6 +274,36 @@ export function resetDatabaseKeepingSelectiveData(input: {
       sections,
       adminSnapshot.id,
     );
+
+    if (sections.includes('users_permissions')) {
+      const restoreCredentials = db.prepare(`
+        UPDATE users
+        SET
+          password = ?,
+          must_change_password = ?
+        WHERE username = ?
+          AND is_active = 0
+      `);
+
+      for (const user of preservedUserCredentials) {
+        const result = restoreCredentials.run(
+          user.password,
+          Number(user.must_change_password) === 1 ? 1 : 0,
+          user.username,
+        );
+
+        if (result.changes !== 1) {
+          throw new Error(
+            `تعذر الاحتفاظ ببيانات دخول المستخدم ${user.username}`,
+          );
+        }
+      }
+
+      restoreResult.users_require_password_reset =
+        preservedUserCredentials.filter(
+          (user) => Number(user.must_change_password) === 1,
+        ).length;
+    }
 
     const foreignKeyIssues = db
       .prepare(

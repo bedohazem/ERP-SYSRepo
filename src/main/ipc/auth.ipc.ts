@@ -954,7 +954,7 @@ export function registerAuthIpc(): void {
         const isSelf = targetUserId === actorId;
 
         const user = runCriticalActionWithAudit(
-          () => resetUserPassword(targetUserId, strongPassword, !isSelf),
+          () => resetUserPassword(targetUserId, strongPassword, false),
 
           (user) => ({
             actor_id: actorId,
@@ -968,7 +968,7 @@ export function registerAuthIpc(): void {
             details: {
               username: user.username,
 
-              requires_change: !isSelf,
+              requires_change: false,
             },
           }),
         );
