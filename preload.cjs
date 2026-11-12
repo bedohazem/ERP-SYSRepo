@@ -134,7 +134,9 @@ contextBridge.exposeInMainWorld('api', {
   toggleProductActive: (productId, isActive) =>
     invokeMain('products:toggle-active', productId, isActive),
   addProductVariant: (input) => invokeMain('products:add-variant', input),
+  getSessionSettings: () => invokeMain('settings:get-session'),
 
+  saveSessionSettings: (input) => invokeMain('settings:save-session', input),
   getBarcodePrintSettings: () => invokeMain('settings:get-barcode-print'),
   saveBarcodePrintSettings: (input) =>
     invokeMain('settings:save-barcode-print', input),

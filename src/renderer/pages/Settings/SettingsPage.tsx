@@ -8,6 +8,12 @@ import {
   SELECTIVE_BACKUP_SECTION_LABELS,
   type SelectiveBackupSection,
 } from '../../../shared/selective-backup';
+import {
+  DEFAULT_SESSION_SETTINGS,
+  SESSION_IDLE_MINUTES_OPTIONS,
+  isSessionIdleMinutes,
+  type SessionSettings,
+} from '../../../shared/session-settings';
 
 type BarcodeItemPosition =
   | 'top'
@@ -148,7 +154,13 @@ type CashDrawerSettings = {
 };
 
 type SettingsTab =
-  'store' | 'backup' | 'loyalty' | 'barcode' | 'receiptPrint' | 'cashDrawer';
+  | 'store'
+  | 'backup'
+  | 'loyalty'
+  | 'barcode'
+  | 'receiptPrint'
+  | 'cashDrawer'
+  | 'session';
 
 function toggleSelectiveSection(
   current: SelectiveBackupSection[],
@@ -208,6 +220,11 @@ export default function SettingsPage() {
     useState<ReceiptPrintSettings>(defaultReceiptPrintSettings);
 
   const [savingReceiptPrint, setSavingReceiptPrint] = useState(false);
+  const [sessionSettings, setSessionSettings] = useState<SessionSettings>(
+    DEFAULT_SESSION_SETTINGS,
+  );
+
+  const [savingSessionSettings, setSavingSessionSettings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -361,12 +378,14 @@ export default function SettingsPage() {
         loyaltyData,
         licenseData,
         cashDrawerData,
+        sessionData,
       ] = await Promise.all([
         window.api.getBarcodePrintSettings(),
         window.api.getReceiptPrintSettings(),
         window.api.getLoyaltySettings(),
         licenseStatusPromise,
         window.api.getCashDrawerSettings(),
+        window.api.getSessionSettings(),
       ]);
 
       setSettings(barcodeData);
@@ -383,7 +402,7 @@ export default function SettingsPage() {
       setStoreQrPrimaryUrl(licenseData.store_qr_primary_url || '');
 
       setCashDrawerSettings(cashDrawerData);
-
+      setSessionSettings(sessionData);
       const loadedTheme = licenseData.app_theme === 'light' ? 'light' : 'dark';
 
       document.documentElement.setAttribute('data-theme', loadedTheme);
@@ -568,6 +587,36 @@ export default function SettingsPage() {
       showMessage('error', 'حدث خطأ أثناء فتح درج الكاشير');
     } finally {
       setTestingCashDrawer(false);
+    }
+  }
+
+  async function handleSaveSessionSettings() {
+    if (savingSessionSettings) return;
+
+    setSavingSessionSettings(true);
+
+    try {
+      const saved = await window.api.saveSessionSettings(sessionSettings);
+
+      setSessionSettings(saved);
+
+      // تطبيق التغيير فور الحفظ بدون إعادة تشغيل البرنامج.
+      window.dispatchEvent(
+        new CustomEvent<SessionSettings>('erp:session-settings-changed', {
+          detail: saved,
+        }),
+      );
+
+      showMessage('success', 'تم حفظ إعدادات أمان الجلسة');
+    } catch (error) {
+      console.error('Failed to save session settings:', error);
+
+      showMessage(
+        'error',
+        error instanceof Error ? error.message : 'تعذر حفظ إعدادات أمان الجلسة',
+      );
+    } finally {
+      setSavingSessionSettings(false);
     }
   }
 
@@ -1295,6 +1344,13 @@ export default function SettingsPage() {
         >
           درج الكاشير
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('session')}
+          style={tabButtonStyle(activeTab === 'session')}
+        >
+          أمان الجلسة
+        </button>
       </div>
 
       <div
@@ -1309,6 +1365,202 @@ export default function SettingsPage() {
           paddingBottom: '24px',
         }}
       >
+        {activeTab === 'session' && (
+          <div
+            className="glass-card"
+            style={{
+              borderRadius: '24px',
+              padding: '24px',
+              display: 'grid',
+              gap: '22px',
+              direction: 'rtl',
+            }}
+          >
+            <div>
+              <h2 style={{ margin: '0 0 8px' }}>أمان الجلسة</h2>
+
+              <p
+                style={{
+                  margin: 0,
+                  color: '#94a3b8',
+                  lineHeight: 1.8,
+                }}
+              >
+                التحكم في قفل البرنامج تلقائيًا بعد فترة من عدم استخدامه.
+              </p>
+            </div>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                padding: '18px',
+                borderRadius: '14px',
+                border: '1px solid rgba(148,163,184,0.18)',
+                background: 'rgba(148,163,184,0.045)',
+                cursor: 'pointer',
+              }}
+            >
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '6px',
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: '15px',
+                    color: '#f8fafc',
+                  }}
+                >
+                  تفعيل القفل التلقائي
+                </strong>
+
+                <span
+                  style={{
+                    fontSize: '13px',
+                    color: '#94a3b8',
+                    lineHeight: 1.7,
+                  }}
+                >
+                  عند التفعيل، يتم قفل الجلسة إذا لم يحدث أي نشاط خلال المدة
+                  المحددة.
+                </span>
+              </div>
+
+              <input
+                type="checkbox"
+                checked={sessionSettings.auto_lock_enabled}
+                disabled={savingSessionSettings}
+                onChange={(event) =>
+                  setSessionSettings((current) => ({
+                    ...current,
+                    auto_lock_enabled: event.target.checked,
+                  }))
+                }
+                style={{
+                  width: '21px',
+                  height: '21px',
+                  accentColor: '#10b981',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              />
+            </label>
+
+            <div
+              style={{
+                display: 'grid',
+                gap: '12px',
+                opacity: sessionSettings.auto_lock_enabled ? 1 : 0.55,
+              }}
+            >
+              <label
+                htmlFor="session-idle-minutes"
+                style={{
+                  color: '#e2e8f0',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                }}
+              >
+                قفل الجلسة بعد عدم نشاط لمدة
+              </label>
+
+              <select
+                id="session-idle-minutes"
+                value={sessionSettings.idle_minutes}
+                disabled={
+                  !sessionSettings.auto_lock_enabled || savingSessionSettings
+                }
+                onChange={(event) => {
+                  const minutes = Number(event.target.value);
+
+                  if (isSessionIdleMinutes(minutes)) {
+                    setSessionSettings((current) => ({
+                      ...current,
+                      idle_minutes: minutes,
+                    }));
+                  }
+                }}
+                style={{
+                  width: 'min(320px, 100%)',
+                  padding: '13px 15px',
+                  borderRadius: '12px',
+                  background: '#1e293b',
+                  border: '1px solid rgba(148,163,184,0.28)',
+                  color: '#f8fafc',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  outline: 'none',
+                  cursor: sessionSettings.auto_lock_enabled
+                    ? 'pointer'
+                    : 'not-allowed',
+                }}
+              >
+                {SESSION_IDLE_MINUTES_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {minutes < 60
+                      ? `${minutes} دقيقة`
+                      : minutes === 60
+                        ? 'ساعة واحدة'
+                        : minutes === 120
+                          ? 'ساعتان'
+                          : `${minutes / 60} ساعات`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div
+              style={{
+                padding: '14px 16px',
+                borderRadius: '12px',
+                background: 'rgba(59,130,246,0.07)',
+                border: '1px solid rgba(59,130,246,0.20)',
+                color: '#cbd5e1',
+                fontSize: '13px',
+                lineHeight: 1.9,
+              }}
+            >
+              {sessionSettings.auto_lock_enabled
+                ? `القفل التلقائي مفعل. سيتم قفل الجلسة بعد ${sessionSettings.idle_minutes} دقيقة من عدم النشاط.`
+                : 'القفل التلقائي متوقف. لن يتم قفل الجلسة بسبب عدم النشاط.'}
+
+              <div
+                style={{
+                  color: '#94a3b8',
+                  marginTop: '5px',
+                }}
+              >
+                تعطيل الحساب أو تغيير كلمة المرور أو تسجيل الخروج اليدوي يظل
+                مؤثرًا بغض النظر عن هذا الإعداد.
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-start',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void handleSaveSessionSettings()}
+                disabled={savingSessionSettings}
+                style={{
+                  ...primaryButtonStyle,
+                  opacity: savingSessionSettings ? 0.6 : 1,
+                  cursor: savingSessionSettings ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {savingSessionSettings ? 'جاري الحفظ...' : 'حفظ إعدادات الجلسة'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'backup' && (
           <div
             className="glass-card"

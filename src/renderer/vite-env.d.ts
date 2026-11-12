@@ -76,6 +76,8 @@ type AdminCashFlowDueSummary = {
   total_open: number;
 };
 
+type SessionSettings = import('../shared/session-settings').SessionSettings;
+
 export {};
 declare global {
   interface Window {
@@ -169,6 +171,7 @@ declare global {
         message?: string;
         user_id?: number;
         permissions?: PermissionKey[];
+        idle_timeout_enabled?: boolean;
         idle_timeout_seconds?: number;
       }>;
 
@@ -354,6 +357,10 @@ declare global {
         variantId?: number;
         message?: string;
       }>;
+
+      getSessionSettings: () => Promise<SessionSettings>;
+
+      saveSessionSettings: (input: SessionSettings) => Promise<SessionSettings>;
 
       // =========================
       // Barcode Print Settings

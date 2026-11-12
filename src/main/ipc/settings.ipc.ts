@@ -64,6 +64,13 @@ import {
 } from '../../shared/selective-backup';
 import { resetDatabaseKeepingSelectiveData } from '../database/selective-reset';
 
+import {
+  getSessionSettings,
+  saveSessionSettings,
+} from '../database/repositories/session-settings.repo';
+
+import { isSessionIdleMinutes } from '../../shared/session-settings';
+
 const APP_THEMES = ['dark', 'light'] as const;
 
 function getErrorMessage(error: unknown) {
@@ -488,6 +495,51 @@ function normalizeReceiptPrintSettings(input: unknown) {
 }
 
 export function registerSettingsIpc(): void {
+  ipcMain.handle('settings:get-session', (event) => {
+    requireAuthenticatedAdmin(event);
+
+    return getSessionSettings();
+  });
+
+  ipcMain.handle('settings:save-session', (event, input: unknown) => {
+    const actorId = requireAuthenticatedAdmin(event);
+
+    const payload = requireObjectInput(input, 'إعدادات الجلسة');
+
+    if (typeof payload.auto_lock_enabled !== 'boolean') {
+      throw new Error('حالة قفل الجلسة غير صحيحة');
+    }
+
+    const idleMinutes = requirePositiveInteger(
+      payload.idle_minutes,
+      'مدة عدم النشاط',
+    );
+
+    if (!isSessionIdleMinutes(idleMinutes)) {
+      throw new Error('مدة الجلسة المختارة غير مدعومة');
+    }
+
+    const enabled = payload.auto_lock_enabled;
+
+    return runCriticalActionWithAudit(
+      () =>
+        saveSessionSettings({
+          auto_lock_enabled: enabled,
+          idle_minutes: idleMinutes,
+        }),
+      (saved) => ({
+        actor_id: actorId,
+        action: 'session_settings_updated',
+        entity: 'settings',
+        entity_id: null,
+        details: {
+          auto_lock_enabled: saved.auto_lock_enabled,
+          idle_minutes: saved.idle_minutes,
+        },
+      }),
+    );
+  });
+
   ipcMain.handle('settings:get-barcode-print', (event) => {
     requireAnyPermission(event, ['products.manage', 'purchases.manage']);
 

@@ -4,12 +4,13 @@ import { useAuthStore } from '../../store/auth.store';
 import { useAppStore } from '../../store/app.store';
 import ShiftHeaderControl from '../shifts/ShiftHeaderControl';
 import type { PermissionKey } from '../../../shared/permissions';
-
+import {
+  isSessionIdleMinutes,
+  type SessionSettings,
+} from '../../../shared/session-settings';
 import { hasUserPermission } from '../../utils/permissions';
 
 type AppTheme = 'dark' | 'light';
-
-const UI_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 
 const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 
@@ -316,44 +317,67 @@ export default function AppShell({
   }, [location.pathname]);
 
   useEffect(() => {
-    if (!user?.id) {
-      return;
-    }
+    if (!user?.id) return;
 
     let idleTimer: number | undefined;
+    let lastServerTouchAt = Number.NEGATIVE_INFINITY;
+    let lastActivityAt = performance.now();
 
-    let lastServerTouchAt = 0;
+    let idleEnabled = true;
+    let idleTimeoutMs = 15 * 60 * 1000;
 
     let locking = false;
+    let disposed = false;
 
     async function lockNow() {
-      if (locking) {
-        return;
-      }
+      if (locking || disposed) return;
 
       locking = true;
 
       try {
         await lockSession();
       } finally {
-        navigate('/?locked=1', {
-          replace: true,
-        });
+        if (!disposed) {
+          navigate('/?locked=1', { replace: true });
+        }
       }
     }
 
     function scheduleIdleLock() {
-      if (idleTimer) {
+      if (idleTimer !== undefined) {
         window.clearTimeout(idleTimer);
+        idleTimer = undefined;
+      }
+
+      if (!idleEnabled || locking || disposed) return;
+
+      const elapsed = performance.now() - lastActivityAt;
+      const remaining = idleTimeoutMs - elapsed;
+
+      if (remaining <= 0) {
+        void lockNow();
+        return;
       }
 
       idleTimer = window.setTimeout(() => {
-        void lockNow();
-      }, UI_IDLE_TIMEOUT_MS);
+        idleTimer = undefined;
+        scheduleIdleLock();
+      }, Math.ceil(remaining));
+    }
+
+    function applySessionPolicy(enabled: boolean, seconds: number) {
+      if (!Number.isFinite(seconds) || seconds < 60 || seconds > 24 * 60 * 60) {
+        return;
+      }
+
+      idleEnabled = enabled;
+      idleTimeoutMs = seconds * 1000;
+
+      scheduleIdleLock();
     }
 
     function touchServer() {
-      const now = Date.now();
+      const now = performance.now();
 
       if (now - lastServerTouchAt < SESSION_TOUCH_INTERVAL_MS) {
         return;
@@ -364,21 +388,67 @@ export default function AppShell({
       void window.api
         .touchAuthSession()
         .then((result) => {
+          if (disposed || locking) return;
+
           if (!result.success) {
             void lockNow();
+            return;
           }
+
           if (Array.isArray(result.permissions)) {
             setPermissions(result.permissions);
           }
+
+          if (
+            typeof result.idle_timeout_enabled === 'boolean' &&
+            typeof result.idle_timeout_seconds === 'number'
+          ) {
+            applySessionPolicy(
+              result.idle_timeout_enabled,
+              result.idle_timeout_seconds,
+            );
+          }
         })
         .catch(() => {
-          void lockNow();
+          if (!disposed) {
+            void lockNow();
+          }
         });
     }
 
     function handleActivity() {
+      if (locking || disposed) return;
+
+      const now = performance.now();
+
+      // لو الوقت انتهى أثناء سكون الجهاز، ما نسمحش
+      // لأول ضغطة بعد الرجوع إنها تجدد الجلسة.
+      if (idleEnabled && now - lastActivityAt >= idleTimeoutMs) {
+        void lockNow();
+        return;
+      }
+
+      lastActivityAt = now;
+
       scheduleIdleLock();
       touchServer();
+    }
+
+    function handleSessionSettingsChanged(event: Event) {
+      const settings = (event as CustomEvent<SessionSettings>).detail;
+
+      if (
+        !settings ||
+        typeof settings.auto_lock_enabled !== 'boolean' ||
+        !isSessionIdleMinutes(settings.idle_minutes)
+      ) {
+        return;
+      }
+
+      applySessionPolicy(
+        settings.auto_lock_enabled,
+        settings.idle_minutes * 60,
+      );
     }
 
     const events = ['pointerdown', 'keydown', 'touchstart', 'wheel'] as const;
@@ -389,11 +459,18 @@ export default function AppShell({
 
     window.addEventListener('focus', handleActivity);
 
+    window.addEventListener(
+      'erp:session-settings-changed',
+      handleSessionSettingsChanged,
+    );
+
     scheduleIdleLock();
     touchServer();
 
     return () => {
-      if (idleTimer) {
+      disposed = true;
+
+      if (idleTimer !== undefined) {
         window.clearTimeout(idleTimer);
       }
 
@@ -402,6 +479,11 @@ export default function AppShell({
       });
 
       window.removeEventListener('focus', handleActivity);
+
+      window.removeEventListener(
+        'erp:session-settings-changed',
+        handleSessionSettingsChanged,
+      );
     };
   }, [user?.id, lockSession, navigate, setPermissions]);
 

@@ -11,7 +11,10 @@ import {
   it,
   vi,
 } from 'vitest';
-
+import {
+  getSessionSettings,
+  saveSessionSettings,
+} from '../../src/main/database/repositories/session-settings.repo';
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import {
@@ -98,6 +101,125 @@ describe('IPC security hardening', () => {
     vi.mocked(ipcMain.handle).mockReset();
 
     closeDb();
+  });
+
+  it('protects session settings and rolls back failed audit', async () => {
+    const original = getSessionSettings();
+    const db = getDb();
+
+    const anonymous = makeClient();
+
+    const cashier = createUser(
+      'Session Cashier',
+      'session_cashier',
+      'Cashier5678',
+      'cashier',
+    );
+
+    const cashierClient = makeClient();
+    startAuthSession(cashierClient.event, cashier.id);
+
+    const admin = findUserByUsername('admin');
+
+    expect(admin).toBeDefined();
+
+    const adminClient = makeClient();
+    startAuthSession(adminClient.event, admin!.id);
+
+    const validSettings = {
+      auto_lock_enabled: false,
+      idle_minutes: 60,
+    };
+
+    try {
+      // بدون تسجيل دخول.
+      await expect(
+        invoke(anonymous.event, 'settings:get-session'),
+      ).rejects.toThrow('سجل الدخول أولًا');
+
+      await expect(
+        invoke(anonymous.event, 'settings:save-session', validSettings),
+      ).rejects.toThrow('سجل الدخول أولًا');
+
+      // الكاشير ممنوع من القراءة والتعديل.
+      await expect(
+        invoke(cashierClient.event, 'settings:get-session'),
+      ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
+
+      await expect(
+        invoke(cashierClient.event, 'settings:save-session', validSettings),
+      ).rejects.toThrow('هذه العملية متاحة لمدير النظام فقط');
+
+      expect(getSessionSettings()).toEqual(original);
+
+      // رفض مدة غير مدعومة.
+      await expect(
+        invoke(adminClient.event, 'settings:save-session', {
+          auto_lock_enabled: false,
+          idle_minutes: 7,
+        }),
+      ).rejects.toThrow('مدة الجلسة المختارة غير مدعومة');
+
+      expect(getSessionSettings()).toEqual(original);
+
+      // المدير يقدر يحفظ إعدادات صحيحة.
+      const saved = await invoke(
+        adminClient.event,
+        'settings:save-session',
+        validSettings,
+      );
+
+      expect(saved).toEqual(validSettings);
+      expect(getSessionSettings()).toEqual(validSettings);
+
+      const auditBefore = db
+        .prepare(
+          `
+          SELECT user_id
+          FROM activity_logs
+          WHERE action = 'session_settings_updated'
+        `,
+        )
+        .all() as Array<{ user_id: number }>;
+
+      expect(auditBefore).toEqual([{ user_id: admin!.id }]);
+
+      // نحاكي فشل كتابة سجل المراجعة.
+      db.exec(`
+        CREATE TEMP TRIGGER reject_session_settings_audit
+        BEFORE INSERT ON activity_logs
+        WHEN NEW.action = 'session_settings_updated'
+        BEGIN
+          SELECT RAISE(ABORT, 'audit blocked for test');
+        END;
+      `);
+
+      await expect(
+        invoke(adminClient.event, 'settings:save-session', {
+          auto_lock_enabled: true,
+          idle_minutes: 5,
+        }),
+      ).rejects.toThrow('تعذر تسجيل سجل المراجعة');
+
+      // فشل الـAudit لا يغيّر الإعدادات.
+      expect(getSessionSettings()).toEqual(validSettings);
+
+      const auditAfter = db
+        .prepare(
+          `
+          SELECT COUNT(*) AS count
+          FROM activity_logs
+          WHERE action = 'session_settings_updated'
+        `,
+        )
+        .get() as { count: number };
+
+      expect(auditAfter.count).toBe(1);
+    } finally {
+      db.exec('DROP TRIGGER IF EXISTS reject_session_settings_audit');
+
+      saveSessionSettings(original);
+    }
   });
 
   it('requires login for operational reads and receipt printing', async () => {

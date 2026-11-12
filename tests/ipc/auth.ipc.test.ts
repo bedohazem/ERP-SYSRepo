@@ -22,6 +22,12 @@ import {
   isPasswordHashed,
   verifyPassword,
 } from '../../src/main/security/password';
+import {
+  getSessionSettings,
+  saveSessionSettings,
+} from '../../src/main/database/repositories/session-settings.repo';
+
+import { DEFAULT_SESSION_SETTINGS } from '../../src/shared/session-settings';
 
 type Handler = (event: IpcMainInvokeEvent, ...args: any[]) => any;
 const handlers = new Map<string, Handler>();
@@ -715,6 +721,83 @@ describe('auth IPC authorization', () => {
 
       expect(allowed.success).toBe(true);
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('applies configurable idle duration and disabled auto lock', async () => {
+    vi.useFakeTimers();
+
+    try {
+      vi.setSystemTime(new Date('2026-11-12T10:00:00Z'));
+
+      saveSessionSettings({
+        auto_lock_enabled: true,
+        idle_minutes: 5,
+      });
+
+      const client = makeClient();
+
+      await login(client.event);
+
+      const policy = await invoke(client.event, 'auth:touch');
+
+      expect(policy).toMatchObject({
+        success: true,
+        idle_timeout_enabled: true,
+        idle_timeout_seconds: 300,
+      });
+
+      // مرور 4 دقائق: الجلسة ما زالت فعالة.
+      vi.advanceTimersByTime(4 * 60 * 1000);
+
+      expect((await invoke(client.event, 'auth:touch')).success).toBe(true);
+
+      // مرور 5 دقائق كاملة بدون نشاط: تنتهي الجلسة.
+      vi.advanceTimersByTime(5 * 60 * 1000);
+
+      const expired = await invoke(client.event, 'auth:touch');
+
+      expect(expired.success).toBe(false);
+      expect(expired.message).toContain('عدم الاستخدام');
+
+      // دخول جديد وتعطيل القفل التلقائي.
+      await login(client.event);
+
+      saveSessionSettings({
+        auto_lock_enabled: false,
+        idle_minutes: 5,
+      });
+
+      const disabled = await invoke(client.event, 'auth:touch');
+
+      expect(disabled).toMatchObject({
+        success: true,
+        idle_timeout_enabled: false,
+        idle_timeout_seconds: 300,
+      });
+
+      // ساعتان بدون نشاط: الجلسة لا تنتهي بسبب الخمول.
+      vi.advanceTimersByTime(2 * 60 * 60 * 1000);
+
+      expect((await invoke(client.event, 'auth:touch')).success).toBe(true);
+
+      // عند إعادة تشغيل القفل نستخدم المدة الحالية.
+      saveSessionSettings({
+        auto_lock_enabled: true,
+        idle_minutes: 5,
+      });
+
+      expect(getSessionSettings().auto_lock_enabled).toBe(true);
+
+      vi.advanceTimersByTime(5 * 60 * 1000);
+
+      const expiredAgain = await invoke(client.event, 'auth:touch');
+
+      expect(expiredAgain.success).toBe(false);
+      expect(expiredAgain.message).toContain('عدم الاستخدام');
+    } finally {
+      saveSessionSettings(DEFAULT_SESSION_SETTINGS);
       vi.useRealTimers();
     }
   });

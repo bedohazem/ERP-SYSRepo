@@ -4,8 +4,7 @@ import { getDb } from './database/db';
 import type { PermissionKey } from '../shared/permissions';
 
 import { getEffectiveUserPermissions } from './database/repositories/user.repo';
-
-export const AUTH_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+import { getSessionSettings } from './database/repositories/session-settings.repo';
 
 type Session = {
   userId: number;
@@ -126,9 +125,12 @@ function validateSession(
 
   const nowMonotonicMs = performance.now();
 
+  const sessionSettings = getSessionSettings();
+
   if (
+    sessionSettings.auto_lock_enabled &&
     nowMonotonicMs - session.lastActivityMonotonicMs >=
-    AUTH_IDLE_TIMEOUT_MS
+      sessionSettings.idle_minutes * 60 * 1000
   ) {
     sessions.delete(sender);
 

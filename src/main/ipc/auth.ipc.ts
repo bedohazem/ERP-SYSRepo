@@ -5,7 +5,7 @@ import {
   createAdminPasswordRecoveryRequest,
   recoverAdminPassword,
 } from '../security/admin-recovery';
-
+import { getSessionSettings } from '../database/repositories/session-settings.repo';
 import { isSupportRecoveryConfigured } from '../security/support-recovery-token';
 import {
   changeOwnPassword,
@@ -26,7 +26,6 @@ import {
 } from '../database/repositories/user.repo';
 
 import {
-  AUTH_IDLE_TIMEOUT_MS,
   clearAuthSession,
   requireAuthenticatedAdmin,
   requireAuthenticatedUser,
@@ -526,7 +525,7 @@ export function registerAuthIpc(): void {
   ipcMain.handle('auth:touch', (event) => {
     try {
       const user = requireAuthenticatedUser(event);
-
+      const sessionSettings = getSessionSettings();
       return {
         success: true,
 
@@ -534,7 +533,8 @@ export function registerAuthIpc(): void {
 
         permissions: getEffectiveUserPermissions(user.id),
 
-        idle_timeout_seconds: Math.floor(AUTH_IDLE_TIMEOUT_MS / 1000),
+        idle_timeout_enabled: sessionSettings.auto_lock_enabled,
+        idle_timeout_seconds: sessionSettings.idle_minutes * 60,
       };
     } catch (error) {
       return {
