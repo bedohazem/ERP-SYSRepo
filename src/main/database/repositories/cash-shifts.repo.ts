@@ -1630,25 +1630,129 @@ export function getCashShiftDetails(shiftIdInput: number) {
       s.payment_method,
 
       (
-        IFNULL(
-          s.product_discount_value,
-          0
-        )
-        +
-        IFNULL(
-          s.discount_value,
-          0
-        )
-        +
-        IFNULL(
-          s.promotion_discount_value,
-          0
-        )
-        +
-        IFNULL(
-          s.loyalty_discount_value,
-          0
-        )
+        /*
+         * Original invoice discounts.
+         * These belong to the sale's original shift.
+         */
+        COALESCE(s.product_discount_value, 0)
+        + COALESCE(s.discount_value, 0)
+        + COALESCE(s.promotion_discount_value, 0)
+        + COALESCE(s.loyalty_discount_value, 0)
+
+        /*
+         * Add the actual change in discounts caused
+         * by exchanges in the SAME shift.
+         *
+         * Use exchange_discount_delta, not the newly
+         * granted amount, to avoid counting old grants twice.
+         */
+        + COALESCE((
+          SELECT SUM(
+            COALESCE(
+              se.new_product_discount_value,
+              se.old_product_discount_value,
+              0
+            )
+            - COALESCE(se.old_product_discount_value, 0)
+
+            + COALESCE(
+              se.new_normal_discount_value,
+              se.old_normal_discount_value,
+              0
+            )
+            - COALESCE(se.old_normal_discount_value, 0)
+
+            + COALESCE(
+              se.new_promotion_discount_value,
+              se.old_promotion_discount_value,
+              0
+            )
+            - COALESCE(se.old_promotion_discount_value, 0)
+
+            + COALESCE(
+              se.new_loyalty_discount_value,
+              se.old_loyalty_discount_value,
+              0
+            )
+            - COALESCE(se.old_loyalty_discount_value, 0)
+
+            + COALESCE(se.exchange_discount_delta, 0)
+          )
+          FROM sale_exchanges se
+          WHERE se.original_sale_id = s.id
+            AND se.shift_id = s.shift_id
+            AND (
+              se.cancelled_at IS NULL
+
+              OR (
+                se.cancelled_shift_id IS NOT NULL
+                AND se.cancelled_shift_id <> se.shift_id
+              )
+
+              OR (
+                se.cancelled_at IS NOT NULL
+                AND COALESCE(se.cancelled_outside_shift, 0) = 1
+              )
+            )
+        ), 0)
+
+        /*
+         * Deduct discounts belonging to returns
+         * recorded in the SAME shift.
+         *
+         * A return cancelled in a later shift must
+         * not rewrite this shift's historical figures.
+         */
+        - COALESCE((
+          SELECT SUM(
+            COALESCE(sr.product_discount_value, 0)
+            + COALESCE(sr.promotion_discount_value, 0)
+            + COALESCE(sr.loyalty_discount_value, 0)
+            + COALESCE(sr.exchange_discount_value, 0)
+
+            + CASE
+                WHEN sr.normal_discount_value IS NOT NULL
+                THEN sr.normal_discount_value
+
+                ELSE MAX(
+                  0,
+                  COALESCE(sr.sub_total, 0)
+                  - COALESCE(sr.refund_amount, 0)
+                  - COALESCE(sr.loyalty_discount_value, 0)
+                  - COALESCE(sr.promotion_discount_value, 0)
+                )
+              END
+          )
+          FROM sale_returns sr
+          WHERE sr.original_sale_id = s.id
+            AND sr.shift_id = s.shift_id
+            AND (
+              sr.cancelled_at IS NULL
+
+              OR (
+                sr.cancelled_shift_id IS NOT NULL
+                AND sr.cancelled_shift_id <> sr.shift_id
+              )
+
+              OR (
+                sr.cancelled_at IS NOT NULL
+                AND COALESCE(sr.cancelled_outside_shift, 0) = 1
+              )
+
+              OR (
+                sr.cancelled_at IS NOT NULL
+                AND sr.cancelled_shift_id IS NULL
+                AND EXISTS (
+                  SELECT 1
+                  FROM cash_movements cm
+                  WHERE cm.reference_type = 'sale_return_cancel'
+                    AND cm.reference_id = sr.id
+                    AND cm.shift_id IS NULL
+                    AND cm.cancelled_at IS NULL
+                )
+              )
+            )
+        ), 0)
       ) AS discount_total,
 
       /*
@@ -2253,6 +2357,166 @@ export function getCashShiftDetails(shiftIdInput: number) {
 
       remaining_total: 0,
     },
+  );
+
+  /*
+   * Discounts on invoices created in this shift are
+   * already included in salesSummary.
+   *
+   * Add only operations whose ORIGINAL invoice belongs
+   * to another shift, plus reversals made in this shift.
+   *
+   * This preserves historical closed-shift figures.
+   */
+  const exchangeDiscountChangeSql = `
+    (
+      COALESCE(
+        se.new_product_discount_value,
+        se.old_product_discount_value,
+        0
+      )
+      - COALESCE(se.old_product_discount_value, 0)
+
+      + COALESCE(
+        se.new_normal_discount_value,
+        se.old_normal_discount_value,
+        0
+      )
+      - COALESCE(se.old_normal_discount_value, 0)
+
+      + COALESCE(
+        se.new_promotion_discount_value,
+        se.old_promotion_discount_value,
+        0
+      )
+      - COALESCE(se.old_promotion_discount_value, 0)
+
+      + COALESCE(
+        se.new_loyalty_discount_value,
+        se.old_loyalty_discount_value,
+        0
+      )
+      - COALESCE(se.old_loyalty_discount_value, 0)
+
+      + COALESCE(se.exchange_discount_delta, 0)
+    )
+  `;
+
+  const returnDiscountChangeSql = `
+    (
+      COALESCE(sr.product_discount_value, 0)
+      + COALESCE(sr.promotion_discount_value, 0)
+      + COALESCE(sr.loyalty_discount_value, 0)
+      + COALESCE(sr.exchange_discount_value, 0)
+
+      + CASE
+          WHEN sr.normal_discount_value IS NOT NULL
+          THEN sr.normal_discount_value
+
+          ELSE MAX(
+            0,
+            COALESCE(sr.sub_total, 0)
+            - COALESCE(sr.refund_amount, 0)
+            - COALESCE(sr.loyalty_discount_value, 0)
+            - COALESCE(sr.promotion_discount_value, 0)
+          )
+        END
+    )
+  `;
+
+  const crossShiftDiscountRow = db
+    .prepare(
+      `
+      SELECT COALESCE(SUM(amount), 0) AS amount
+      FROM (
+        /*
+         * Exchange on an invoice from another shift.
+         */
+        SELECT
+          ${exchangeDiscountChangeSql} AS amount
+        FROM sale_exchanges se
+        JOIN sales os ON os.id = se.original_sale_id
+        WHERE se.shift_id = ?
+          AND (os.shift_id IS NULL OR os.shift_id <> ?)
+          AND (
+            se.cancelled_at IS NULL
+            OR (
+              se.cancelled_shift_id IS NOT NULL
+              AND se.cancelled_shift_id <> se.shift_id
+            )
+            OR COALESCE(se.cancelled_outside_shift, 0) = 1
+          )
+
+        UNION ALL
+
+        /*
+         * Return on an invoice from another shift.
+         */
+        SELECT
+          -${returnDiscountChangeSql} AS amount
+        FROM sale_returns sr
+        JOIN sales os ON os.id = sr.original_sale_id
+        WHERE sr.shift_id = ?
+          AND (os.shift_id IS NULL OR os.shift_id <> ?)
+          AND (
+            sr.cancelled_at IS NULL
+            OR (
+              sr.cancelled_shift_id IS NOT NULL
+              AND sr.cancelled_shift_id <> sr.shift_id
+            )
+            OR COALESCE(sr.cancelled_outside_shift, 0) = 1
+            OR (
+              sr.cancelled_at IS NOT NULL
+              AND sr.cancelled_shift_id IS NULL
+              AND EXISTS (
+                SELECT 1
+                FROM cash_movements cm
+                WHERE cm.reference_type = 'sale_return_cancel'
+                  AND cm.reference_id = sr.id
+                  AND cm.shift_id IS NULL
+                  AND cm.cancelled_at IS NULL
+              )
+            )
+          )
+
+        UNION ALL
+
+        /*
+         * Cancellation of an exchange from a prior shift.
+         */
+        SELECT
+          -${exchangeDiscountChangeSql} AS amount
+        FROM sale_exchanges se
+        WHERE se.cancelled_at IS NOT NULL
+          AND se.cancelled_shift_id = ?
+          AND (
+            se.shift_id IS NULL
+            OR se.shift_id <> se.cancelled_shift_id
+          )
+
+        UNION ALL
+
+        /*
+         * Cancellation of a return from a prior shift.
+         */
+        SELECT
+          ${returnDiscountChangeSql} AS amount
+        FROM sale_returns sr
+        WHERE sr.cancelled_at IS NOT NULL
+          AND sr.cancelled_shift_id = ?
+          AND (
+            sr.shift_id IS NULL
+            OR sr.shift_id <> sr.cancelled_shift_id
+          )
+      ) discount_events
+      `,
+    )
+    .get(shiftId, shiftId, shiftId, shiftId, shiftId, shiftId) as
+    { amount: number } | undefined;
+
+  salesSummary.discounts_total = roundFinancial(
+    Number(salesSummary.discounts_total || 0) +
+      Number(crossShiftDiscountRow?.amount || 0),
   );
 
   const operationsSummaryRow = db

@@ -1951,20 +1951,28 @@ function CashierRevenueView({
             title="الخصومات الفعلية"
             value={money(summary.discounts.total)}
             subtitle={[
-              summary.discounts.product > 0
-                ? `منتجات: ${money(summary.discounts.product)}`
+              summary.discounts.product !== 0
+                ? summary.discounts.product > 0
+                  ? `منتجات: ${money(summary.discounts.product)}`
+                  : `عكس خصم منتجات: ${money(Math.abs(summary.discounts.product))}`
                 : null,
 
-              summary.discounts.normal > 0
-                ? `خصم عادي: ${money(summary.discounts.normal)}`
+              summary.discounts.normal !== 0
+                ? summary.discounts.normal > 0
+                  ? `خصم عادي: ${money(summary.discounts.normal)}`
+                  : `عكس خصم عادي: ${money(Math.abs(summary.discounts.normal))}`
                 : null,
 
-              summary.discounts.promotion > 0
-                ? `عروض: ${money(summary.discounts.promotion)}`
+              summary.discounts.promotion !== 0
+                ? summary.discounts.promotion > 0
+                  ? `عروض: ${money(summary.discounts.promotion)}`
+                  : `عكس خصم عروض: ${money(Math.abs(summary.discounts.promotion))}`
                 : null,
 
-              summary.discounts.loyalty > 0
-                ? `نقاط: ${money(summary.discounts.loyalty)}`
+              summary.discounts.loyalty !== 0
+                ? summary.discounts.loyalty > 0
+                  ? `نقاط: ${money(summary.discounts.loyalty)}`
+                  : `عكس خصم نقاط: ${money(Math.abs(summary.discounts.loyalty))}`
                 : null,
 
               summary.discounts.exchange !== 0

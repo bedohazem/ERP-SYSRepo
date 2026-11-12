@@ -3836,6 +3836,51 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
           0
         ) AS cross_shift_debt_restored,
 
+
+        IFNULL(SUM(CASE
+          WHEN se.shift_id IS NULL OR se.shift_id <> se.cancelled_shift_id
+          THEN
+            COALESCE(
+              se.new_product_discount_value,
+              se.old_product_discount_value,
+              0
+            ) - COALESCE(se.old_product_discount_value, 0)
+          ELSE 0
+        END), 0) AS cross_shift_product_discount_reversal,
+
+        IFNULL(SUM(CASE
+          WHEN se.shift_id IS NULL OR se.shift_id <> se.cancelled_shift_id
+          THEN
+            COALESCE(
+              se.new_normal_discount_value,
+              se.old_normal_discount_value,
+              0
+            ) - COALESCE(se.old_normal_discount_value, 0)
+          ELSE 0
+        END), 0) AS cross_shift_normal_discount_reversal,
+
+        IFNULL(SUM(CASE
+          WHEN se.shift_id IS NULL OR se.shift_id <> se.cancelled_shift_id
+          THEN
+            COALESCE(
+              se.new_promotion_discount_value,
+              se.old_promotion_discount_value,
+              0
+            ) - COALESCE(se.old_promotion_discount_value, 0)
+          ELSE 0
+        END), 0) AS cross_shift_promotion_discount_reversal,
+
+        IFNULL(SUM(CASE
+          WHEN se.shift_id IS NULL OR se.shift_id <> se.cancelled_shift_id
+          THEN
+            COALESCE(
+              se.new_loyalty_discount_value,
+              se.old_loyalty_discount_value,
+              0
+            ) - COALESCE(se.old_loyalty_discount_value, 0)
+          ELSE 0
+        END), 0) AS cross_shift_loyalty_discount_reversal,
+
         IFNULL(SUM(CASE
           WHEN se.shift_id IS NULL OR se.shift_id <> se.cancelled_shift_id
           THEN IFNULL(se.exchange_discount_delta, 0)
@@ -4016,44 +4061,32 @@ export function getCashierDashboardSummary(input: CashierDashboardInput) {
 
   const exchangeDebtReduction = reportMoney(exchanges?.exchange_debt_reduction);
 
-  const productDiscount = Math.max(
-    0,
-
-    reportMoney(
-      Number(sales?.product_discounts || 0) -
-        Number(returns?.returned_product_discount || 0) +
-        Number(exchanges?.product_discount_adjustment || 0),
-    ),
+  const productDiscount = reportMoney(
+    Number(sales?.product_discounts || 0) -
+      Number(returns?.returned_product_discount || 0) +
+      Number(exchanges?.product_discount_adjustment || 0) -
+      Number(cancelledExchanges?.cross_shift_product_discount_reversal || 0),
   );
 
-  const normalDiscount = Math.max(
-    0,
-
-    reportMoney(
-      Number(sales?.normal_discounts || 0) -
-        Number(returns?.returned_normal_discount || 0) +
-        Number(exchanges?.normal_discount_adjustment || 0),
-    ),
+  const normalDiscount = reportMoney(
+    Number(sales?.normal_discounts || 0) -
+      Number(returns?.returned_normal_discount || 0) +
+      Number(exchanges?.normal_discount_adjustment || 0) -
+      Number(cancelledExchanges?.cross_shift_normal_discount_reversal || 0),
   );
 
-  const promotionDiscount = Math.max(
-    0,
-
-    reportMoney(
-      Number(sales?.promotion_discounts || 0) -
-        Number(returns?.returned_promotion_discount || 0) +
-        Number(exchanges?.promotion_discount_adjustment || 0),
-    ),
+  const promotionDiscount = reportMoney(
+    Number(sales?.promotion_discounts || 0) -
+      Number(returns?.returned_promotion_discount || 0) +
+      Number(exchanges?.promotion_discount_adjustment || 0) -
+      Number(cancelledExchanges?.cross_shift_promotion_discount_reversal || 0),
   );
 
-  const loyaltyDiscount = Math.max(
-    0,
-
-    reportMoney(
-      Number(sales?.loyalty_discounts || 0) -
-        Number(returns?.returned_loyalty_discount || 0) +
-        Number(exchanges?.loyalty_discount_adjustment || 0),
-    ),
+  const loyaltyDiscount = reportMoney(
+    Number(sales?.loyalty_discounts || 0) -
+      Number(returns?.returned_loyalty_discount || 0) +
+      Number(exchanges?.loyalty_discount_adjustment || 0) -
+      Number(cancelledExchanges?.cross_shift_loyalty_discount_reversal || 0),
   );
 
   const exchangeDiscount = reportMoney(

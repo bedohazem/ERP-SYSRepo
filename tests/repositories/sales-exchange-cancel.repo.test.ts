@@ -1513,9 +1513,25 @@ describe('sale exchange cancellation', () => {
     });
 
     expect(dashboardB.shift?.id).toBe(shiftB.id);
+
+    // Reverse the full exchange difference.
     expect(dashboardB.sales.net_sales).toBe(-90);
+
+    // Promotion gift changed from 150 to 200.
+    // Cancelling the exchange reverses that extra 50.
+    expect(dashboardB.discounts.promotion).toBe(-50);
+
+    // Reverse the discretionary exchange discount.
     expect(dashboardB.discounts.exchange).toBe(-10);
-    expect(dashboardB.discounts.total).toBe(-10);
+
+    // Total discount reversal: -50 - 10 = -60.
+    expect(dashboardB.discounts.total).toBe(-60);
+
+    // Shift details must match the cashier dashboard.
+    const shiftBDetails = getCashShiftDetails(shiftB.id);
+
+    expect(shiftBDetails.sales_summary.net_sales).toBe(-90);
+    expect(shiftBDetails.sales_summary.discounts_total).toBe(-60);
 
     const reverseMovements = db
       .prepare(
