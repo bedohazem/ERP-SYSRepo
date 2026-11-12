@@ -5388,7 +5388,6 @@ export default function SalesPage() {
                 fontWeight: 700,
               }}
             >
-
               <SelectedProductSummary
                 variant="dropdown"
                 name={item.product_name}
@@ -5400,7 +5399,6 @@ export default function SalesPage() {
                   item.original_sell_price ?? item.sell_price,
                 )}
               />
-
             </button>
           ))}
         </div>

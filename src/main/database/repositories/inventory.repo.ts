@@ -105,6 +105,7 @@ export function getInventoryList(input?: {
         v.average_cost,
         v.inventory_value,
         v.sell_price,
+        v.discount_price,
         v.min_stock,
         v.is_active,
         p.is_active AS product_is_active,
