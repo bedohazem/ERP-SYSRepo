@@ -360,7 +360,8 @@ contextBridge.exposeInMainWorld('api', {
   cancelExpense: (input) => invokeMain('expenses:cancel', input),
   getExpenses: (input) => invokeMain('expenses:list', input),
   getExpensesPage: (input) => invokeMain('expenses:list-page', input),
-
+  getExpenseUpdateHistory: (expenseId) =>
+    invokeMain('expenses:update-history', expenseId),
   getActivityLogs: (input) => invokeMain('activity:list', input),
 
   getLicenseStatus: () => invokeMain('settings:get-license-status'),

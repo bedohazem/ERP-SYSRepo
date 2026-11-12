@@ -6,6 +6,7 @@ import {
   listExpenses,
   listExpensesPage,
   updateExpense,
+  getExpenseUpdateHistory,
 } from '../../src/main/database/repositories/expense.repo';
 
 import {
@@ -1032,5 +1033,84 @@ describe('expense repository', () => {
     expect(Number(row.updated_shift_id)).toBe(shift!.id);
 
     expect(Number(row.cancelled_shift_id)).toBe(shift!.id);
+  });
+
+  it('shows expense audit only for real updates and prevents no-op financial movements', () => {
+    const created = createExpense({
+      title: 'Electricity',
+      category: 'Bills',
+      amount: 250,
+      payment_method: 'store_cash',
+      notes: 'October',
+      created_by: 1,
+    });
+
+    const before = listExpensesPage().rows.find(
+      (row: any) => row.id === created.id,
+    ) as any;
+
+    expect(Number(before.update_count)).toBe(0);
+
+    const cashCount = getCashMovementsCount();
+    const activityCount = getActivityLogsCount();
+
+    // Saving unchanged data must not create accounting entries.
+    expect(() =>
+      updateExpense({
+        id: created.id,
+        title: ' Electricity ',
+        category: 'Bills',
+        amount: 250,
+        payment_method: 'store_cash',
+        notes: 'October',
+        actor_id: 1,
+      }),
+    ).toThrow('لم يتم تغيير أي بيانات في المصروف');
+
+    expect(getCashMovementsCount()).toBe(cashCount);
+    expect(getActivityLogsCount()).toBe(activityCount);
+
+    expect(getExpenseUpdateHistory(created.id, 1, true)).toHaveLength(0);
+
+    // A real modification is recorded.
+    const updated = updateExpense({
+      id: created.id,
+      title: 'Electricity',
+      category: 'Bills',
+      amount: 300,
+      payment_method: 'store_cash',
+      notes: 'October',
+      actor_id: 1,
+    });
+
+    expect(updated.success).toBe(true);
+
+    const after = listExpensesPage().rows.find(
+      (row: any) => row.id === created.id,
+    ) as any;
+
+    expect(Number(after.update_count)).toBe(1);
+
+    const history = getExpenseUpdateHistory(created.id, 1, true);
+
+    expect(history).toHaveLength(1);
+    expect(history[0].before.amount).toBe(250);
+    expect(history[0].after.amount).toBe(300);
+    expect(history[0].user_name).toBeTruthy();
+    expect(history[0].created_at).toBeTruthy();
+
+    // History must not be readable by another cashier.
+    expect(() => getExpenseUpdateHistory(created.id, 999, false)).toThrow(
+      'غير مصرح لك بعرض سجل هذا المصروف',
+    );
+
+    // Cancellation is not an expense modification.
+    cancelExpense({
+      id: created.id,
+      reason: 'Test cancellation',
+      actor_id: 1,
+    });
+
+    expect(getExpenseUpdateHistory(created.id, 1, true)).toHaveLength(1);
   });
 });

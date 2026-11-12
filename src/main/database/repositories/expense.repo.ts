@@ -9,6 +9,42 @@ import {
 import { roundFinancial } from '../../../shared/money';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 
+const REAL_EXPENSE_UPDATE_SQL = `
+  al.action = 'expense_updated'
+  AND al.entity = 'expenses'
+  AND al.entity_id = e.id
+  AND CASE
+    WHEN json_valid(al.details) THEN (
+      COALESCE(
+        json_extract(al.details, '$.before.title'), ''
+      ) <> COALESCE(
+        json_extract(al.details, '$.after.title'), ''
+      )
+      OR COALESCE(
+        json_extract(al.details, '$.before.category'), ''
+      ) <> COALESCE(
+        json_extract(al.details, '$.after.category'), ''
+      )
+      OR COALESCE(
+        CAST(json_extract(al.details, '$.before.amount') AS REAL), 0
+      ) <> COALESCE(
+        CAST(json_extract(al.details, '$.after.amount') AS REAL), 0
+      )
+      OR COALESCE(
+        json_extract(al.details, '$.before.payment_method'), ''
+      ) <> COALESCE(
+        json_extract(al.details, '$.after.payment_method'), ''
+      )
+      OR COALESCE(
+        json_extract(al.details, '$.before.notes'), ''
+      ) <> COALESCE(
+        json_extract(al.details, '$.after.notes'), ''
+      )
+    )
+    ELSE 0
+  END
+`;
+
 export type CreateExpenseInput = {
   title: string;
   category?: string | null;
@@ -252,18 +288,29 @@ export function listExpenses(input?: {
 
     params.push(input.date_to);
   }
+
   if (input?.search?.trim()) {
+    const searchText = input.search.trim();
+
+    const parsedId = /^#?\d+$/.test(searchText)
+      ? Number(searchText.replace(/^#/, ''))
+      : 0;
+
+    const expenseId =
+      Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : 0;
+
     where.push(`
       (
-        e.title LIKE ?
+        e.id = ?
+        OR e.title LIKE ?
         OR IFNULL(e.category, '') LIKE ?
         OR IFNULL(e.notes, '') LIKE ?
       )
     `);
 
-    const search = `%${input.search.trim()}%`;
+    const search = `%${searchText}%`;
 
-    params.push(search, search, search);
+    params.push(expenseId, search, search, search);
   }
 
   appendCreatedByFilter(where, params, input?.created_by);
@@ -340,17 +387,27 @@ export function listExpensesPage(input?: {
   }
 
   if (input?.search?.trim()) {
+    const searchText = input.search.trim();
+
+    const parsedId = /^#?\d+$/.test(searchText)
+      ? Number(searchText.replace(/^#/, ''))
+      : 0;
+
+    const expenseId =
+      Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : 0;
+
     where.push(`
       (
-        e.title LIKE ?
+        e.id = ?
+        OR e.title LIKE ?
         OR IFNULL(e.category, '') LIKE ?
         OR IFNULL(e.notes, '') LIKE ?
       )
     `);
 
-    const search = `%${input.search.trim()}%`;
+    const search = `%${searchText}%`;
 
-    params.push(search, search, search);
+    params.push(expenseId, search, search, search);
   }
 
   appendCreatedByFilter(where, params, input?.created_by);
@@ -362,6 +419,13 @@ export function listExpensesPage(input?: {
       `
       SELECT
         e.*,
+
+        (
+          SELECT COUNT(*)
+          FROM activity_logs al
+          WHERE ${REAL_EXPENSE_UPDATE_SQL}
+        ) AS update_count,
+
         u.name AS created_by_name
 
       FROM expenses e
@@ -414,6 +478,88 @@ export function listExpensesPage(input?: {
     limit,
     offset,
   };
+}
+
+export function getExpenseUpdateHistory(
+  expenseId: number,
+  requesterId: number,
+  isAdmin: boolean,
+) {
+  const db = getDb();
+
+  if (!Number.isSafeInteger(expenseId) || expenseId <= 0) {
+    throw new Error('رقم المصروف غير صحيح');
+  }
+
+  const expense = db
+    .prepare(
+      `
+      SELECT id, created_by
+      FROM expenses
+      WHERE id = ?
+      LIMIT 1
+    `,
+    )
+    .get(expenseId) as { id: number; created_by: number | null } | undefined;
+
+  if (!expense) {
+    throw new Error('المصروف غير موجود');
+  }
+
+  if (!isAdmin && Number(expense.created_by) !== requesterId) {
+    throw new Error('غير مصرح لك بعرض سجل هذا المصروف');
+  }
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        al.id,
+        al.created_at,
+        al.details,
+        u.name AS user_name,
+        approver.name AS approved_by_name
+
+      FROM activity_logs al
+
+      JOIN expenses e
+        ON e.id = al.entity_id
+
+      LEFT JOIN users u
+        ON u.id = al.user_id
+
+      LEFT JOIN users approver
+        ON approver.id = al.approved_by
+
+      WHERE e.id = ?
+        AND ${REAL_EXPENSE_UPDATE_SQL}
+
+      ORDER BY al.id DESC
+    `,
+    )
+    .all(expenseId) as Array<{
+    id: number;
+    created_at: string;
+    details: string;
+    user_name: string | null;
+    approved_by_name: string | null;
+  }>;
+
+  return rows.map((row) => {
+    const details = JSON.parse(row.details) as {
+      before?: Record<string, unknown>;
+      after?: Record<string, unknown>;
+    };
+
+    return {
+      id: row.id,
+      created_at: row.created_at,
+      user_name: row.user_name,
+      approved_by_name: row.approved_by_name,
+      before: details.before ?? {},
+      after: details.after ?? {},
+    };
+  });
 }
 
 export function updateExpense(input: UpdateExpenseInput) {
@@ -552,6 +698,18 @@ export function updateExpense(input: UpdateExpenseInput) {
   const paymentMethod = resolveCashAccount(
     input.payment_method || expense.payment_method || 'store_cash',
   );
+
+  const hasActualChanges =
+    title !== String(expense.title || '').trim() ||
+    category !== (String(expense.category || '').trim() || null) ||
+    amount !== roundFinancial(Number(expense.amount || 0)) ||
+    paymentMethod !==
+      resolveCashAccount(expense.payment_method || 'store_cash') ||
+    notes !== (String(expense.notes || '').trim() || null);
+
+  if (!hasActualChanges) {
+    throw new Error('لم يتم تغيير أي بيانات في المصروف');
+  }
 
   const financialShift = resolveFinancialOperationShift(
     actorId,

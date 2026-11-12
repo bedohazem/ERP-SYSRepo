@@ -17,6 +17,7 @@ import { useOpenShiftId } from '../../utils/use-open-shift-id';
 type Expense = {
   id: number;
   title: string;
+  update_count?: number;
   shift_id?: number | null;
   category?: string;
   amount: number;
@@ -29,6 +30,54 @@ type Expense = {
   cancelled_by?: number | null;
   cancel_reason?: string | null;
 };
+
+type ExpenseHistoryRow = {
+  id: number;
+  created_at: string;
+  user_name: string | null;
+  approved_by_name: string | null;
+  before: Record<string, any>;
+  after: Record<string, any>;
+};
+
+function getExpenseHistoryChanges(row: ExpenseHistoryRow) {
+  const fields = [
+    { key: 'title', label: 'اسم المصروف' },
+    { key: 'category', label: 'التصنيف' },
+    { key: 'amount', label: 'المبلغ' },
+    { key: 'payment_method', label: 'الحساب المالي' },
+    { key: 'notes', label: 'الملاحظات' },
+  ] as const;
+
+  function displayValue(key: string, value: unknown) {
+    if (key === 'amount') {
+      return formatMoney(value);
+    }
+
+    if (key === 'payment_method') {
+      return getPaymentMethodLabel(String(value || ''));
+    }
+
+    return String(value ?? '').trim() || '—';
+  }
+
+  return fields
+    .filter(({ key }) => {
+      const before = row.before?.[key] ?? '';
+      const after = row.after?.[key] ?? '';
+
+      if (key === 'amount') {
+        return Number(before) !== Number(after);
+      }
+
+      return String(before) !== String(after);
+    })
+    .map(({ key, label }) => ({
+      label,
+      before: displayValue(key, row.before?.[key]),
+      after: displayValue(key, row.after?.[key]),
+    }));
+}
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -79,6 +128,31 @@ export default function ExpensesPage() {
   const [editExpensePassword, setEditExpensePassword] = useState('');
 
   const [updatingExpense, setUpdatingExpense] = useState(false);
+
+  const [historyExpense, setHistoryExpense] = useState<Expense | null>(null);
+
+  const [historyRows, setHistoryRows] = useState<ExpenseHistoryRow[]>([]);
+
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  async function openExpenseHistory(expense: Expense) {
+    setHistoryExpense(expense);
+    setHistoryRows([]);
+    setHistoryLoading(true);
+
+    try {
+      const result = await window.api.getExpenseUpdateHistory(expense.id);
+
+      setHistoryRows(Array.isArray(result) ? result : []);
+    } catch (error) {
+      console.error('Failed to load expense history:', error);
+
+      setHistoryExpense(null);
+      showMessage('error', 'تعذر تحميل سجل تعديلات المصروف', 4500);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
 
   function showMessage(
     type: 'success' | 'error',
@@ -309,7 +383,7 @@ export default function ExpensesPage() {
         return;
       }
 
-      closeEditExpense();
+      setEditExpenseTarget(null);
 
       showMessage('success', 'تم تعديل المصروف');
 
@@ -379,6 +453,7 @@ export default function ExpensesPage() {
       .map(
         (expense) => `
           <tr>
+            <td>#${expense.id}</td>
             <td>${escapeHtml(expense.title || '—')}</td>
             <td>${escapeHtml(expense.category || '—')}</td>
             <td class="money">${money(expense.amount)}</td>
@@ -483,7 +558,7 @@ export default function ExpensesPage() {
               font-weight: 900;
             }
 
-            td:nth-child(5) {
+            td:nth-child(6) {
               max-width: 360px;
               white-space: normal;
               line-height: 1.6;
@@ -551,6 +626,7 @@ export default function ExpensesPage() {
                 <table>
                   <thead>
                     <tr>
+                      <th>رقم المصروف</th>
                       <th>المصروف</th>
                       <th>التصنيف</th>
                       <th>المبلغ</th>
@@ -979,6 +1055,7 @@ export default function ExpensesPage() {
           >
             <thead>
               <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                <th style={thStyle}>رقم المصروف</th>
                 <th style={thStyle}>المصروف</th>
                 <th style={thStyle}>التصنيف</th>
                 <th style={thStyle}>المبلغ</th>
@@ -994,7 +1071,7 @@ export default function ExpensesPage() {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={9} style={{ ...tdStyle, textAlign: 'center' }}>
+                  <td colSpan={10} style={{ ...tdStyle, textAlign: 'center' }}>
                     جاري التحميل...
                   </td>
                 </tr>
@@ -1006,6 +1083,18 @@ export default function ExpensesPage() {
                     key={expense.id}
                     style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                   >
+                    <td
+                      style={{
+                        ...tdStyle,
+                        color: '#fbbf24',
+                        fontWeight: 900,
+                        direction: 'ltr',
+                        textAlign: 'center',
+                      }}
+                    >
+                      #{expense.id}
+                    </td>
+
                     <td style={{ ...tdStyle, fontWeight: 700 }}>
                       {expense.title}
                     </td>
@@ -1070,6 +1159,28 @@ export default function ExpensesPage() {
                     </td>
 
                     <td style={tdStyle}>
+                      {Number(expense.update_count || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => void openExpenseHistory(expense)}
+                          style={{
+                            height: '34px',
+                            padding: '0 12px',
+                            marginBottom: '6px',
+                            marginInlineEnd: '7px',
+                            borderRadius: '9px',
+                            border: '1px solid rgba(56,189,248,0.35)',
+                            background: 'rgba(56,189,248,0.10)',
+                            color: '#7dd3fc',
+                            cursor: 'pointer',
+                            fontWeight: 800,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          سجل التعديلات ({expense.update_count})
+                        </button>
+                      )}
+
                       {canManageExpenses &&
                       !expense.cancelled_at &&
                       canUseRecordAction({
@@ -1127,9 +1238,9 @@ export default function ExpensesPage() {
                             إلغاء
                           </button>
                         </div>
-                      ) : (
+                      ) : Number(expense.update_count || 0) === 0 ? (
                         <span style={{ color: '#64748b' }}>—</span>
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -1137,7 +1248,7 @@ export default function ExpensesPage() {
               {!loading && expenses.length === 0 && (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={10}
                     style={{
                       ...tdStyle,
                       textAlign: 'center',
@@ -1327,6 +1438,222 @@ export default function ExpensesPage() {
               >
                 رجوع
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {historyExpense && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000000,
+            display: 'grid',
+            placeItems: 'center',
+            padding: '20px',
+            background: 'rgba(2,6,23,0.82)',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              width: '720px',
+              maxWidth: '96vw',
+              maxHeight: '90vh',
+              overflow: 'hidden',
+              borderRadius: '18px',
+              padding: '20px',
+              display: 'grid',
+              gridTemplateRows: 'auto minmax(0, 1fr)',
+              gap: '16px',
+              background: 'var(--bg-soft)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+              direction: 'rtl',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  سجل تعديلات المصروف #{historyExpense.id}
+                </h3>
+
+                <div
+                  style={{
+                    color: '#94a3b8',
+                    marginTop: '6px',
+                    fontSize: '13px',
+                  }}
+                >
+                  {historyExpense.title}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setHistoryExpense(null)}
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  background: 'rgba(255,255,255,0.05)',
+                  color: 'inherit',
+                  cursor: 'pointer',
+                  fontSize: '22px',
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div
+              style={{
+                overflowY: 'auto',
+                minHeight: 0,
+                display: 'grid',
+                alignContent: 'start',
+                gap: '12px',
+              }}
+            >
+              {historyLoading ? (
+                <div style={{ color: '#94a3b8' }}>
+                  جاري تحميل سجل التعديلات...
+                </div>
+              ) : historyRows.length === 0 ? (
+                <div style={{ color: '#94a3b8' }}>
+                  لا توجد تعديلات فعلية مسجلة لهذا المصروف
+                </div>
+              ) : (
+                historyRows.map((record, index) => {
+                  const changes = getExpenseHistoryChanges(record);
+
+                  return (
+                    <div
+                      key={record.id}
+                      style={{
+                        border: '1px solid rgba(148,163,184,0.18)',
+                        background: 'rgba(148,163,184,0.05)',
+                        borderRadius: '14px',
+                        padding: '14px',
+                        display: 'grid',
+                        gap: '12px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: '10px',
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <strong style={{ color: '#fbbf24' }}>
+                          التعديل رقم {historyRows.length - index}
+                        </strong>
+
+                        <span
+                          style={{
+                            color: '#94a3b8',
+                            fontSize: '12px',
+                          }}
+                        >
+                          {formatDate(record.created_at)}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          color: '#cbd5e1',
+                          fontSize: '13px',
+                          lineHeight: 1.8,
+                        }}
+                      >
+                        تم بواسطة: {record.user_name || 'غير معروف'}
+                        {record.approved_by_name && (
+                          <div>موافقة المدير: {record.approved_by_name}</div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: '8px',
+                        }}
+                      >
+                        {changes.map((change) => (
+                          <div
+                            key={change.label}
+                            style={{
+                              padding: '10px',
+                              background: 'rgba(15,23,42,0.25)',
+                              borderRadius: '10px',
+                              display: 'grid',
+                              gap: '7px',
+                            }}
+                          >
+                            <strong
+                              style={{
+                                fontSize: '13px',
+                                color: '#e2e8f0',
+                              }}
+                            >
+                              {change.label}
+                            </strong>
+
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns:
+                                  'repeat(2, minmax(0, 1fr))',
+                                gap: '10px',
+                                fontSize: '13px',
+                              }}
+                            >
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{ color: '#94a3b8' }}>قبل</span>
+
+                                <div
+                                  style={{
+                                    color: '#fca5a5',
+                                    marginTop: '4px',
+                                    overflowWrap: 'anywhere',
+                                  }}
+                                >
+                                  {change.before}
+                                </div>
+                              </div>
+
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{ color: '#94a3b8' }}>بعد</span>
+
+                                <div
+                                  style={{
+                                    color: '#6ee7b7',
+                                    marginTop: '4px',
+                                    overflowWrap: 'anywhere',
+                                  }}
+                                >
+                                  {change.after}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

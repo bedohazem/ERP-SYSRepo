@@ -3475,6 +3475,18 @@ declare global {
         offset: number;
       }>;
       createExpense: (input: any) => Promise<any>;
+
+      getExpenseUpdateHistory: (expenseId: number) => Promise<
+        Array<{
+          id: number;
+          created_at: string;
+          user_name: string | null;
+          approved_by_name: string | null;
+          before: Record<string, any>;
+          after: Record<string, any>;
+        }>
+      >;
+
       updateExpense: (input: {
         id: number;
         title: string;

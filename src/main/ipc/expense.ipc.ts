@@ -6,6 +6,7 @@ import {
   listExpensesPage,
   listExpenses,
   updateExpense,
+  getExpenseUpdateHistory,
 } from '../database/repositories/expense.repo';
 
 import { requireAdminPassword } from './permission-helper';
@@ -214,5 +215,13 @@ export function registerExpenseIpc(): void {
         message: error instanceof Error ? error.message : 'تعذر إلغاء المصروف',
       };
     }
+  });
+
+  ipcMain.handle('expenses:update-history', (event, input) => {
+    const user = requirePermission(event, 'expenses.view');
+
+    const expenseId = requirePositiveInteger(input, 'رقم المصروف');
+
+    return getExpenseUpdateHistory(expenseId, user.id, user.role === 'admin');
   });
 }
