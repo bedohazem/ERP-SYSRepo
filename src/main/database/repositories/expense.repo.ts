@@ -711,12 +711,18 @@ export function updateExpense(input: UpdateExpenseInput) {
     throw new Error('لم يتم تغيير أي بيانات في المصروف');
   }
 
-  const financialShift = resolveFinancialOperationShift(
-    actorId,
-    [cashMovement.payment_method, paymentMethod],
-    'لا يمكن تعديل مصروف يؤثر على درج المحل بدون شفت مفتوح',
-  );
+  const hasFinancialChanges =
+    amount !== roundFinancial(Number(expense.amount || 0)) ||
+    paymentMethod !==
+      resolveCashAccount(expense.payment_method || 'store_cash');
 
+  const financialShift = hasFinancialChanges
+    ? resolveFinancialOperationShift(
+        actorId,
+        [cashMovement.payment_method, paymentMethod],
+        'لا يمكن تعديل مصروف يؤثر على درج المحل بدون شفت مفتوح',
+      )
+    : null;
   const openShift = financialShift ?? getAttributableOpenCashShift(actorId);
 
   const correctionBusinessDate = resolveFinancialBusinessDate(
@@ -748,74 +754,79 @@ export function updateExpense(input: UpdateExpenseInput) {
       expenseId,
     );
 
-    /*
-     * لا نلغي حركة المصروف القديمة.
-     * نعكسها في الشفت الحالي.
-     */
-    const reverse = createCashMovement({
-      type: 'expense',
+    let reverseCashMovementId: number | null = null;
+    let newCashMovementId = Number(cashMovement.id);
 
-      direction: 'in',
+    if (hasFinancialChanges) {
+      /*
+       * لا نلغي حركة المصروف القديمة.
+       * نعكسها في الشفت الحالي.
+       */
+      const reverse = createCashMovement({
+        type: 'expense',
 
-      amount: Number(cashMovement.amount || 0),
+        direction: 'in',
 
-      payment_method: cashMovement.payment_method,
+        amount: Number(cashMovement.amount || 0),
 
-      reference_id: expenseId,
+        payment_method: cashMovement.payment_method,
 
-      reference_type: 'expense_update_reverse',
+        reference_id: expenseId,
 
-      notes: `عكس المصروف القديم بسبب التعديل #${expenseId}`,
+        reference_type: 'expense_update_reverse',
 
-      created_by: actorId,
+        notes: `عكس المصروف القديم بسبب التعديل #${expenseId}`,
 
-      business_date: correctionBusinessDate,
+        created_by: actorId,
 
-      shift_id: openShift?.id ?? null,
-    });
+        business_date: correctionBusinessDate,
 
-    const reverseCashMovementId = Number(reverse.lastInsertRowid || 0);
+        shift_id: openShift?.id ?? null,
+      });
 
-    /*
-     * نسجل القيمة الجديدة
-     * كحركة مالية جديدة.
-     */
-    const replacement = createCashMovement({
-      type: 'expense',
+      reverseCashMovementId = Number(reverse.lastInsertRowid || 0);
 
-      direction: 'out',
+      /*
+       * نسجل القيمة الجديدة
+       * كحركة مالية جديدة.
+       */
+      const replacement = createCashMovement({
+        type: 'expense',
 
-      amount,
+        direction: 'out',
 
-      payment_method: paymentMethod,
+        amount,
 
-      reference_id: expenseId,
+        payment_method: paymentMethod,
 
-      reference_type: 'expense',
+        reference_id: expenseId,
 
-      notes: `مصروف: ${title}`,
+        reference_type: 'expense',
 
-      created_by: actorId,
+        notes: `مصروف: ${title}`,
 
-      business_date: correctionBusinessDate,
+        created_by: actorId,
 
-      shift_id: openShift?.id ?? null,
-    });
+        business_date: correctionBusinessDate,
 
-    const newCashMovementId = Number(replacement.lastInsertRowid || 0);
+        shift_id: openShift?.id ?? null,
+      });
 
-    /*
-     * نعلّم حركة المصروف القديمة
-     * بأنها تم استبدالها بحركة جديدة،
-     * مع الاحتفاظ بها في التاريخ المحاسبي.
-     */
-    db.prepare(
-      `
+      newCashMovementId = Number(replacement.lastInsertRowid || 0);
+
+      /*
+       * نعلّم حركة المصروف القديمة
+       * بأنها تم استبدالها بحركة جديدة،
+       * مع الاحتفاظ بها في التاريخ المحاسبي.
+       */
+      db.prepare(
+        `
       UPDATE cash_movements
       SET replacement_movement_id = ?
       WHERE id = ?
       `,
-    ).run(newCashMovementId, cashMovement.id);
+      ).run(newCashMovementId, cashMovement.id);
+    }
 
     createCriticalActivityLog({
       user_id: actorId,

@@ -1113,4 +1113,46 @@ describe('expense repository', () => {
 
     expect(getExpenseUpdateHistory(created.id, 1, true)).toHaveLength(1);
   });
+
+  it('does not move cash when editing expense metadata only', () => {
+    const created = createExpense({
+      title: 'Electricity',
+      category: 'Bills',
+      amount: 250,
+      payment_method: 'store_cash',
+      notes: 'Old note',
+      created_by: 1,
+    });
+
+    const movementsBefore = getCashMovementsCount();
+
+    const result = updateExpense({
+      id: created.id,
+      title: 'Electricity',
+      category: 'Bills',
+      amount: 250,
+      payment_method: 'store_cash',
+      notes: 'New note',
+      actor_id: 1,
+    });
+
+    expect(result.success).toBe(true);
+    expect(getCashMovementsCount()).toBe(movementsBefore);
+    expect(result.cash_movement_id).toBe(result.old_cash_movement_id);
+    expect(result.reverse_cash_movement_id).toBeNull();
+
+    const expense = listExpensesPage().rows.find(
+      (row: any) => row.id === created.id,
+    ) as any;
+
+    expect(expense.notes).toBe('New note');
+    expect(expense.amount).toBe(250);
+    expect(Number(expense.update_count)).toBe(1);
+
+    const history = getExpenseUpdateHistory(created.id, 1, true);
+
+    expect(history).toHaveLength(1);
+    expect(history[0].before.notes).toBe('Old note');
+    expect(history[0].after.notes).toBe('New note');
+  });
 });
