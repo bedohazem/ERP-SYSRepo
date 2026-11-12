@@ -1,6 +1,11 @@
-import { ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import path from 'node:path';
 import { runCriticalActionWithAudit } from './activity-helper';
-import { requireAnyPermission, requirePermission } from '../auth-session';
+import {
+  requireAnyPermission,
+  requirePermission,
+  requireAuthenticatedAdmin,
+} from '../auth-session';
 import {
   optionalEnumValue,
   optionalNonNegativeInteger,
@@ -13,7 +18,10 @@ import {
   requirePositiveInteger,
 } from './input-validation';
 import { userHasPermission } from '../database/repositories/user.repo';
-
+import {
+  buildInventoryWorkbook,
+  type InventoryExcelRow,
+} from '../inventory-excel';
 import {
   adjustVariantStock,
   getInventoryAnalytics,
@@ -177,6 +185,56 @@ function normalizeInventoryMovementsInput(input: unknown) {
 }
 
 export function registerInventoryIpc(): void {
+  ipcMain.handle('inventory:export-excel', async (event) => {
+    requireAuthenticatedAdmin(event);
+
+    const defaultFileName = `inventory-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+    const options = {
+      title: 'حفظ Excel المخزون',
+      defaultPath: path.join(app.getPath('documents'), defaultFileName),
+      filters: [
+        {
+          name: 'Excel Workbook',
+          extensions: ['xlsx'],
+        },
+      ],
+    };
+
+    const parentWindow = BrowserWindow.fromWebContents(event.sender);
+
+    const result = parentWindow
+      ? await dialog.showSaveDialog(parentWindow, options)
+      : await dialog.showSaveDialog(options);
+
+    if (result.canceled || !result.filePath) {
+      return { ok: false, canceled: true };
+    }
+
+    // إعادة التحقق بعد إغلاق نافذة اختيار مسار الحفظ.
+    requireAuthenticatedAdmin(event);
+
+    const filePath = result.filePath.toLowerCase().endsWith('.xlsx')
+      ? result.filePath
+      : `${result.filePath}.xlsx`;
+
+    // التصدير من قاعدة البيانات مباشرة، وليس من الصفحة الحالية.
+    const rows = getInventoryList({
+      search: '',
+      status: 'all',
+    }) as InventoryExcelRow[];
+
+    const workbook = buildInventoryWorkbook(rows);
+
+    await workbook.xlsx.writeFile(filePath);
+
+    return {
+      ok: true,
+      filePath,
+      count: rows.length,
+    };
+  });
+
   ipcMain.handle('inventory:list', (event, input) => {
     const actor = requirePermission(event, 'inventory.view');
 

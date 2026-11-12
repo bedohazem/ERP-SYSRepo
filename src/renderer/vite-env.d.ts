@@ -2083,6 +2083,12 @@ declare global {
       // =========================
       // Inventory
       // =========================
+      exportInventoryExcel: () => Promise<{
+        ok: boolean;
+        canceled?: boolean;
+        filePath?: string;
+        count?: number;
+      }>;
       getInventoryList: (input?: {
         search?: string;
         status?: 'all' | 'available' | 'low' | 'out' | 'negative' | 'inactive';

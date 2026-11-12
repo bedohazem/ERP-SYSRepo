@@ -115,7 +115,7 @@ export default function InventoryPage() {
   );
 
   const [statusFilterOpen, setStatusFilterOpen] = useState(false);
-
+  const [exportingExcel, setExportingExcel] = useState(false);
   const statusFilterRef = useRef<HTMLDivElement | null>(null);
   const inventoryRequestIdRef = useRef(0);
   const [loading, setLoading] = useState(false);
@@ -399,6 +399,30 @@ export default function InventoryPage() {
     }
   }
 
+  async function downloadInventoryExcel() {
+    if (exportingExcel) return;
+
+    setExportingExcel(true);
+
+    try {
+      const result = await window.api.exportInventoryExcel();
+
+      if (result?.canceled) return;
+
+      if (!result?.ok) {
+        showMessage('تعذر حفظ Excel المخزون');
+        return;
+      }
+
+      showMessage(`تم حفظ Excel المخزون بنجاح (${result.count ?? 0} صنف)`);
+    } catch (error) {
+      console.error('Failed to export inventory Excel:', error);
+      showMessage('حدث خطأ أثناء تصدير Excel المخزون');
+    } finally {
+      setExportingExcel(false);
+    }
+  }
+
   async function downloadInventoryEmployeesPdf() {
     try {
       const inventoryRows = await window.api.getInventoryList({
@@ -496,6 +520,21 @@ export default function InventoryPage() {
                 style={secondaryButtonStyle}
               >
                 PDF المخزون
+              </button>
+            )}
+
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => void downloadInventoryExcel()}
+                disabled={exportingExcel}
+                style={{
+                  ...secondaryButtonStyle,
+                  opacity: exportingExcel ? 0.6 : 1,
+                  cursor: exportingExcel ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {exportingExcel ? 'جاري تصدير Excel...' : 'Excel المخزون'}
               </button>
             )}
 

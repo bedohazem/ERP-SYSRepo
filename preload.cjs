@@ -256,6 +256,7 @@ contextBridge.exposeInMainWorld('api', {
     invokeMain('reports:admin-dashboard-today', input),
   getCashierDashboardSummary: () => invokeMain('reports:cashier-dashboard'),
   getInventoryList: (input) => invokeMain('inventory:list', input),
+  exportInventoryExcel: () => invokeMain('inventory:export-excel'),
   getInventoryPage: (input) => invokeMain('inventory:list-page', input),
   getInventoryAnalytics: (input) => invokeMain('inventory:analytics', input),
   adjustVariantStock: (input) => invokeMain('inventory:adjust-stock', input),
