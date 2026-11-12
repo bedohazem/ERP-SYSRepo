@@ -21,6 +21,7 @@ import {
   writeUserScopedDraft,
   SALES_DRAFT_STORAGE_BASE,
 } from '../../utils/draft-storage';
+import SelectedProductSummary from '../../components/SelectedProductSummary';
 
 type SaleVariant = {
   variant_id: number;
@@ -4633,23 +4634,22 @@ export default function SalesPage() {
                   />
                 )}
 
-                <input
-                  value={`${item.product_name} | ${item.size || '—'} | ${
-                    item.color || '—'
-                  } | ${
-                    Number(item.original_sell_price || 0) >
-                    Number(item.sell_price || 0)
-                      ? `قبل: ${money(
-                          item.original_sell_price,
-                        )} | بعد الخصم: ${money(item.sell_price)} ج.م`
-                      : `سعر: ${money(item.sell_price)} ج.م`
-                  }`}
-                  readOnly
-                  style={{
-                    ...tableInputStyle,
-                    direction: 'rtl',
-                    textAlign: 'right',
-                  }}
+                <SelectedProductSummary
+                  name={item.product_name}
+                  category={
+                    item.category_name ||
+                    categories.find(
+                      (category) => category.id === Number(item.category_id),
+                    )?.name ||
+                    null
+                  }
+                  size={item.size}
+                  color={item.color}
+                  price={Number(item.sell_price)}
+                  originalPrice={Number(
+                    item.original_sell_price ?? item.sell_price,
+                  )}
+                  showPrice={false}
                 />
 
                 <input
@@ -5388,36 +5388,19 @@ export default function SalesPage() {
                 fontWeight: 700,
               }}
             >
-              <div style={{ display: 'grid', gap: '4px' }}>
-                <strong>
-                  {item.product_name} | {item.size || '—'} | {item.color || '—'}{' '}
-                  |{' '}
-                  {Number(item.original_sell_price || 0) >
-                  Number(item.sell_price || 0) ? (
-                    <>
-                      <span
-                        style={{
-                          color: '#94a3b8',
-                          textDecoration: 'line-through',
-                          marginLeft: '6px',
-                        }}
-                      >
-                        {money(item.original_sell_price)} ج
-                      </span>
 
-                      <span style={{ color: '#86efac' }}>
-                        {money(item.sell_price)} ج
-                      </span>
-                    </>
-                  ) : (
-                    <>{money(item.sell_price)} ج</>
-                  )}
-                </strong>
+              <SelectedProductSummary
+                variant="dropdown"
+                name={item.product_name}
+                category={item.category_name}
+                size={item.size}
+                color={item.color}
+                price={Number(item.sell_price)}
+                originalPrice={Number(
+                  item.original_sell_price ?? item.sell_price,
+                )}
+              />
 
-                <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                  التصنيف: {item.category_name || 'بدون تصنيف'}
-                </span>
-              </div>
             </button>
           ))}
         </div>

@@ -10,6 +10,7 @@ import {
 } from '../utils/promotion-display';
 import { calculateExchangeDiscount } from '../../shared/exchange-discount';
 import { formatMoney, roundMoney } from '../../shared/money';
+import SelectedProductSummary from './SelectedProductSummary';
 
 type ExchangeUnit = {
   id: number;
@@ -929,9 +930,7 @@ export default function SaleExchangeModal({
 
         return {
           ...draft,
-          query: [variant.product_name, variant.size, variant.color]
-            .filter(Boolean)
-            .join(' — '),
+          query: '',
           results: [],
           new_variant: variant,
         };
@@ -1600,76 +1599,94 @@ export default function SaleExchangeModal({
                         minWidth: 0,
                       }}
                     >
-                      <input
-                        autoComplete="off"
-                        placeholder="اكتب اسم الصنف او الباركود البديل..."
-                        value={draft.query}
-                        onFocus={() =>
-                          setActiveSearchUnitId(draft.promotion_unit_id)
-                        }
-                        onBlur={() =>
-                          setActiveSearchUnitId((current) =>
-                            current === draft.promotion_unit_id
-                              ? null
-                              : current,
-                          )
-                        }
-                        onChange={(event) =>
-                          updateDraftQuery(
-                            draft.promotion_unit_id,
-                            event.target.value,
-                          )
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key === 'Escape') {
-                            setActiveSearchUnitId(null);
-                            return;
+                      {draft.new_variant ? (
+                        <SelectedProductSummary
+                          name={draft.new_variant.product_name}
+                          category={draft.new_variant.category_name}
+                          size={draft.new_variant.size}
+                          color={draft.new_variant.color}
+                          price={Number(draft.new_variant.sell_price)}
+                          originalPrice={Number(
+                            draft.new_variant.original_sell_price ??
+                              draft.new_variant.sell_price,
+                          )}
+                          onChangeProduct={() =>
+                            updateDraftQuery(draft.promotion_unit_id, '')
                           }
-
-                          if (
-                            event.key === 'ArrowDown' &&
-                            draft.results.length > 0
-                          ) {
-                            event.preventDefault();
-                            setActiveResultIndex((index) =>
-                              Math.min(index + 1, draft.results.length - 1),
-                            );
+                        />
+                      ) : (
+                        <input
+                          autoComplete="off"
+                          placeholder="اكتب اسم الصنف او الباركود البديل..."
+                          value={draft.query}
+                          onFocus={() =>
+                            setActiveSearchUnitId(draft.promotion_unit_id)
                           }
-
-                          if (
-                            event.key === 'ArrowUp' &&
-                            draft.results.length > 0
-                          ) {
-                            event.preventDefault();
-                            setActiveResultIndex((index) =>
-                              Math.max(-1, index - 1),
-                            );
+                          onBlur={() =>
+                            setActiveSearchUnitId((current) =>
+                              current === draft.promotion_unit_id
+                                ? null
+                                : current,
+                            )
                           }
-
-                          if (event.key === 'Enter') {
-                            event.preventDefault();
+                          onChange={(event) =>
+                            updateDraftQuery(
+                              draft.promotion_unit_id,
+                              event.target.value,
+                            )
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') {
+                              setActiveSearchUnitId(null);
+                              return;
+                            }
 
                             if (
-                              activeSearchUnitId === draft.promotion_unit_id &&
+                              event.key === 'ArrowDown' &&
                               draft.results.length > 0
                             ) {
-                              const variant =
-                                draft.results[Math.max(0, activeResultIndex)];
+                              event.preventDefault();
+                              setActiveResultIndex((index) =>
+                                Math.min(index + 1, draft.results.length - 1),
+                              );
+                            }
 
-                              if (variant) {
-                                chooseReplacement(
-                                  draft.promotion_unit_id,
-                                  Number(variant.variant_id),
-                                );
+                            if (
+                              event.key === 'ArrowUp' &&
+                              draft.results.length > 0
+                            ) {
+                              event.preventDefault();
+                              setActiveResultIndex((index) =>
+                                Math.max(-1, index - 1),
+                              );
+                            }
+
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+
+                              if (
+                                activeSearchUnitId ===
+                                  draft.promotion_unit_id &&
+                                draft.results.length > 0
+                              ) {
+                                const variant =
+                                  draft.results[Math.max(0, activeResultIndex)];
+
+                                if (variant) {
+                                  chooseReplacement(
+                                    draft.promotion_unit_id,
+                                    Number(variant.variant_id),
+                                  );
+                                }
                               }
                             }
-                          }
-                        }}
-                        style={{
-                          ...inputStyle,
-                          width: '100%',
-                        }}
-                      />
+                          }}
+                          style={{
+                            ...inputStyle,
+                            width: '100%',
+                          }}
+                        />
+                      )}
 
                       {activeSearchUnitId === draft.promotion_unit_id &&
                         Boolean(draft.query.trim()) &&
@@ -1746,26 +1763,18 @@ export default function SaleExchangeModal({
                                       cursor: 'pointer',
                                     }}
                                   >
-                                    <strong
-                                      style={{ overflowWrap: 'anywhere' }}
-                                    >
-                                      {variant.product_name}
-                                      {' — '}
-                                      {variant.size || '—'}
-                                      {' / '}
-                                      {variant.color || '—'}
-                                    </strong>
-
-                                    <span
-                                      style={{
-                                        color: '#94a3b8',
-                                        fontSize: '12px',
-                                      }}
-                                    >
-                                      سعر البيع: {money(variant.sell_price)}
-                                      {' • '}
-                                      المخزون: {Number(variant.stock || 0)}
-                                    </span>
+                                    <SelectedProductSummary
+                                      variant="dropdown"
+                                      name={variant.product_name}
+                                      category={variant.category_name}
+                                      size={variant.size}
+                                      color={variant.color}
+                                      price={Number(variant.sell_price)}
+                                      originalPrice={Number(
+                                        variant.original_sell_price ??
+                                          variant.sell_price,
+                                      )}
+                                    />
                                   </button>
                                 ),
                               )
