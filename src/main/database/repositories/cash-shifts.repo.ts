@@ -3607,8 +3607,10 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
   let reversalAccount: ReturnType<typeof resolveCashAccount> | null = null;
 
   if (resolutionType === 'rejected') {
-    if (current.stage !== 'closing') {
-      throw new Error('عدم اعتماد الفرق متاح حاليًا لفروق إغلاق الشفت فقط');
+    if (current.stage === 'opening' && current.shift_status === 'open') {
+      throw new Error(
+        'الشفت ما زال مفتوحًا، استخدم تصحيح جرد الافتتاح بدل عكس التسوية من حساب آخر',
+      );
     }
 
     const rawReversalAccount = String(input.reversal_account || '').trim();
@@ -3800,8 +3802,8 @@ export function resolveCashShiftVariance(input: ResolveCashShiftVarianceInput) {
 
         notes:
           current.kind === 'surplus'
-            ? `عدم اعتماد زيادة إغلاق الشفت #${current.shift_id}`
-            : `عدم اعتماد عجز إغلاق الشفت #${current.shift_id}`,
+            ? `عدم اعتماد زيادة ${current.stage === 'opening' ? 'افتتاح' : 'إغلاق'} الشفت #${current.shift_id}`
+            : `عدم اعتماد عجز ${current.stage === 'opening' ? 'افتتاح' : 'إغلاق'} الشفت #${current.shift_id}`,
 
         created_by: resolvedBy,
 

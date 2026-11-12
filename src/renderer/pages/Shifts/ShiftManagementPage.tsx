@@ -264,7 +264,7 @@ export default function ShiftManagementPage() {
 
     setResolveTarget(variance);
 
-    setResolutionType('approved');
+    setResolutionType(variance.stage === 'opening' ? 'explained' : 'approved');
 
     setCorrectedOpeningAmount(
       variance.stage === 'opening' && openShift?.id === variance.shift_id
@@ -364,7 +364,14 @@ export default function ShiftManagementPage() {
             : 'تم تصحيح الجرد وتحديث فرق الافتتاح المتبقي',
         );
       } else {
-        showMessage('success', 'تم اعتماد مراجعة فرق الشفت');
+        showMessage(
+          'success',
+          resolutionType === 'explained'
+            ? 'تم توثيق الفرق دون عكس التسوية أو التأثير على الربح'
+            : resolutionType === 'rejected'
+              ? 'تم عكس التسوية النقدية وإغلاق المراجعة دون تأثير على الربح'
+              : 'تم اعتماد مراجعة فرق الشفت',
+        );
       }
 
       await loadData(statusFilter, variancePage);
@@ -493,12 +500,43 @@ export default function ShiftManagementPage() {
           subtitle={openShift ? `فتح: ${formatDate(openShift.opened_at)}` : '—'}
         />
 
-        <SummaryCard
-          title="فروق تحتاج مراجعة"
-          value={String(pendingCount)}
-          subtitle="عجز أو زيادة لم يتم اعتماد مراجعتها"
-          warning={pendingCount > 0}
-        />
+        <button
+          type="button"
+          title="اضغط لعرض فروق الشفتات التي تحتاج مراجعة"
+          aria-label="عرض فروق الشفتات التي تحتاج مراجعة"
+          onClick={() => {
+            setStatusFilter('pending');
+            setVarianceUserId('');
+            setVarianceDateFrom('');
+            setVarianceDateTo('');
+            setVariancePage(1);
+
+            document.getElementById('cash-shift-variances')?.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start',
+            });
+          }}
+          style={{
+            width: '100%',
+            height: '100%',
+            padding: 0,
+            margin: 0,
+            border: 0,
+            background: 'transparent',
+            color: 'inherit',
+            font: 'inherit',
+            textAlign: 'right',
+            cursor: 'pointer',
+            borderRadius: '18px',
+          }}
+        >
+          <SummaryCard
+            title="فروق تحتاج مراجعة"
+            value={String(pendingCount)}
+            subtitle="اضغط لعرض ومراجعة فروق الشيفتات"
+            warning={pendingCount > 0}
+          />
+        </button>
 
         <SummaryCard
           title="نتائج الفلتر"
@@ -564,6 +602,7 @@ export default function ShiftManagementPage() {
       <CashDrawerHistorySection users={shiftUsers} />
 
       <section
+        id="cash-shift-variances"
         className="glass-card"
         style={{
           padding: '16px',
@@ -993,6 +1032,18 @@ export default function ShiftManagementPage() {
                     </>
                   ) : (
                     <>
+                      <option value="explained">
+                        توثيق سبب الفرق فقط - بدون عكس التسوية أو تأثير على
+                        الربح
+                      </option>
+
+                      {resolveTarget.shift_status === 'closed' && (
+                        <option value="rejected">
+                          عدم اعتماد الفرق وعكس التسوية النقدية - بدون تأثير على
+                          الربح
+                        </option>
+                      )}
+
                       <option value="approved">
                         اعتماد الفرق كعجز / زيادة حقيقية
                       </option>
@@ -1005,34 +1056,39 @@ export default function ShiftManagementPage() {
                 </select>
               </Field>
 
-              {resolveTarget.stage === 'closing' &&
-                resolutionType === 'rejected' && (
-                  <Field label="الحساب الذي ستسجل عليه العملية الصحيحة">
-                    <select
-                      value={reversalAccount}
-                      onChange={(e) => setReversalAccount(e.target.value)}
-                      style={inputStyle}
-                    >
-                      {VARIANCE_REVERSAL_ACCOUNT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+              {resolutionType === 'rejected' && (
+                <Field
+                  label={
+                    resolveTarget.stage === 'opening'
+                      ? 'الحساب الذي سيتم عكس تسوية الافتتاح عليه'
+                      : 'الحساب الذي ستسجل عليه العملية الصحيحة'
+                  }
+                >
+                  <select
+                    value={reversalAccount}
+                    onChange={(e) => setReversalAccount(e.target.value)}
+                    style={inputStyle}
+                  >
+                    {VARIANCE_REVERSAL_ACCOUNT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
 
-                    <div
-                      style={{
-                        marginTop: '6px',
-                        color: '#94a3b8',
-                        fontSize: '12px',
-                        lineHeight: 1.7,
-                      }}
-                    >
-                      استخدم نفس الحساب عند تسجيل البيع أو المصروف أو التحصيل
-                      الصحيح.
-                    </div>
-                  </Field>
-                )}
+                  <div
+                    style={{
+                      marginTop: '6px',
+                      color: '#94a3b8',
+                      fontSize: '12px',
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    استخدم نفس الحساب عند تسجيل البيع أو المصروف أو التحصيل
+                    الصحيح.
+                  </div>
+                </Field>
+              )}
 
               <Field label="ملاحظات المراجعة">
                 <textarea

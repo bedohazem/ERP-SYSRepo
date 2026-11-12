@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
-
+import { getReportsSummary } from '../../src/main/database/repositories/reports.repo';
 import {
   closeCashShift,
   getCashShiftExpectedBalance,
@@ -2001,4 +2001,176 @@ describe('cash shifts repository', () => {
 
     expect(getAttributableOpenCashShift(secondCashier.id)).toBeNull();
   });
+
+  it.each([
+    {
+      scenario: 'opening surplus',
+      openingAmount: 600,
+      leftForNext: 400,
+      kind: 'surplus',
+      difference: 100,
+      safeBefore: 200,
+      safeAfter: 100,
+      direction: 'out',
+    },
+    {
+      scenario: 'opening shortage',
+      openingAmount: 450,
+      leftForNext: 300,
+      kind: 'shortage',
+      difference: 50,
+      safeBefore: 150,
+      safeAfter: 200,
+      direction: 'in',
+    },
+  ] as const)(
+    'reverses rejected $scenario without affecting profit or closed shifts',
+    ({
+      openingAmount,
+      leftForNext,
+      kind,
+      difference,
+      safeBefore,
+      safeAfter,
+      direction,
+    }) => {
+      const db = getDb();
+
+      // Shift A: hand over 500.
+      const shiftA = openCashShift({
+        opening_counted_amount: 500,
+        opened_by: 1,
+      });
+
+      closeCashShift({
+        shift_id: shiftA.id,
+        closing_counted_amount: 500,
+        left_for_next_shift: 500,
+        closed_by: 1,
+      });
+
+      // Shift B: incorrect opening count.
+      const shiftB = openCashShift({
+        opening_counted_amount: openingAmount,
+        opened_by: 1,
+      });
+
+      expect(shiftB.expected_opening_amount).toBe(500);
+      expect(shiftB.opening_difference).toBe(
+        kind === 'surplus' ? difference : -difference,
+      );
+
+      const variance = listCashShiftVariances({
+        status: 'pending',
+      }).rows.find(
+        (row) => row.shift_id === shiftB.id && row.stage === 'opening',
+      );
+
+      expect(variance).toBeTruthy();
+      expect(variance!.kind).toBe(kind);
+      expect(Number(variance!.amount)).toBe(difference);
+
+      // Close shift B and transfer the remainder to safe.
+      closeCashShift({
+        shift_id: shiftB.id,
+        closing_counted_amount: openingAmount,
+        left_for_next_shift: leftForNext,
+        closed_by: 1,
+      });
+
+      const drawerBefore = getCashSummary({
+        payment_method: 'store_cash',
+      }).balance;
+
+      const safeBalanceBefore = getCashSummary({
+        payment_method: 'store_safe',
+      }).balance;
+
+      expect(drawerBefore).toBe(leftForNext);
+      expect(safeBalanceBefore).toBe(safeBefore);
+
+      const historyA = getCashShiftDetails(shiftA.id);
+      const historyB = getCashShiftDetails(shiftB.id);
+
+      const profitBefore = getReportsSummary().summary.final_net_profit;
+
+      // Reject the opening variance and reverse the adjustment.
+      const resolved = resolveCashShiftVariance({
+        variance_id: variance!.id,
+        resolution_type: 'rejected',
+        resolution_notes: 'Incorrect opening count',
+        reversal_account: 'store_safe',
+        resolved_by: 1,
+      });
+
+      expect(resolved.status).toBe('resolved');
+      expect(resolved.resolution_type).toBe('rejected');
+
+      // Cash drawer remains unchanged.
+      expect(
+        getCashSummary({
+          payment_method: 'store_cash',
+        }).balance,
+      ).toBe(drawerBefore);
+
+      // Safe account receives the opposite movement.
+      expect(
+        getCashSummary({
+          payment_method: 'store_safe',
+        }).balance,
+      ).toBe(safeAfter);
+
+      // No effect on final profit.
+      const reportsAfter = getReportsSummary();
+
+      expect(reportsAfter.summary.final_net_profit).toBe(profitBefore);
+
+      expect(reportsAfter.summary.approved_opening_surplus).toBe(0);
+      expect(reportsAfter.summary.approved_opening_shortage).toBe(0);
+
+      // Verify recorded financial reversal.
+      const reversal = db
+        .prepare(
+          `
+          SELECT *
+          FROM cash_movements
+          WHERE reference_type = 'cash_shift_variance_reversal'
+            AND reference_id = ?
+          `,
+        )
+        .all(variance!.id) as Array<{
+        direction: string;
+        amount: number;
+        payment_method: string;
+        shift_id: number | null;
+      }>;
+
+      expect(reversal).toHaveLength(1);
+      expect(reversal[0].direction).toBe(direction);
+      expect(Number(reversal[0].amount)).toBe(difference);
+      expect(reversal[0].payment_method).toBe('store_safe');
+      expect(reversal[0].shift_id).toBeNull();
+
+      // Historical shift figures must remain unchanged.
+      const afterA = getCashShiftDetails(shiftA.id);
+      const afterB = getCashShiftDetails(shiftB.id);
+
+      expect(afterA.sales_summary).toEqual(historyA.sales_summary);
+      expect(afterA.operations_summary).toEqual(historyA.operations_summary);
+
+      expect(afterB.sales_summary).toEqual(historyB.sales_summary);
+      expect(afterB.operations_summary).toEqual(historyB.operations_summary);
+
+      // The same variance cannot be reversed twice.
+      expect(() =>
+        resolveCashShiftVariance({
+          variance_id: variance!.id,
+          resolution_type: 'rejected',
+          resolution_notes: 'Duplicate reversal',
+          reversal_account: 'store_safe',
+          resolved_by: 1,
+        }),
+      ).toThrow('تمت مراجعة فرق الشفت بالفعل');
+    },
+  );
 });
