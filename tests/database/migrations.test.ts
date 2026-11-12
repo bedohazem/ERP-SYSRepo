@@ -219,6 +219,26 @@ describe('database migrations', () => {
     ).toThrow('خطة ترقية قاعدة البيانات غير صحيحة');
   });
 
+  it('indexes invoice print history by entity, id and action', () => {
+    const db = getDb();
+
+    const indexes = db
+      .prepare("PRAGMA index_list('activity_logs')")
+      .all() as Array<{ name: string }>;
+
+    expect(indexes.map((index) => index.name)).toContain(
+      'idx_activity_logs_sale_print_lookup',
+    );
+
+    const columns = db
+      .prepare("PRAGMA index_info('idx_activity_logs_sale_print_lookup')")
+      .all() as Array<{ name: string; seqno: number }>;
+
+    expect(
+      columns.sort((a, b) => a.seqno - b.seqno).map((column) => column.name),
+    ).toEqual(['entity', 'entity_id', 'action']);
+  });
+
   it('boots ERP with the latest schema before repositories run', () => {
     closeDb();
 
@@ -448,6 +468,11 @@ describe('database migrations', () => {
       {
         name: 'track-discretionary-exchange-discounts',
         version: 39,
+      },
+
+      {
+        name: 'index-sale-invoice-print-history',
+        version: 40,
       },
     ]);
 

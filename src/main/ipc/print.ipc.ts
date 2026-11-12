@@ -450,8 +450,6 @@ export function registerPrintIpc(): void {
   });
 
   ipcMain.handle('print:dialog-html', async (event, input: unknown) => {
-    requireAuthenticatedUser(event);
-
     const actor = requireAuthenticatedUser(event);
 
     const { payload, html } = normalizePrintHtmlInput(

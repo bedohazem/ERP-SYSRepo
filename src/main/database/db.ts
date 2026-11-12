@@ -4497,6 +4497,22 @@ export function getDb(): Database.Database {
           );
         },
       },
+
+      {
+        version: 40,
+        name: 'index-sale-invoice-print-history',
+        up: () => {
+          db.exec(`
+            CREATE INDEX IF NOT EXISTS
+              idx_activity_logs_sale_print_lookup
+            ON activity_logs (
+              entity,
+              entity_id,
+              action
+            );
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);
