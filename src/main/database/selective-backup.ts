@@ -1285,13 +1285,47 @@ export function buildSupplierOpenDuesBackupSection(): SupplierOpenDuesBackupSect
     )
     .all() as Array<any>;
 
-  const credits = creditRows.map((row): SupplierOpenCreditBackupRowV1 => ({
-    supplier_source_id: Number(row.supplier_id),
+  const accountCreditRows = db
+    .prepare(
+      `
+      SELECT
+        c.supplier_id,
+        c.created_at,
 
-    credit_amount: Number(row.credit_amount || 0),
+        MAX(
+          0,
+          c.amount - IFNULL((
+            SELECT SUM(a.amount)
+            FROM supplier_account_credit_allocations a
+            WHERE a.credit_id = c.id
+              AND a.cancelled_at IS NULL
+          ), 0)
+        ) AS credit_amount
 
-    created_at: row.created_at ?? null,
-  }));
+      FROM supplier_account_credits c
+
+      WHERE c.cancelled_at IS NULL
+
+        AND c.amount > 0
+
+      ORDER BY c.supplier_id, c.created_at, c.id
+    `,
+    )
+    .all() as Array<{
+    supplier_id: number;
+    created_at: string | null;
+    credit_amount: number;
+  }>;
+
+  const credits = [...creditRows, ...accountCreditRows]
+    .filter((row) => Number(row.credit_amount) > 0.000000001)
+    .map((row): SupplierOpenCreditBackupRowV1 => ({
+      supplier_source_id: Number(row.supplier_id),
+
+      credit_amount: Number(row.credit_amount || 0),
+
+      created_at: row.created_at ?? null,
+    }));
 
   const suppliers = new Set<number>();
 

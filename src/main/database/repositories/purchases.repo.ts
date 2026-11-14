@@ -6698,6 +6698,7 @@ export function getSupplierStatement(
   const accountCreditEntries = accountCredits.map((item) => ({
     id: `supplier-account-credit-${item.id}`,
     type: 'supplier_account_credit',
+    purchase_id: null,
     title:
       item.source_type === 'opening_credit'
         ? 'رصيد افتتاحي لصالحنا'

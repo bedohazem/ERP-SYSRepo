@@ -7,7 +7,7 @@ import {
   createProduct,
   getVariantByBarcode,
 } from '../../src/main/database/repositories/product.repo';
-
+import { buildSupplierOpenDuesBackupSection } from '../../src/main/database/selective-backup';
 import { recordCustomerPayment } from '../../src/main/database/repositories/customers.repo';
 
 import {
@@ -1212,5 +1212,99 @@ describe('selective financial state', () => {
         offset: 0,
       }).total,
     ).toBe(0);
+  });
+
+  it('preserves unused opening and advance supplier credits in selective reset', () => {
+    const db = getDb();
+    const admin = ensureAdmin();
+
+    const supplierId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO suppliers (name)
+        VALUES ('Supplier New Credit Backup')
+      `,
+        )
+        .run().lastInsertRowid,
+    );
+
+    const openingId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO supplier_account_credits (
+          supplier_id, source_type, amount
+        )
+        VALUES (?, 'opening_credit', 300)
+      `,
+        )
+        .run(supplierId).lastInsertRowid,
+    );
+
+    db.prepare(
+      `
+      INSERT INTO supplier_account_credits (
+        supplier_id, source_type, amount
+      )
+      VALUES (?, 'advance_payment', 200)
+    `,
+    ).run(supplierId);
+
+    // استُخدم 120 من الرصيد الافتتاحي.
+    const purchaseId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO purchase_invoices (
+          supplier_id, total_amount, sub_total,
+          paid_amount, remaining_amount, payment_status
+        )
+        VALUES (?, 120, 120, 120, 0, 'paid')
+      `,
+        )
+        .run(supplierId).lastInsertRowid,
+    );
+
+    db.prepare(
+      `
+      INSERT INTO supplier_account_credit_allocations (
+        credit_id, purchase_id, amount
+      )
+      VALUES (?, ?, 120)
+    `,
+    ).run(openingId, purchaseId);
+
+    const backup = buildSupplierOpenDuesBackupSection();
+
+    expect(
+      backup.credits?.reduce(
+        (sum, row) =>
+          sum + (row.supplier_source_id === supplierId ? row.credit_amount : 0),
+        0,
+      ),
+    ).toBe(380);
+
+    resetDatabaseKeepingSelectiveData({
+      sections: ['catalog_stock', 'supplier_open_dues'],
+      actorId: admin.id,
+      appVersion: 'supplier-credit-backup-test',
+    });
+
+    const restored = db
+      .prepare(
+        `
+      SELECT id, balance
+      FROM suppliers
+      WHERE name = 'Supplier New Credit Backup'
+    `,
+      )
+      .get() as { id: number; balance: number };
+
+    expect(restored.balance).toBeCloseTo(-380, 8);
+
+    const statement = getSupplierStatement(restored.id, admin.id);
+
+    expect(statement.summary.balance).toBeCloseTo(-380, 8);
   });
 });
