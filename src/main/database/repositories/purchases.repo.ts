@@ -32,6 +32,12 @@ import {
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 import { getShiftBusinessDate } from '../shift-business-date';
 import { issueStockAtCost, receiveStockAtCost } from '../inventory-cost';
+import {
+  getSupplierAccountAvailableCredit,
+  getSupplierAccountCreditAllocatedToPurchase,
+  allocateSupplierAccountCreditToPurchase,
+  releaseSupplierAccountCreditAllocations,
+} from './supplier-account-credits.repo';
 
 function getCurrentBusinessDate(db: ReturnType<typeof getDb>) {
   const row = db
@@ -302,6 +308,15 @@ function resolveStoredPurchaseInitialCashAmount(purchase: {
   );
 }
 
+const SUPPLIER_ACCOUNT_CREDIT_APPLIED_SQL = `
+  IFNULL((
+    SELECT SUM(saca.amount)
+    FROM supplier_account_credit_allocations saca
+    WHERE saca.purchase_id = pi.id
+      AND saca.cancelled_at IS NULL
+  ), 0)
+`;
+
 function getSupplierAvailableCredit(
   db: ReturnType<typeof getDb>,
   supplierId: number,
@@ -358,19 +373,21 @@ function getSupplierAvailableCredit(
     allocated_amount: number;
   }>;
 
-  return normalizePreciseZero(
-    preciseSum(
-      rows.map((row) =>
-        Math.max(
-          0,
-          preciseSubtract(
-            Number(row.credit_amount || 0),
-            Number(row.allocated_amount || 0),
-          ),
+  const returnCredit = preciseSum(
+    rows.map((row) =>
+      Math.max(
+        0,
+        preciseSubtract(
+          Number(row.credit_amount || 0),
+          Number(row.allocated_amount || 0),
         ),
       ),
     ),
   );
+
+  const accountCredit = getSupplierAccountAvailableCredit(db, supplierId);
+
+  return normalizePreciseZero(preciseAdd(returnCredit, accountCredit));
 }
 
 function allocateSupplierCreditToPurchase(
@@ -484,13 +501,27 @@ function allocateSupplierCreditToPurchase(
   }
 
   if (hasPositivePreciseAmount(remaining)) {
+    const accountAllocated = allocateSupplierAccountCreditToPurchase(db, {
+      supplier_id: input.supplier_id,
+      purchase_id: input.purchase_id,
+      amount: remaining,
+    });
+
+    allocatedTotal = preciseAdd(allocatedTotal, accountAllocated);
+
+    remaining = normalizePreciseZero(
+      preciseSubtract(remaining, accountAllocated),
+    );
+  }
+
+  if (hasPositivePreciseAmount(remaining)) {
     throw new Error('تعذر توزيع كامل الرصيد الدائن للمورد');
   }
 
   return normalizePreciseZero(allocatedTotal);
 }
 
-function applyAvailableSupplierCreditToOpenPurchases(
+export function applyAvailableSupplierCreditToOpenPurchases(
   db: ReturnType<typeof getDb>,
   supplierId: number,
 ) {
@@ -658,7 +689,7 @@ function calculateSupplierNetBalance(
   return normalizePreciseZero(preciseSubtract(openDebt, supplierCredit));
 }
 
-function rebuildSupplierBalance(
+export function rebuildSupplierBalance(
   db: ReturnType<typeof getDb>,
   supplierId: number,
 ) {
@@ -1729,6 +1760,9 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
     if (
       hasPositivePreciseAmount(
         Number(activeSupplierCreditAllocation?.amount || 0),
+      ) ||
+      hasPositivePreciseAmount(
+        getSupplierAccountCreditAllocatedToPurchase(db, purchaseId),
       )
     ) {
       throw new Error(
@@ -2577,29 +2611,29 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
           pi.remaining_amount,
           pi.payment_status,
 
-          IFNULL(
-            (
-              SELECT SUM(
-                sca.amount
-              )
-
+          (
+            IFNULL((
+              SELECT SUM(sca.amount)
               FROM supplier_credit_allocations sca
+              WHERE sca.purchase_id = pi.id
+                AND sca.cancelled_at IS NULL
+            ), 0)
 
-              WHERE
-                sca.purchase_id = pi.id
+            +
 
-                AND sca.cancelled_at
-                  IS NULL
-            ),
-            0
+            IFNULL((
+              SELECT SUM(saca.amount)
+              FROM supplier_account_credit_allocations saca
+              WHERE saca.purchase_id = pi.id
+                AND saca.cancelled_at IS NULL
+            ), 0)
           ) AS supplier_credit_applied
 
         FROM purchase_invoices pi
 
         WHERE pi.id = ?
-
         LIMIT 1
-        `,
+      `,
       )
       .get(purchaseId) as {
       paid_amount: number;
@@ -2677,7 +2711,8 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
                   IS NULL
             ),
             0
-          ) AS supplier_credit_applied,
+          ) + ${SUPPLIER_ACCOUNT_CREDIT_APPLIED_SQL}
+            AS supplier_credit_applied,
 
           IFNULL(
             pi.status,
@@ -2908,6 +2943,7 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       purchaseId,
     );
 
+    releaseSupplierAccountCreditAllocations(db, purchaseId);
     /*
      * إلغاء الفاتورة حرر Credit
      * كان مستخدم عليها.
@@ -4278,7 +4314,8 @@ export function listPurchaseInvoices(input?: {
                 IS NULL
           ),
           0
-        ) AS supplier_credit_applied,
+        ) + ${SUPPLIER_ACCOUNT_CREDIT_APPLIED_SQL} 
+         AS supplier_credit_applied,
 
         COALESCE(
           NULLIF(
@@ -4510,7 +4547,8 @@ export function getPurchaseInvoice(purchaseId: number) {
                 IS NULL
           ),
           0
-        ) AS supplier_credit_applied,
+        ) + ${SUPPLIER_ACCOUNT_CREDIT_APPLIED_SQL}
+         AS supplier_credit_applied,
 
         COALESCE(
           NULLIF(
@@ -6638,6 +6676,42 @@ export function getSupplierStatement(
     )
     .all(id) as any[];
 
+  const accountCredits = db
+    .prepare(
+      `
+    SELECT *
+    FROM supplier_account_credits
+    WHERE supplier_id = ?
+    ORDER BY created_at DESC, id DESC
+  `,
+    )
+    .all(id) as Array<{
+    id: number;
+    source_type: string;
+    payment_method: string | null;
+    amount: number;
+    notes: string | null;
+    created_at: string;
+    cancelled_at: string | null;
+  }>;
+
+  const accountCreditEntries = accountCredits.map((item) => ({
+    id: `supplier-account-credit-${item.id}`,
+    type: 'supplier_account_credit',
+    title:
+      item.source_type === 'opening_credit'
+        ? 'رصيد افتتاحي لصالحنا'
+        : item.source_type === 'advance_payment'
+          ? 'دفعة مقدمة للمورد'
+          : 'رصيد ناتج عن زيادة الدفع',
+    debit: 0,
+    credit: item.cancelled_at ? 0 : item.amount,
+    payment_method: item.payment_method ?? null,
+    notes: item.notes,
+    cancelled_at: item.cancelled_at,
+    created_at: item.created_at,
+  }));
+
   const batchPayments = new Map<number, any[]>();
 
   const standalonePayments: any[] = [];
@@ -6788,6 +6862,7 @@ export function getSupplierStatement(
   const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries];
 
   const entries = [
+    ...accountCreditEntries,
     ...purchases
       .filter(
         (purchase) => Number(purchase.is_opening_credit_source || 0) !== 1,
@@ -6895,7 +6970,7 @@ export function getSupplierStatement(
     payments,
     returns,
     entries,
-
+    account_credits: accountCredits,
     summary: {
       total_purchased: Number(supplier.total_purchased || 0),
 

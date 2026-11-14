@@ -4513,6 +4513,93 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 41,
+        name: 'supplier-account-credits',
+        up: () => {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS supplier_account_credits (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              supplier_id INTEGER NOT NULL,
+
+              source_type TEXT NOT NULL CHECK (
+                source_type IN (
+                  'opening_credit',
+                  'advance_payment',
+                  'purchase_overpayment',
+                  'payment_overpayment'
+                )
+              ),
+
+              amount REAL NOT NULL CHECK (amount > 0),
+
+              source_id INTEGER,
+              payment_method TEXT,
+              notes TEXT,
+
+              created_by INTEGER,
+              business_date TEXT,
+              shift_id INTEGER,
+
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+              cancelled_at TEXT,
+              cancelled_by INTEGER,
+              cancel_reason TEXT,
+
+              FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+              FOREIGN KEY (created_by) REFERENCES users(id),
+              FOREIGN KEY (cancelled_by) REFERENCES users(id),
+              FOREIGN KEY (shift_id) REFERENCES cash_shifts(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_account_credits_supplier
+            ON supplier_account_credits (
+              supplier_id,
+              cancelled_at,
+              created_at
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS
+              idx_supplier_account_credits_source
+            ON supplier_account_credits (
+              source_type,
+              source_id
+            )
+            WHERE source_id IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS supplier_account_credit_allocations (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+              credit_id INTEGER NOT NULL,
+              purchase_id INTEGER NOT NULL,
+
+              amount REAL NOT NULL CHECK (amount > 0),
+
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+              cancelled_at TEXT,
+
+              FOREIGN KEY (credit_id)
+                REFERENCES supplier_account_credits(id),
+
+              FOREIGN KEY (purchase_id)
+                REFERENCES purchase_invoices(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_account_credit_allocations_credit
+            ON supplier_account_credit_allocations (credit_id);
+
+            CREATE INDEX IF NOT EXISTS
+              idx_supplier_account_credit_allocations_purchase
+            ON supplier_account_credit_allocations (purchase_id);
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);
@@ -4543,7 +4630,8 @@ export function resetDatabaseData(): void {
       DELETE FROM store_liabilities;
 
       DELETE FROM supplier_credit_allocations;
-
+      DELETE FROM supplier_account_credit_allocations;
+      DELETE FROM supplier_account_credits;
       DELETE FROM supplier_payments;
       DELETE FROM supplier_payment_batches;
 

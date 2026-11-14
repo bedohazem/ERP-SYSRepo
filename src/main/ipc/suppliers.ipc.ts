@@ -10,9 +10,20 @@ import {
   listSuppliers,
   updateSupplier,
 } from '../database/repositories/suppliers.repo';
+import { requireAuthenticatedAdmin } from '../auth-session';
 
+import { createSupplierOpeningBalance } from '../database/repositories/supplier-opening-balances.repo';
+
+import { requireEnumValue, requirePositiveMoney } from './input-validation';
 import { requireAnyPermission, requirePermission } from '../auth-session';
+import {
+  createSupplierAdvancePayment,
+  cancelSupplierAdvancePayment,
+} from '../database/repositories/supplier-advances.repo';
 
+import { requirePositiveFinancialMoney } from './input-validation';
+
+import { resolveCashAccountKey } from '../../shared/cash-accounts';
 import {
   optionalBooleanValue,
   optionalNonNegativeInteger,
@@ -26,6 +37,41 @@ import {
 import { roundMoney } from '../../shared/money';
 
 export function registerSuppliersIpc(): void {
+  ipcMain.handle('suppliers:create-opening-balance', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event);
+
+    const payload = requireObjectInput(input, 'بيانات الرصيد الافتتاحي');
+
+    const openingInput = {
+      supplier_id: requirePositiveInteger(payload.supplier_id, 'رقم المورد'),
+      direction: requireEnumValue(
+        payload.direction,
+        ['payable', 'receivable'] as const,
+        'نوع الرصيد الافتتاحي',
+      ),
+      amount: requirePositiveMoney(payload.amount, 'قيمة الرصيد الافتتاحي'),
+      notes: requireTrimmedString(payload.notes, 'سبب الرصيد الافتتاحي', 2000),
+      actor_id: actorId,
+    };
+
+    return runCriticalActionWithAudit(
+      () => createSupplierOpeningBalance(openingInput),
+      (result) => ({
+        actor_id: actorId,
+        action: 'supplier_opening_balance_created',
+        entity: 'suppliers',
+        entity_id: openingInput.supplier_id,
+        details: {
+          opening_balance_id: result.id,
+          direction: result.direction,
+          amount: result.amount,
+          balance: result.balance,
+          notes: openingInput.notes,
+        },
+      }),
+    );
+  });
+
   ipcMain.handle('suppliers:list', (event, search?: unknown) => {
     requireAnyPermission(event, ['suppliers.manage', 'purchases.manage']);
 
@@ -173,6 +219,85 @@ export function registerSuppliersIpc(): void {
           phone: supplier?.phone || '',
 
           balance: roundMoney(supplier?.balance),
+        },
+      }),
+    );
+  });
+
+  ipcMain.handle('suppliers:create-advance', (event, input) => {
+    const actor = requirePermission(event, 'purchases.manage');
+
+    const payload = requireObjectInput(input, 'بيانات الدفعة المقدمة');
+
+    const paymentMethod = String(payload.payment_method ?? 'store_cash');
+
+    const allowedMethods = [
+      'store_cash',
+      'store_safe',
+      'owner_cash',
+      'owner_bank',
+      'owner_vodafone',
+      'fawry_machine',
+    ];
+
+    if (!allowedMethods.includes(paymentMethod)) {
+      throw new Error('الحساب المالي غير صحيح');
+    }
+
+    if (actor.role !== 'admin' && paymentMethod === 'store_safe') {
+      throw new Error('الخزنة الآمنة متاحة للمدير فقط');
+    }
+
+    const advanceInput = {
+      supplier_id: requirePositiveInteger(payload.supplier_id, 'رقم المورد'),
+      amount: requirePositiveFinancialMoney(
+        payload.amount,
+        'مبلغ الدفعة المقدمة',
+      ),
+      payment_method: resolveCashAccountKey(paymentMethod),
+      notes: optionalTrimmedString(
+        payload.notes,
+        'ملاحظات الدفعة المقدمة',
+        1000,
+      ),
+      actor_id: actor.id,
+    };
+
+    return runCriticalActionWithAudit(
+      () => createSupplierAdvancePayment(advanceInput),
+      (result) => ({
+        actor_id: actor.id,
+        action: 'supplier_advance_created',
+        entity: 'supplier_account_credits',
+        entity_id: result.id,
+        details: result,
+      }),
+    );
+  });
+
+  ipcMain.handle('suppliers:cancel-advance', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event);
+    const payload = requireObjectInput(input, 'بيانات إلغاء الدفعة المقدمة');
+
+    const cancelInput = {
+      advance_id: requirePositiveInteger(
+        payload.advance_id,
+        'رقم الدفعة المقدمة',
+      ),
+      reason: requireTrimmedString(payload.reason, 'سبب الإلغاء', 500),
+      actor_id: actorId,
+    };
+
+    return runCriticalActionWithAudit(
+      () => cancelSupplierAdvancePayment(cancelInput),
+      (result) => ({
+        actor_id: actorId,
+        action: 'supplier_advance_cancelled',
+        entity: 'supplier_account_credits',
+        entity_id: cancelInput.advance_id,
+        details: {
+          ...result,
+          reason: cancelInput.reason,
         },
       }),
     );

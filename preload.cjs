@@ -277,6 +277,13 @@ contextBridge.exposeInMainWorld('api', {
   listSuppliers: (input) => invokeMain('suppliers:list-page', input),
   getSupplierById: (id) => invokeMain('suppliers:get-by-id', id),
   createSupplier: (input) => invokeMain('suppliers:create', input),
+  createSupplierOpeningBalance: (input) =>
+    invokeMain('suppliers:create-opening-balance', input),
+  createSupplierAdvance: (input) =>
+    invokeMain('suppliers:create-advance', input),
+
+  cancelSupplierAdvance: (input) =>
+    invokeMain('suppliers:cancel-advance', input),
   updateSupplier: (input) => invokeMain('suppliers:update', input),
   deleteSupplier: (id) => invokeMain('suppliers:delete', id),
 

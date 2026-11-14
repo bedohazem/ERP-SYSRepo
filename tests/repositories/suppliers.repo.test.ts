@@ -9,6 +9,7 @@ import {
   updateSupplier,
   getSupplierAgingSummary,
 } from '../../src/main/database/repositories/suppliers.repo';
+import { createSupplierOpeningBalance } from '../../src/main/database/repositories/supplier-opening-balances.repo';
 
 type SupplierTestRow = {
   id: number;
@@ -554,5 +555,31 @@ describe('suppliers repository', () => {
 
       total_open: 1500,
     });
+  });
+
+  it('shows opening balance only before the first supplier transaction', () => {
+    const supplier = createSupplier({
+      name: 'Opening Visibility Supplier',
+    }) as SupplierTestRow;
+
+    const getEligibility = () => {
+      const result = listSuppliers();
+
+      const row = result.rows.find((item: any) => item.id === supplier.id) as
+        { can_create_opening_balance: number } | undefined;
+
+      return row?.can_create_opening_balance;
+    };
+
+    expect(getEligibility()).toBe(1);
+
+    createSupplierOpeningBalance({
+      supplier_id: supplier.id,
+      direction: 'receivable',
+      amount: 500,
+      notes: 'رصيد افتتاحي سابق',
+    });
+
+    expect(getEligibility()).toBe(0);
   });
 });

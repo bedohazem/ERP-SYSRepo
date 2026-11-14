@@ -4,7 +4,9 @@ import {
   PRECISE_MONEY_EPSILON,
   preservePrecision,
   preciseSubtract,
+  preciseAdd,
 } from '../../../shared/money';
+import { getSupplierAccountAvailableCredit } from './supplier-account-credits.repo';
 
 export type SupplierInput = {
   name: string;
@@ -315,7 +317,53 @@ export function getSupplierAgingSummary(
 
   const grossTotal = preservePrecision(row?.total);
 
-  const supplierCredit = preservePrecision(creditRow?.supplier_credit);
+  const accountCreditForScope =
+    id > 0 || !searchValue
+      ? getSupplierAccountAvailableCredit(db, id)
+      : (() => {
+          const q = `%${searchValue}%`;
+
+          const result = db
+            .prepare(
+              `
+            SELECT
+              IFNULL(
+                SUM(
+                  MAX(
+                    0,
+                    c.amount - IFNULL((
+                      SELECT SUM(a.amount)
+                      FROM supplier_account_credit_allocations a
+                      WHERE a.credit_id = c.id
+                        AND a.cancelled_at IS NULL
+                    ), 0)
+                  )
+                ),
+                0
+              ) AS amount
+            FROM supplier_account_credits c
+            JOIN suppliers s ON s.id = c.supplier_id
+            WHERE c.cancelled_at IS NULL
+              AND s.is_active = 1
+              AND (
+                s.name LIKE ?
+                OR IFNULL(s.phone, '') LIKE ?
+                OR IFNULL(s.email, '') LIKE ?
+                OR IFNULL(s.address, '') LIKE ?
+              )
+          `,
+            )
+            .get(q, q, q, q) as { amount: number };
+
+          return preservePrecision(result.amount);
+        })();
+
+  const supplierCredit = normalizePreciseZero(
+    preciseAdd(
+      preservePrecision(creditRow?.supplier_credit),
+      accountCreditForScope,
+    ),
+  );
 
   const netTotal = normalizePreciseZero(
     preciseSubtract(grossTotal, supplierCredit),
@@ -622,8 +670,48 @@ export function listSuppliers(input?: {
   const rows = db
     .prepare(
       `
-      SELECT *
+
+      SELECT
+        suppliers.*,
+
+        CASE
+          WHEN
+            ABS(IFNULL(suppliers.balance, 0)) <= 0.000000001
+
+            AND ABS(
+              IFNULL(suppliers.total_purchased, 0)
+            ) <= 0.000000001
+
+            AND NOT EXISTS (
+              SELECT 1
+              FROM purchase_invoices pi
+              WHERE pi.supplier_id = suppliers.id
+            )
+
+            AND NOT EXISTS (
+              SELECT 1
+              FROM purchase_returns pr
+              WHERE pr.supplier_id = suppliers.id
+            )
+
+            AND NOT EXISTS (
+              SELECT 1
+              FROM supplier_payments sp
+              WHERE sp.supplier_id = suppliers.id
+            )
+
+            AND NOT EXISTS (
+              SELECT 1
+              FROM supplier_account_credits sac
+              WHERE sac.supplier_id = suppliers.id
+            )
+
+          THEN 1
+          ELSE 0
+        END AS can_create_opening_balance
+
       FROM suppliers
+
 
       ${whereSql}
 

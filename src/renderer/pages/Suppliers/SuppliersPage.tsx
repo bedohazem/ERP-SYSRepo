@@ -26,6 +26,7 @@ type Supplier = {
   notes?: string | null;
   total_purchased: number;
   balance: number;
+  can_create_opening_balance?: number;
   credit_days: number | null;
   created_at: string;
 };
@@ -84,9 +85,24 @@ export default function SuppliersPage() {
   const [message, setMessage] = useState('');
 
   const [statementData, setStatementData] = useState<any | null>(null);
+  const [openingSupplier, setOpeningSupplier] = useState<Supplier | null>(null);
+
+  const [openingDirection, setOpeningDirection] = useState<
+    'payable' | 'receivable'
+  >('payable');
+
+  const [openingAmount, setOpeningAmount] = useState('');
+  const [openingNotes, setOpeningNotes] = useState('');
+  const [savingOpening, setSavingOpening] = useState(false);
   const [statementLoading, setStatementLoading] = useState(false);
 
   const [paymentSupplier, setPaymentSupplier] = useState<Supplier | null>(null);
+  const [advanceSupplier, setAdvanceSupplier] = useState<Supplier | null>(null);
+
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceMethod, setAdvanceMethod] = useState('store_cash');
+  const [advanceNotes, setAdvanceNotes] = useState('');
+  const [savingAdvance, setSavingAdvance] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('store_cash');
   const [paymentNotes, setPaymentNotes] = useState('');
@@ -371,6 +387,47 @@ export default function SuppliersPage() {
       showMessage(error?.message || 'حدث خطأ أثناء حذف المورد');
     } finally {
       setDeletingSupplier(false);
+    }
+  }
+
+  function openOpeningBalance(supplier: Supplier) {
+    setOpeningSupplier(supplier);
+    setOpeningDirection('payable');
+    setOpeningAmount('');
+    setOpeningNotes('');
+  }
+
+  async function saveOpeningBalance() {
+    if (!openingSupplier || savingOpening) return;
+
+    const amount = Number(openingAmount);
+
+    if (!Number.isFinite(amount) || amount <= 0 || !openingNotes.trim()) {
+      showMessage('اكتب المبلغ والسبب بشكل صحيح');
+      return;
+    }
+
+    setSavingOpening(true);
+
+    try {
+      await window.api.createSupplierOpeningBalance({
+        supplier_id: openingSupplier.id,
+        direction: openingDirection,
+        amount,
+        notes: openingNotes.trim(),
+      });
+
+      setOpeningSupplier(null);
+      setOpeningAmount('');
+      setOpeningNotes('');
+
+      await loadSuppliers();
+
+      showMessage('تم تسجيل الرصيد الافتتاحي بنجاح');
+    } catch (error) {
+      showMessage(getErrorMessage(error, 'تعذر تسجيل الرصيد الافتتاحي'));
+    } finally {
+      setSavingOpening(false);
     }
   }
 
@@ -732,6 +789,58 @@ export default function SuppliersPage() {
     } catch (error) {
       console.error('Failed to save supplier statement PDF:', error);
       showMessage('حدث خطأ أثناء حفظ كشف حساب المورد PDF');
+    }
+  }
+
+  function openSupplierAdvance(supplier: Supplier) {
+    setAdvanceSupplier(supplier);
+    setAdvanceAmount('');
+    setAdvanceMethod('store_cash');
+    setAdvanceNotes('');
+  }
+
+  async function saveSupplierAdvance() {
+    if (!advanceSupplier || savingAdvance) return;
+
+    const amount = Number(advanceAmount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showMessage('اكتب مبلغ الدفعة المقدمة بشكل صحيح');
+      return;
+    }
+
+    setSavingAdvance(true);
+
+    try {
+      const result = await window.api.createSupplierAdvance({
+        supplier_id: advanceSupplier.id,
+        amount,
+        payment_method: advanceMethod,
+        notes: advanceNotes.trim() || null,
+      });
+
+      const supplierId = advanceSupplier.id;
+
+      setAdvanceSupplier(null);
+      setAdvanceAmount('');
+      setAdvanceNotes('');
+
+      await loadSuppliers();
+
+      if (statementData?.supplier?.id === supplierId) {
+        const data = await window.api.getSupplierStatement(supplierId);
+        setStatementData(data);
+      }
+
+      showMessage(
+        `تم تسجيل مقدم ${money(result.amount)}، والمتاح الجديد ${money(
+          result.remaining_credit,
+        )}`,
+      );
+    } catch (error) {
+      showMessage(getErrorMessage(error, 'تعذر تسجيل الدفعة المقدمة'));
+    } finally {
+      setSavingAdvance(false);
     }
   }
 
@@ -1438,6 +1547,16 @@ export default function SuppliersPage() {
                         </button>
                       )}
 
+                      {isAdmin && supplier.can_create_opening_balance === 1 && (
+                        <button
+                          type="button"
+                          onClick={() => openOpeningBalance(supplier)}
+                          style={smallButtonStyle}
+                        >
+                          رصيد افتتاحي
+                        </button>
+                      )}
+
                       {canManagePurchases &&
                         hasPositivePreciseAmount(supplier.balance) && (
                           <button
@@ -1453,6 +1572,20 @@ export default function SuppliersPage() {
                             تسجيل دفعة
                           </button>
                         )}
+
+                      {canManagePurchases && (
+                        <button
+                          type="button"
+                          onClick={() => openSupplierAdvance(supplier)}
+                          style={{
+                            ...smallButtonStyle,
+                            borderColor: '#38bdf8',
+                            color: '#7dd3fc',
+                          }}
+                        >
+                          دفعة مقدمة
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -2189,6 +2322,237 @@ export default function SuppliersPage() {
                 style={secondaryButtonStyle}
               >
                 رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {openingSupplier && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div
+            className="theme-modal-card"
+            style={{
+              ...modalStyle,
+              direction: 'rtl',
+              display: 'grid',
+              gap: '16px',
+              width: 'min(460px, calc(100vw - 32px))',
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 6px' }}>تسجيل رصيد افتتاحي</h3>
+              <p style={{ margin: 0, color: '#94a3b8' }}>
+                المورد: {openingSupplier.name}
+              </p>
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>نوع الرصيد</label>
+              <select
+                value={openingDirection}
+                onChange={(e) =>
+                  setOpeningDirection(
+                    e.target.value as 'payable' | 'receivable',
+                  )
+                }
+                style={inputStyle}
+              >
+                <option value="payable">علينا فلوس للمورد</option>
+                <option value="receivable">لينا فلوس عند المورد</option>
+              </select>
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>المبلغ</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={openingAmount}
+                onChange={(e) => setOpeningAmount(e.target.value)}
+                style={inputStyle}
+                placeholder="0.00"
+              />
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>السبب</label>
+              <textarea
+                value={openingNotes}
+                onChange={(e) => setOpeningNotes(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  minHeight: '76px',
+                  resize: 'vertical',
+                }}
+                placeholder="مثال: رصيد سابق من قبل استخدام البرنامج"
+              />
+            </div>
+
+            <div
+              style={{
+                padding: '14px',
+                borderRadius: '12px',
+                background: 'rgba(59,130,246,0.08)',
+                border: '1px solid rgba(59,130,246,0.2)',
+                display: 'grid',
+                gap: '10px',
+              }}
+            >
+              <div>
+                الرصيد الحالي: <strong>{money(openingSupplier.balance)}</strong>
+              </div>
+              <div>
+                الرصيد بعد العملية:{' '}
+                <strong>
+                  {money(
+                    preciseAdd(
+                      openingSupplier.balance,
+                      openingDirection === 'payable'
+                        ? Number(openingAmount || 0)
+                        : -Number(openingAmount || 0),
+                    ),
+                  )}
+                </strong>
+              </div>
+              <small style={{ color: '#94a3b8' }}>
+                الرصيد الافتتاحي متاح فقط قبل تسجيل أي معاملات مالية على المورد.
+              </small>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                style={primaryButtonStyle}
+                disabled={savingOpening}
+                onClick={() => void saveOpeningBalance()}
+              >
+                {savingOpening ? 'جاري الحفظ...' : 'حفظ الرصيد'}
+              </button>
+
+              <button
+                type="button"
+                style={secondaryButtonStyle}
+                disabled={savingOpening}
+                onClick={() => setOpeningSupplier(null)}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {advanceSupplier && (
+        <div className="theme-modal-overlay" style={modalOverlayStyle}>
+          <div
+            className="theme-modal-card"
+            style={{
+              ...modalStyle,
+              direction: 'rtl',
+              display: 'grid',
+              gap: '16px',
+              width: 'min(460px, calc(100vw - 32px))',
+            }}
+          >
+            <div>
+              <h3 style={{ margin: '0 0 6px' }}>تسجيل دفعة مقدمة للمورد</h3>
+              <p style={{ margin: 0, color: '#94a3b8' }}>
+                {advanceSupplier.name}
+              </p>
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>المبلغ</label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={advanceAmount}
+                onChange={(e) => setAdvanceAmount(e.target.value)}
+                style={inputStyle}
+                placeholder="0.00"
+                autoFocus
+              />
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>الحساب المالي</label>
+              <select
+                value={advanceMethod}
+                onChange={(e) => setAdvanceMethod(e.target.value)}
+                style={inputStyle}
+              >
+                {CASH_ACCOUNT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>ملاحظات</label>
+              <textarea
+                value={advanceNotes}
+                onChange={(e) => setAdvanceNotes(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  minHeight: '70px',
+                  resize: 'vertical',
+                }}
+                placeholder="مثال: دفعة مقدمة لتوريد بضاعة جديدة"
+              />
+            </div>
+
+            <div
+              style={{
+                padding: '14px',
+                borderRadius: '12px',
+                background: 'rgba(56,189,248,0.08)',
+                border: '1px solid rgba(56,189,248,0.2)',
+                display: 'grid',
+                gap: '8px',
+              }}
+            >
+              <strong>ملخص العملية</strong>
+              <span>الخارج من الخزنة: {money(Number(advanceAmount || 0))}</span>
+              <span>
+                الرصيد الحالي للمورد: {money(advanceSupplier.balance)}
+              </span>
+              <span>
+                صافي الرصيد المتوقع بعد العملية:{' '}
+                {money(advanceSupplier.balance - Number(advanceAmount || 0))}
+              </span>
+              <small style={{ color: '#94a3b8' }}>
+                لو فيه فواتير مفتوحة، سيتم استخدام الرصيد في سدادها أولًا،
+                والباقي يظل متاحًا.
+              </small>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => void saveSupplierAdvance()}
+                disabled={savingAdvance}
+                style={primaryButtonStyle}
+              >
+                {savingAdvance ? 'جاري الحفظ...' : 'حفظ الدفعة'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAdvanceSupplier(null)}
+                disabled={savingAdvance}
+                style={secondaryButtonStyle}
+              >
+                إلغاء
               </button>
             </div>
           </div>

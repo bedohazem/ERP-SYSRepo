@@ -474,6 +474,11 @@ describe('database migrations', () => {
         name: 'index-sale-invoice-print-history',
         version: 40,
       },
+
+      {
+        name: 'supplier-account-credits',
+        version: 41,
+      },
     ]);
 
     const performanceIndexes = database

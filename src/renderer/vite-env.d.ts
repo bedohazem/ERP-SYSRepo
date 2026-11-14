@@ -2481,6 +2481,46 @@ declare global {
         credit_days?: number | null;
       }) => Promise<any>;
 
+      createSupplierOpeningBalance: (input: {
+        supplier_id: number;
+        direction: 'payable' | 'receivable';
+        amount: number;
+        notes: string;
+      }) => Promise<{
+        id: number;
+        supplier_id: number;
+        direction: 'payable' | 'receivable';
+        amount: number;
+        balance: number;
+      }>;
+
+      createSupplierAdvance: (input: {
+        supplier_id: number;
+        amount: number;
+        payment_method: string;
+        notes?: string | null;
+      }) => Promise<{
+        id: number;
+        supplier_id: number;
+        amount: number;
+        allocated: number;
+        remaining_credit: number;
+        supplier_balance: number;
+        payment_method: string;
+        shift_id: number | null;
+      }>;
+
+      cancelSupplierAdvance: (input: {
+        advance_id: number;
+        reason: string;
+      }) => Promise<{
+        ok: boolean;
+        advance_id: number;
+        supplier_id: number;
+        cancelled_amount: number;
+        supplier_balance: number;
+      }>;
+
       updateSupplier: (input: {
         id: number;
         name: string;
