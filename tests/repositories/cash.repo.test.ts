@@ -1236,4 +1236,129 @@ describe('cash repository', () => {
     expect(summary.total_out).toBe(20.25);
     expect(summary.balance).toBe(80.3);
   });
+
+  it('shows supplier and customer names without rewriting cash history', () => {
+    const db = getDb();
+
+    const supplierId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO suppliers (name)
+        VALUES ('شركة النور')
+      `,
+        )
+        .run().lastInsertRowid,
+    );
+
+    const supplierBatchId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO supplier_payment_batches (supplier_id)
+        VALUES (?)
+      `,
+        )
+        .run(supplierId).lastInsertRowid,
+    );
+
+    const customerId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO customers (name)
+        VALUES ('أحمد محمد')
+      `,
+        )
+        .run().lastInsertRowid,
+    );
+
+    const customerBatchId = Number(
+      db
+        .prepare(
+          `
+        INSERT INTO customer_payment_batches (customer_id)
+        VALUES (?)
+      `,
+        )
+        .run(customerId).lastInsertRowid,
+    );
+
+    const insertMovement = db.prepare(`
+      INSERT INTO cash_movements (
+        type,
+        direction,
+        amount,
+        payment_method,
+        reference_type,
+        reference_id,
+        notes
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const supplierMovementId = Number(
+      insertMovement.run(
+        'supplier_payment',
+        'out',
+        500,
+        'owner_cash',
+        'supplier_payment',
+        supplierBatchId,
+        'دفعة للمورد',
+      ).lastInsertRowid,
+    );
+
+    const customerMovementId = Number(
+      insertMovement.run(
+        'customer_payment',
+        'in',
+        250,
+        'owner_cash',
+        'customer_payment',
+        customerBatchId,
+        'دفعة من عميل',
+      ).lastInsertRowid,
+    );
+
+    const rows = listCashMovements({
+      limit: 50,
+    }).rows as Array<{
+      id: number;
+      amount: number;
+      notes: string;
+      display_notes: string;
+    }>;
+
+    const supplierRow = rows.find((row) => row.id === supplierMovementId);
+
+    const customerRow = rows.find((row) => row.id === customerMovementId);
+
+    expect(supplierRow?.display_notes).toBe('دفعة للمورد — شركة النور');
+
+    expect(customerRow?.display_notes).toBe('دفعة من عميل — أحمد محمد');
+
+    // الملاحظات الأصلية لم تتغير.
+    expect(supplierRow?.notes).toBe('دفعة للمورد');
+    expect(customerRow?.notes).toBe('دفعة من عميل');
+
+    // المبالغ لم تتغير.
+    expect(supplierRow?.amount).toBe(500);
+    expect(customerRow?.amount).toBe(250);
+
+    const storedSupplierMovement = db
+      .prepare(
+        `
+      SELECT notes, amount
+      FROM cash_movements
+      WHERE id = ?
+    `,
+      )
+      .get(supplierMovementId);
+
+    expect(storedSupplierMovement).toEqual({
+      notes: 'دفعة للمورد',
+      amount: 500,
+    });
+  });
 });

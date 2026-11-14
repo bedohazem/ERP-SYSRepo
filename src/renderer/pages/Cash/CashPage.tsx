@@ -30,6 +30,7 @@ type CashMovement = {
   amount: number;
   payment_method: string;
   notes: string;
+  display_notes?: string | null;
   created_at: string;
   business_date?: string | null;
   created_by_name?: string;
@@ -802,7 +803,7 @@ export default function CashPage() {
               ${money(item.amount)}
             </td>
             <td>${getPaymentMethodLabel(item.payment_method)}</td>
-            <td>${escapeHtml(item.notes || '—')}</td>
+            <td>${escapeHtml(item.display_notes || item.notes || '—')}</td>
             <td>${escapeHtml(item.created_by_name || '—')}</td>
             <td>${formatDate(item.created_at)}</td>
           </tr>
@@ -1520,7 +1521,9 @@ export default function CashPage() {
                     <td style={tdStyle}>
                       {getPaymentMethodLabel(item.payment_method)}
                     </td>
-                    <td style={tdStyle}>{item.notes || '—'}</td>
+                    <td style={tdStyle}>
+                      {item.display_notes || item.notes || '—'}
+                    </td>
                     <td style={tdStyle}>{item.created_by_name || '—'}</td>
                     <td style={{ ...tdStyle, color: '#94a3b8' }}>
                       {formatDate(item.created_at)}

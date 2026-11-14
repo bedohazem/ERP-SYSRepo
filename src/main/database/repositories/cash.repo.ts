@@ -7,6 +7,8 @@ import {
   resolveCashAccountKey,
   type CashAccountKey as SharedCashAccountKey,
 } from '../../../shared/cash-accounts';
+import { getCashMovementDisplayNotes } from './cash-movement-description';
+
 export type CashMovementInput = {
   type:
     | 'sale'
@@ -560,7 +562,21 @@ export function listCashMovements(input?: CashFilterInput) {
       OFFSET ?
     `,
     )
-    .all(...params, limit, offset);
+
+    .all(...params, limit, offset) as Array<{
+    id: number;
+    type: string;
+    direction: 'in' | 'out';
+    amount: number;
+    payment_method: string;
+    reference_id: number | null;
+    reference_type: string | null;
+    notes: string | null;
+    created_by: number | null;
+    created_at: string;
+    created_by_name?: string | null;
+    [key: string]: unknown;
+  }>;
 
   const totalRow = db
     .prepare(
@@ -574,7 +590,10 @@ export function listCashMovements(input?: CashFilterInput) {
     .get(...params) as { total: number };
 
   return {
-    rows,
+    rows: rows.map((row) => ({
+      ...row,
+      display_notes: getCashMovementDisplayNotes(db, row),
+    })),
     total: Number(totalRow?.total || 0),
     limit,
     offset,
