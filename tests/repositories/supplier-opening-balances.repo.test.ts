@@ -4,7 +4,10 @@ import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
 
-import { changeSupplierOpeningBalance, createSupplierOpeningBalance } from '../../src/main/database/repositories/supplier-opening-balances.repo';
+import {
+  changeSupplierOpeningBalance,
+  createSupplierOpeningBalance,
+} from '../../src/main/database/repositories/supplier-opening-balances.repo';
 import {
   getSupplierAccountAvailableCredit,
   allocateSupplierAccountCreditToPurchase,
