@@ -1886,6 +1886,7 @@ declare global {
       // =========================
       getActivityLogs: (input?: {
         search?: string;
+        search_actions?: string[];
         action?: string;
         actions?: string[];
         entity?: string;
@@ -2494,6 +2495,25 @@ declare global {
         balance: number;
       }>;
 
+      changeSupplierOpeningBalance: (input: {
+        opening_id: number;
+        direction: 'payable' | 'receivable';
+        mode: 'edit' | 'cancel';
+        amount?: number;
+        notes?: string | null;
+        reason: string;
+      }) => Promise<{
+        success: boolean;
+        opening_id: number;
+        supplier_id: number;
+        direction: 'payable' | 'receivable';
+        mode: 'edit' | 'cancel';
+        old_amount: number;
+        new_amount: number;
+        reason: string;
+        balance: number;
+      }>;
+
       createSupplierAdvance: (input: {
         supplier_id: number;
         amount: number;
@@ -2518,6 +2538,25 @@ declare global {
         advance_id: number;
         supplier_id: number;
         cancelled_amount: number;
+        supplier_balance: number;
+      }>;
+
+      updateSupplierAdvance: (input: {
+        advance_id: number;
+        amount: number;
+        payment_method: string;
+        notes?: string | null;
+        reason: string;
+      }) => Promise<{
+        success: boolean;
+        replaced_advance_id: number;
+        advance_id: number;
+        supplier_id: number;
+        old_amount: number;
+        new_amount: number;
+        old_payment_method: string;
+        new_payment_method: string;
+        reason: string;
         supplier_balance: number;
       }>;
 

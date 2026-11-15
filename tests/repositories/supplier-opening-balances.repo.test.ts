@@ -4,7 +4,7 @@ import { closeDb, getDb, resetDatabaseData } from '../../src/main/database/db';
 
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
 
-import { createSupplierOpeningBalance } from '../../src/main/database/repositories/supplier-opening-balances.repo';
+import { changeSupplierOpeningBalance, createSupplierOpeningBalance } from '../../src/main/database/repositories/supplier-opening-balances.repo';
 import {
   getSupplierAccountAvailableCredit,
   allocateSupplierAccountCreditToPurchase,
@@ -273,5 +273,50 @@ describe('supplier opening balances', () => {
     releaseSupplierAccountCreditAllocations(db, purchaseId);
 
     expect(getSupplierAccountAvailableCredit(db, supplier.id)).toBe(500);
+  });
+
+  it('edits and cancels unused opening balance without cash movements', () => {
+    const supplier = makeSupplier();
+
+    const opening = createSupplierOpeningBalance({
+      supplier_id: supplier.id,
+      direction: 'payable',
+      amount: 500,
+      notes: 'رصيد سابق',
+    });
+
+    const edited = changeSupplierOpeningBalance({
+      opening_id: opening.id,
+      direction: 'payable',
+      mode: 'edit',
+      amount: 750,
+      reason: 'تصحيح المبلغ',
+      actor_id: 1,
+    });
+
+    expect(edited.old_amount).toBe(500);
+    expect(edited.new_amount).toBe(750);
+    expect(edited.balance).toBe(750);
+
+    const cancelled = changeSupplierOpeningBalance({
+      opening_id: opening.id,
+      direction: 'payable',
+      mode: 'cancel',
+      reason: 'قيد مكرر',
+      actor_id: 1,
+    });
+
+    expect(cancelled.balance).toBe(0);
+
+    const cash = getDb()
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+      FROM cash_movements
+    `,
+      )
+      .get() as { count: number };
+
+    expect(cash.count).toBe(0);
   });
 });

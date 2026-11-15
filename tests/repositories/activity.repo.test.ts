@@ -35,6 +35,62 @@ describe('activity repository', () => {
     resetDatabaseData();
   }, 30_000);
 
+  it('searches Arabic action labels with correct pagination', () => {
+    createActivityLog({
+      user_id: 1,
+      action: 'supplier_advance_created',
+      entity: 'supplier_account_credits',
+      details: JSON.stringify({ amount: 400 }),
+    });
+
+    createActivityLog({
+      user_id: 1,
+      action: 'supplier_advance_updated',
+      entity: 'supplier_account_credits',
+      details: JSON.stringify({ amount: 500 }),
+    });
+
+    createActivityLog({
+      user_id: 1,
+      action: 'expense_created',
+      entity: 'expenses',
+      details: JSON.stringify({ amount: 100 }),
+    });
+
+    const filters = {
+      search: 'دفعة مقدمة',
+      search_actions: [
+        'supplier_advance_created',
+        'supplier_advance_updated',
+        'supplier_advance_cancelled',
+      ],
+      limit: 1,
+    };
+
+    const first = listActivityLogs({
+      ...filters,
+      offset: 0,
+    });
+
+    const second = listActivityLogs({
+      ...filters,
+      offset: 1,
+    });
+
+    expect(first.total).toBe(2);
+    expect(second.total).toBe(2);
+    expect(first.rows).toHaveLength(1);
+    expect(second.rows).toHaveLength(1);
+
+    const foundActions = [...first.rows, ...second.rows].map(
+      (row: any) => row.action,
+    );
+
+    expect(foundActions.sort()).toEqual(
+      ['supplier_advance_created', 'supplier_advance_updated'].sort(),
+    );
+  });
+
   it('creates an activity log', () => {
     const result = createActivityLog({
       user_id: 1,

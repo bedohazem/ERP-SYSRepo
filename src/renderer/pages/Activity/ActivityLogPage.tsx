@@ -8,8 +8,10 @@ import {
   formatActivityDetails as formatDetails,
   getActivityActionLabel as getActionLabel,
   getActivityEntityLabel as getEntityLabel,
+  findActivityActionsByArabicName,
 } from '../../utils/activity-log';
 import MultiSelectFilter from '../../components/MultiSelectFilter';
+
 type ActivityFilters = {
   date_from?: string;
   date_to?: string;
@@ -20,6 +22,7 @@ type ActivityFilters = {
   search?: string;
   limit?: number;
   offset?: number;
+  search_actions?: string[];
 };
 
 export default function ActivityLogPage() {
@@ -58,6 +61,9 @@ export default function ActivityLogPage() {
       actions: actions.length > 0 ? actions : undefined,
       entities: entities.length > 0 ? entities : undefined,
       search: search.trim() || undefined,
+      search_actions: search.trim()
+        ? findActivityActionsByArabicName(search.trim())
+        : undefined,
       limit: SYSTEM_PAGE_SIZE,
       offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
     };
@@ -112,6 +118,9 @@ export default function ActivityLogPage() {
       actions: actions.length > 0 ? actions : undefined,
       entities: entities.length > 0 ? entities : undefined,
       search: search.trim() || undefined,
+      search_actions: search.trim()
+        ? findActivityActionsByArabicName(search.trim())
+        : undefined,
     };
 
     const firstResult = await window.api.getActivityLogs({
@@ -566,7 +575,7 @@ export default function ActivityLogPage() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="بحث في التفاصيل أو المستخدم"
+              placeholder="بحث باسم العملية أو التفاصيل أو المستخدم"
               style={inputStyle}
             />
           </Field>

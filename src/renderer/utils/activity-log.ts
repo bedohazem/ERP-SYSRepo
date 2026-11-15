@@ -152,6 +152,39 @@ export const ACTIVITY_ACTION_LABELS: Record<string, string> = {
   cash_drawer_opened: 'فتح درج الكاشير',
 
   cash_drawer_open_failed: 'فشل فتح درج الكاشير',
+
+  // Supplier opening balances
+  supplier_opening_balance_created: 'تسجيل رصيد افتتاحي للمورد',
+  supplier_opening_balance_updated: 'تعديل رصيد افتتاحي للمورد',
+  supplier_opening_balance_cancelled: 'إلغاء رصيد افتتاحي للمورد',
+
+  // Supplier advances
+  supplier_advance_created: 'تسجيل دفعة مقدمة للمورد',
+  supplier_advance_updated: 'تعديل دفعة مقدمة للمورد',
+  supplier_advance_cancelled: 'إلغاء دفعة مقدمة للمورد',
+
+  // Purchase orders
+  purchase_order_created: 'إنشاء أمر شراء',
+  purchase_order_updated: 'تعديل أمر شراء',
+  purchase_order_ordered: 'تأكيد طلب أمر شراء',
+  purchase_order_cancelled: 'إلغاء أمر شراء',
+  purchase_order_received: 'استلام أمر شراء',
+
+  // Security
+  auth_initial_admin_created: 'إنشاء حساب المدير الأول',
+  auth_recovery_requested: 'طلب استعادة حساب المدير',
+  admin_password_recovered: 'استعادة كلمة مرور المدير',
+  auth_password_changed: 'تغيير كلمة مرور الحساب',
+  auth_auto_locked: 'قفل الجلسة تلقائيًا',
+  session_settings_updated: 'تعديل إعدادات الجلسة',
+
+  // Backups
+  selective_backup_created: 'إنشاء نسخة احتياطية انتقائية',
+  selective_backup_restored: 'استرجاع نسخة احتياطية انتقائية',
+  database_selective_reset: 'تصفير بيانات محددة من البرنامج',
+
+  // Shift corrections
+  cash_shift_opening_count_corrected: 'تصحيح جرد افتتاح الشفت',
 };
 
 export const ACTIVITY_ACTION_OPTIONS = Object.entries(
@@ -178,7 +211,10 @@ export const ACTIVITY_ENTITY_LABELS: Record<string, string> = {
   purchase_returns: 'مرتجعات الشراء',
 
   supplier_payment_batches: 'دفعات الموردين',
-
+  supplier_account_credits: 'الأرصدة الدائنة للموردين',
+  purchase_orders: 'أوامر الشراء',
+  auth_recovery_requests: 'طلبات استعادة الحساب',
+  system: 'النظام',
   customer_payment_batches: 'دفعات العملاء',
 
   cash_movements: 'الخزنة',
@@ -222,6 +258,16 @@ export function getActivityActionLabel(action?: string | null) {
   }
 
   return ACTIVITY_ACTION_LABELS[key] || 'عملية أخرى بالنظام';
+}
+
+export function findActivityActionsByArabicName(search: string): string[] {
+  const query = String(search || '').trim();
+
+  if (!query) return [];
+
+  return Object.entries(ACTIVITY_ACTION_LABELS)
+    .filter(([, label]) => label.includes(query))
+    .map(([action]) => action);
 }
 
 export function getActivityEntityLabel(entity?: string | null) {

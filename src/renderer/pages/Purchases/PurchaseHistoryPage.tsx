@@ -1844,6 +1844,70 @@ export default function PurchaseHistoryPage() {
               </table>
             </div>
 
+            {(selectedPurchase.account_credit_allocations ?? []).length > 0 && (
+              <div style={{ marginTop: '22px' }}>
+                <h4>تسويات من رصيد المورد الدائن</h4>
+
+                <div style={{ overflowX: 'auto', textAlign: 'center' }}>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      direction: 'rtl',
+                    }}
+                  >
+                    <thead>
+                      <tr>
+                        <th style={thStyle}>المصدر</th>
+                        <th style={thStyle}>المبلغ المستخدم</th>
+                        <th style={thStyle}>التاريخ</th>
+                        <th style={thStyle}>الحالة</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {(selectedPurchase.account_credit_allocations ?? []).map(
+                        (allocation: any) => {
+                          const sourceName =
+                            allocation.source_type === 'opening_credit'
+                              ? 'رصيد افتتاحي'
+                              : allocation.source_type === 'advance_payment'
+                                ? 'دفعة مقدمة'
+                                : allocation.source_type ===
+                                    'purchase_overpayment'
+                                  ? 'زيادة دفع فاتورة'
+                                  : 'زيادة دفعة مورد';
+
+                          return (
+                            <tr key={allocation.id}>
+                              <td style={tdStyle}>
+                                {sourceName} #
+                                {allocation.source_id ?? allocation.credit_id}
+                              </td>
+
+                              <td style={tdStyle}>
+                                {money(allocation.amount)}
+                              </td>
+
+                              <td style={tdStyle}>
+                                {formatDate(allocation.created_at)}
+                              </td>
+
+                              <td style={tdStyle}>
+                                {allocation.cancelled_at
+                                  ? 'تم عكس التسوية'
+                                  : 'تمت التسوية'}
+                              </td>
+                            </tr>
+                          );
+                        },
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {(selectedPurchase.credit_allocations ?? []).length > 0 && (
               <>
                 <h4 style={{ margin: '22px 0 12px' }}>تسويات الرصيد الدائن</h4>

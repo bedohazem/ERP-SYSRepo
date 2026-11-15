@@ -4,9 +4,46 @@ import {
   formatActivityDetails,
   getActivityActionLabel,
   getActivityEntityLabel,
+  findActivityActionsByArabicName,
 } from '../../src/renderer/utils/activity-log';
 
 describe('activity log Arabic display', () => {
+  it('translates supplier and system operations', () => {
+    expect(getActivityActionLabel('supplier_advance_updated')).toBe(
+      'تعديل دفعة مقدمة للمورد',
+    );
+
+    expect(getActivityActionLabel('supplier_opening_balance_created')).toBe(
+      'تسجيل رصيد افتتاحي للمورد',
+    );
+
+    expect(getActivityActionLabel('purchase_order_received')).toBe(
+      'استلام أمر شراء',
+    );
+
+    expect(getActivityActionLabel('selective_backup_restored')).toBe(
+      'استرجاع نسخة احتياطية انتقائية',
+    );
+
+    expect(getActivityEntityLabel('supplier_account_credits')).toBe(
+      'الأرصدة الدائنة للموردين',
+    );
+  });
+
+  it('finds actions using their displayed Arabic names', () => {
+    const actions = findActivityActionsByArabicName('دفعة مقدمة');
+
+    expect(actions).toContain('supplier_advance_created');
+    expect(actions).toContain('supplier_advance_updated');
+    expect(actions).toContain('supplier_advance_cancelled');
+
+    expect(findActivityActionsByArabicName('استلام أمر شراء')).toContain(
+      'purchase_order_received',
+    );
+
+    expect(findActivityActionsByArabicName('')).toEqual([]);
+  });
+
   it('translates known activity actions', () => {
     expect(getActivityActionLabel('supplier_payment_recorded')).toBe(
       'تسجيل دفعة مورد',

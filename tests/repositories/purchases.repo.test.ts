@@ -7296,4 +7296,64 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBe(0);
     expect(getCashMovementTotal('out')).toBe(0);
   });
+
+  it('shows credit allocations without double counting supplier balance', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 100,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 80.62,
+        },
+      ],
+    });
+
+    const second = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 30,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(second.purchaseId) as any;
+
+    expect(invoice.account_credit_allocations).toHaveLength(1);
+    expect(invoice.account_credit_allocations[0].amount).toBeCloseTo(19.38, 8);
+
+    const statement = getSupplierStatement(supplierId, 1);
+
+    const usage = statement.entries.find(
+      (entry) =>
+        entry.type === 'supplier_credit_usage' &&
+        entry.purchase_id === second.purchaseId,
+    );
+
+    expect(usage).toBeDefined();
+    expect(usage?.debit).toBe(0);
+    expect(usage?.credit).toBe(0);
+
+    const statementNet = statement.entries.reduce(
+      (sum, entry) =>
+        sum + Number(entry.debit || 0) - Number(entry.credit || 0),
+      0,
+    );
+
+    expect(statementNet).toBeCloseTo(10.62, 8);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(10.62, 8);
+    expect(getCashMovementTotal('out')).toBe(100);
+  });
 });

@@ -297,3 +297,79 @@ export function cancelSupplierAdvancePayment(input: {
     };
   })();
 }
+
+export function updateSupplierAdvancePayment(input: {
+  advance_id: number;
+  amount: number;
+  payment_method: string;
+  notes?: string | null;
+  reason: string;
+  actor_id: number;
+}) {
+  const reason = String(input.reason || '').trim();
+
+  if (!reason || reason.length > 500) {
+    throw new Error('سبب تعديل الدفعة المقدمة مطلوب');
+  }
+
+  const newAmount = validateMoney(input.amount);
+  const db = getDb();
+
+  return db.transaction(() => {
+    const oldAdvance = db
+      .prepare(
+        `
+      SELECT
+        id, supplier_id, amount,
+        payment_method, notes
+      FROM supplier_account_credits
+      WHERE id = ?
+        AND source_type = 'advance_payment'
+        AND cancelled_at IS NULL
+      LIMIT 1
+    `,
+      )
+      .get(input.advance_id) as
+      | {
+          id: number;
+          supplier_id: number;
+          amount: number;
+          payment_method: string;
+          notes: string | null;
+        }
+      | undefined;
+
+    if (!oldAdvance) {
+      throw new Error('الدفعة المقدمة غير موجودة أو ملغاة');
+    }
+
+    // نعكس القديمة وننشئ المصححة في معاملة واحدة.
+    // لو أي خطوة فشلت، كل التغييرات تتراجع تلقائيًا.
+    cancelSupplierAdvancePayment({
+      advance_id: oldAdvance.id,
+      reason: `تم تعديل الدفعة المقدمة: ${reason}`,
+      actor_id: input.actor_id,
+    });
+
+    const replacement = createSupplierAdvancePayment({
+      supplier_id: oldAdvance.supplier_id,
+      amount: newAmount,
+      payment_method: input.payment_method,
+      notes: input.notes ?? oldAdvance.notes,
+      actor_id: input.actor_id,
+    });
+
+    return {
+      success: true,
+      replaced_advance_id: oldAdvance.id,
+      advance_id: replacement.id,
+      supplier_id: oldAdvance.supplier_id,
+      old_amount: oldAdvance.amount,
+      new_amount: newAmount,
+      old_payment_method: oldAdvance.payment_method,
+      new_payment_method: replacement.payment_method,
+      reason,
+      supplier_balance: replacement.supplier_balance,
+    };
+  })();
+}

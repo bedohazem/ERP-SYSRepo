@@ -7,6 +7,7 @@ import { createSupplier } from '../../src/main/database/repositories/suppliers.r
 import {
   createSupplierAdvancePayment,
   cancelSupplierAdvancePayment,
+  updateSupplierAdvancePayment,
 } from '../../src/main/database/repositories/supplier-advances.repo';
 
 import { getSupplierAccountAvailableCredit } from '../../src/main/database/repositories/supplier-account-credits.repo';
@@ -228,5 +229,53 @@ describe('supplier advances', () => {
     expect(row.notes).toBe(
       'دفعة مقدمة للمورد: Supplier Advance Test - مقدم بضاعة',
     );
+  });
+
+  it('replaces an unused advance atomically with a corrected amount', () => {
+    const { supplierId, actorId } = setup();
+
+    const oldAdvance = createSupplierAdvancePayment({
+      supplier_id: supplierId,
+      amount: 500,
+      payment_method: 'owner_cash',
+      actor_id: actorId,
+    });
+
+    const edited = updateSupplierAdvancePayment({
+      advance_id: oldAdvance.id,
+      amount: 700,
+      payment_method: 'owner_cash',
+      reason: 'تصحيح رقم الدفعة',
+      actor_id: actorId,
+    });
+
+    expect(edited.old_amount).toBe(500);
+    expect(edited.new_amount).toBe(700);
+    expect(edited.supplier_balance).toBe(-700);
+
+    const cash = getDb()
+      .prepare(
+        `
+      SELECT direction, amount
+      FROM cash_movements
+      WHERE reference_type IN (
+        'supplier_advance',
+        'supplier_advance_cancel'
+      )
+      ORDER BY id
+    `,
+      )
+      .all() as Array<{
+      direction: string;
+      amount: number;
+    }>;
+
+    expect(cash).toEqual([
+      { direction: 'out', amount: 500 },
+      { direction: 'in', amount: 500 },
+      { direction: 'out', amount: 700 },
+    ]);
+
+    expect(getSupplierAccountAvailableCredit(getDb(), supplierId)).toBe(700);
   });
 });

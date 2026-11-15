@@ -130,6 +130,22 @@ export default function SuppliersPage() {
     useState(false);
 
   const [savingPaymentAction, setSavingPaymentAction] = useState(false);
+
+  const [balanceAction, setBalanceAction] = useState<{
+    kind: 'opening' | 'advance';
+    mode: 'edit' | 'cancel';
+    id: number;
+    direction: 'payable' | 'receivable';
+    oldAmount: number;
+    paymentMethod: string;
+  } | null>(null);
+
+  const [balanceActionAmount, setBalanceActionAmount] = useState('');
+  const [balanceActionMethod, setBalanceActionMethod] = useState('store_cash');
+  const [balanceActionNotes, setBalanceActionNotes] = useState('');
+  const [balanceActionReason, setBalanceActionReason] = useState('');
+  const [savingBalanceAction, setSavingBalanceAction] = useState(false);
+
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
   const [deletingSupplier, setDeletingSupplier] = useState(false);
 
@@ -920,6 +936,140 @@ export default function SuppliersPage() {
       showMessage(getErrorMessage(error, 'حدث خطأ أثناء تسجيل الدفعة'));
     } finally {
       setSavingPayment(false);
+    }
+  }
+
+  function canManageBalanceAction(entry: any) {
+    if (!isAdmin || entry?.cancelled_at) return false;
+
+    if (Number(entry?.opening_balance_id || 0) > 0) {
+      return true;
+    }
+
+    return (
+      entry?.type === 'supplier_account_credit' &&
+      Number(entry.account_credit_id || 0) > 0 &&
+      ['opening_credit', 'advance_payment'].includes(entry.source_type)
+    );
+  }
+
+  function openBalanceAction(entry: any, mode: 'edit' | 'cancel') {
+    if (!canManageBalanceAction(entry)) return;
+
+    const isPayable = Number(entry.opening_balance_id || 0) > 0;
+    const isAdvance = entry.source_type === 'advance_payment';
+
+    const id = Number(
+      isPayable ? entry.opening_balance_id : entry.account_credit_id,
+    );
+
+    const oldAmount = Number(
+      isPayable ? entry.opening_original_amount : entry.source_amount,
+    );
+
+    if (!id || !Number.isFinite(oldAmount) || oldAmount <= 0) {
+      showMessage('بيانات المستند غير صحيحة');
+      return;
+    }
+
+    setBalanceAction({
+      kind: isAdvance ? 'advance' : 'opening',
+      mode,
+      id,
+      direction: isPayable ? 'payable' : 'receivable',
+      oldAmount,
+      paymentMethod: String(entry.payment_method || 'store_cash'),
+    });
+
+    setBalanceActionAmount(String(oldAmount));
+    setBalanceActionMethod(String(entry.payment_method || 'store_cash'));
+    setBalanceActionNotes(String(entry.notes || ''));
+    setBalanceActionReason('');
+  }
+
+  async function saveBalanceAction() {
+    if (!balanceAction || savingBalanceAction) return;
+
+    const reason = balanceActionReason.trim();
+    const amount = Number(balanceActionAmount);
+
+    if (!reason) {
+      showMessage('سبب التعديل أو الإلغاء مطلوب');
+      return;
+    }
+
+    if (
+      balanceAction.mode === 'edit' &&
+      (!Number.isFinite(amount) || amount <= 0)
+    ) {
+      showMessage('المبلغ الجديد غير صحيح');
+      return;
+    }
+
+    setSavingBalanceAction(true);
+
+    try {
+      if (balanceAction.kind === 'opening') {
+        const result = await window.api.changeSupplierOpeningBalance({
+          opening_id: balanceAction.id,
+          direction: balanceAction.direction,
+          mode: balanceAction.mode,
+          amount: balanceAction.mode === 'edit' ? amount : undefined,
+          notes: balanceActionNotes.trim() || null,
+          reason,
+        });
+
+        if (!result.success) {
+          throw new Error('تعذر معالجة الرصيد الافتتاحي');
+        }
+      } else if (balanceAction.mode === 'edit') {
+        const result = await window.api.updateSupplierAdvance({
+          advance_id: balanceAction.id,
+          amount,
+          payment_method: balanceActionMethod,
+          notes: balanceActionNotes.trim() || null,
+          reason,
+        });
+
+        if (!result.success) {
+          throw new Error('تعذر تعديل الدفعة المقدمة');
+        }
+      } else {
+        const result = await window.api.cancelSupplierAdvance({
+          advance_id: balanceAction.id,
+          reason,
+        });
+
+        if (!result.ok) {
+          throw new Error('تعذر إلغاء الدفعة المقدمة');
+        }
+      }
+
+      const kind = balanceAction.kind;
+      const mode = balanceAction.mode;
+      const supplierId = Number(statementData?.supplier?.id || 0);
+
+      setBalanceAction(null);
+      setBalanceActionReason('');
+      setBalanceActionAmount('');
+      setBalanceActionNotes('');
+
+      await loadSuppliers(supplierPage);
+
+      if (supplierId) {
+        const data = await window.api.getSupplierStatement(supplierId);
+        setStatementData(data);
+      }
+
+      showMessage(
+        `تم ${mode === 'edit' ? 'تعديل' : 'إلغاء'} ${
+          kind === 'opening' ? 'الرصيد الافتتاحي' : 'الدفعة المقدمة'
+        } بنجاح`,
+      );
+    } catch (error) {
+      showMessage(getErrorMessage(error, 'تعذر حفظ العملية'));
+    } finally {
+      setSavingBalanceAction(false);
     }
   }
 
@@ -1752,7 +1902,7 @@ export default function SuppliersPage() {
                 />
 
                 <InfoCard
-                  title="رصيد دائن من المرتجعات"
+                  title="الرصيد الدائن المتاح من كل المصادر"
                   value={money(
                     statementData.summary?.aging?.supplier_credit || 0,
                   )}
@@ -1987,7 +2137,8 @@ export default function SuppliersPage() {
                           <td style={statementTdStyle}>{entry.notes || '—'}</td>
 
                           <td style={statementTdStyle}>
-                            {canManageStatementPayment(entry) ? (
+                            {canManageStatementPayment(entry) ||
+                            canManageBalanceAction(entry) ? (
                               <div
                                 style={{
                                   display: 'flex',
@@ -1997,7 +2148,11 @@ export default function SuppliersPage() {
                               >
                                 <button
                                   type="button"
-                                  onClick={() => openPaymentEdit(entry)}
+                                  onClick={() =>
+                                    canManageStatementPayment(entry)
+                                      ? openPaymentEdit(entry)
+                                      : openBalanceAction(entry, 'edit')
+                                  }
                                   style={{
                                     ...smallButtonStyle,
                                     color: '#fde68a',
@@ -2010,7 +2165,11 @@ export default function SuppliersPage() {
 
                                 <button
                                   type="button"
-                                  onClick={() => openPaymentCancel(entry)}
+                                  onClick={() =>
+                                    canManageStatementPayment(entry)
+                                      ? openPaymentCancel(entry)
+                                      : openBalanceAction(entry, 'cancel')
+                                  }
                                   style={{
                                     ...smallButtonStyle,
                                     color: '#fca5a5',
@@ -2331,6 +2490,158 @@ export default function SuppliersPage() {
                 type="button"
                 onClick={closePaymentAction}
                 disabled={savingPaymentAction}
+                style={secondaryButtonStyle}
+              >
+                رجوع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {balanceAction && (
+        <div
+          className="theme-modal-overlay"
+          style={{
+            ...modalOverlayStyle,
+            zIndex: 999999,
+            background: 'rgba(2,6,23,0.72)',
+          }}
+        >
+          <div
+            className="theme-modal-card"
+            style={{
+              ...modalStyle,
+              width: 'min(480px, calc(100vw - 32px))',
+              direction: 'rtl',
+            }}
+          >
+            <h3 style={{ margin: '0 0 8px' }}>
+              {balanceAction.mode === 'edit' ? 'تعديل' : 'إلغاء'}{' '}
+              {balanceAction.kind === 'advance' ? 'دفعة مقدمة' : 'رصيد افتتاحي'}
+            </h3>
+
+            <p style={{ color: '#94a3b8', marginBottom: '18px' }}>
+              القيمة الأصلية: {formatPreciseMoney(balanceAction.oldAmount)}
+            </p>
+
+            {balanceAction.mode === 'edit' && (
+              <div style={{ display: 'grid', gap: '14px' }}>
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>المبلغ الصحيح</label>
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={balanceActionAmount}
+                    onChange={(e) => setBalanceActionAmount(e.target.value)}
+                    style={inputStyle}
+                    autoFocus
+                  />
+                </div>
+
+                {balanceAction.kind === 'advance' && (
+                  <div style={fieldStyle}>
+                    <label style={labelStyle}>الحساب المالي</label>
+                    <select
+                      value={balanceActionMethod}
+                      onChange={(e) => setBalanceActionMethod(e.target.value)}
+                      style={inputStyle}
+                    >
+                      {CASH_ACCOUNT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>ملاحظات</label>
+                  <textarea
+                    value={balanceActionNotes}
+                    onChange={(e) => setBalanceActionNotes(e.target.value)}
+                    style={{
+                      ...inputStyle,
+                      minHeight: '70px',
+                      resize: 'vertical',
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div style={{ ...fieldStyle, marginTop: '14px' }}>
+              <label style={labelStyle}>
+                سبب {balanceAction.mode === 'edit' ? 'التعديل' : 'الإلغاء'}
+              </label>
+
+              <textarea
+                value={balanceActionReason}
+                onChange={(e) => setBalanceActionReason(e.target.value)}
+                placeholder="اكتب سبب العملية"
+                style={{
+                  ...inputStyle,
+                  minHeight: '85px',
+                  resize: 'vertical',
+                }}
+                autoFocus={balanceAction.mode === 'cancel'}
+              />
+            </div>
+
+            <div
+              style={{
+                marginTop: '14px',
+                padding: '12px',
+                borderRadius: '10px',
+                background: 'rgba(245,158,11,0.08)',
+                border: '1px solid rgba(245,158,11,0.2)',
+                color: '#fde68a',
+                fontSize: '12px',
+                lineHeight: 1.8,
+              }}
+            >
+              {balanceAction.kind === 'advance'
+                ? 'تعديل الدفعة المقدمة يعكس الحركة النقدية القديمة ويسجل المبلغ الصحيح.'
+                : 'تعديل الرصيد الافتتاحي لا ينشئ حركة نقدية أو مخزنية.'}{' '}
+              لو الرصيد مستخدم في فواتير أو تسويات، النظام هيمنع العملية لحماية
+              الحسابات.
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                marginTop: '20px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => void saveBalanceAction()}
+                disabled={savingBalanceAction}
+                style={{
+                  ...primaryButtonStyle,
+                  ...(balanceAction.mode === 'cancel'
+                    ? {
+                        background: 'rgba(239,68,68,0.18)',
+                        border: '1px solid rgba(239,68,68,0.35)',
+                        color: '#fca5a5',
+                      }
+                    : {}),
+                }}
+              >
+                {savingBalanceAction
+                  ? 'جاري الحفظ...'
+                  : balanceAction.mode === 'edit'
+                    ? 'حفظ التعديل'
+                    : 'تأكيد الإلغاء'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBalanceAction(null)}
+                disabled={savingBalanceAction}
                 style={secondaryButtonStyle}
               >
                 رجوع

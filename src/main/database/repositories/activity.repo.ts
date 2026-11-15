@@ -19,6 +19,7 @@ export type ActivityLogInput = {
 
 export type ActivityLogFilter = {
   search?: string;
+  search_actions?: string[];
   action?: string;
   actions?: string[];
   entity?: string;
@@ -198,6 +199,18 @@ export function listActivityLogs(input?: ActivityLogFilter) {
   if (input?.search?.trim()) {
     const q = `%${input.search.trim()}%`;
 
+    const matchedActions = Array.from(
+      new Set(
+        (Array.isArray(input.search_actions) ? input.search_actions : [])
+          .map((value) => String(value || '').trim())
+          .filter(Boolean),
+      ),
+    ).slice(0, 100);
+
+    const actionSearchSql = matchedActions.length
+      ? `OR al.action IN (${matchedActions.map(() => '?').join(', ')})`
+      : '';
+
     where.push(`
       (
         al.action LIKE ?
@@ -207,10 +220,11 @@ export function listActivityLogs(input?: ActivityLogFilter) {
         OR u.username LIKE ?
         OR approver.name LIKE ?
         OR approver.username LIKE ?
+        ${actionSearchSql}
       )
     `);
 
-    params.push(q, q, q, q, q, q, q);
+    params.push(q, q, q, q, q, q, q, ...matchedActions);
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';

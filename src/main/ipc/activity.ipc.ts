@@ -26,6 +26,17 @@ export function registerActivityIpc(): void {
             requireTrimmedString(value, 'نوع النشاط', 200),
           );
 
+    const searchActions =
+      payload.search_actions == null
+        ? undefined
+        : requireArrayInput(
+            payload.search_actions,
+            'العمليات المطابقة للبحث',
+            100,
+          ).map((value) =>
+            requireTrimmedString(value, 'كود العملية المطابقة', 200),
+          );
+
     const entities =
       payload.entities === undefined || payload.entities === null
         ? undefined
@@ -42,6 +53,7 @@ export function registerActivityIpc(): void {
         optionalTrimmedString(payload.action, 'نوع النشاط', 200) ?? undefined,
 
       actions,
+      search_actions: searchActions,
 
       entity:
         optionalTrimmedString(payload.entity, 'نوع الكيان', 200) ?? undefined,

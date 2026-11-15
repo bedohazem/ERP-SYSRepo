@@ -4883,12 +4883,36 @@ export function getPurchaseInvoice(purchaseId: number) {
     )
     .all(Number(purchaseId));
 
+  const accountCreditAllocations = db
+    .prepare(
+      `
+      SELECT
+        a.id,
+        a.credit_id,
+        a.purchase_id,
+        a.amount,
+        a.created_at,
+        a.cancelled_at,
+        c.source_type,
+        c.source_id,
+        c.payment_method,
+        c.notes AS source_notes
+      FROM supplier_account_credit_allocations a
+      JOIN supplier_account_credits c
+        ON c.id = a.credit_id
+      WHERE a.purchase_id = ?
+      ORDER BY a.id ASC
+    `,
+    )
+    .all(Number(purchaseId));
+
   return {
     purchase,
     items,
     payments,
     returns,
     credit_allocations: creditAllocations,
+    account_credit_allocations: accountCreditAllocations,
   };
 }
 
@@ -6758,10 +6782,10 @@ export function getSupplierStatement(
     WHERE
       pi.supplier_id = ?
 
-      AND IFNULL(
-        pi.status,
-        'active'
-      ) != 'cancelled'
+    AND (
+      IFNULL(pi.status, 'active') != 'cancelled'
+      OR pi.payment_method = 'opening_balance'
+    )
 
     ORDER BY
       pi.created_at DESC,
@@ -6974,6 +6998,9 @@ export function getSupplierStatement(
   const accountCreditEntries = accountCredits.map((item) => ({
     id: `supplier-account-credit-${item.id}`,
     type: 'supplier_account_credit',
+    account_credit_id: item.id,
+    source_type: item.source_type,
+    source_amount: item.amount,
     purchase_id: null,
     title:
       item.source_type === 'opening_credit'
@@ -7138,7 +7165,80 @@ export function getSupplierStatement(
 
   const paymentEntries = [...batchPaymentEntries, ...standalonePaymentEntries];
 
+  const creditUsageRows = db
+    .prepare(
+      `
+    SELECT
+      'return' AS source_kind,
+      a.id,
+      a.purchase_id,
+      a.amount,
+      a.created_at,
+      a.cancelled_at,
+      'purchase_return' AS source_type,
+      a.return_id AS source_id
+    FROM supplier_credit_allocations a
+    WHERE a.supplier_id = ?
+
+    UNION ALL
+
+    SELECT
+      'account' AS source_kind,
+      a.id,
+      a.purchase_id,
+      a.amount,
+      a.created_at,
+      a.cancelled_at,
+      c.source_type,
+      COALESCE(c.source_id, c.id) AS source_id
+    FROM supplier_account_credit_allocations a
+    JOIN supplier_account_credits c
+      ON c.id = a.credit_id
+    WHERE c.supplier_id = ?
+  `,
+    )
+    .all(id, id) as Array<{
+    source_kind: string;
+    id: number;
+    purchase_id: number;
+    amount: number;
+    created_at: string | null;
+    cancelled_at: string | null;
+    source_type: string;
+    source_id: number;
+  }>;
+
+  const creditUsageEntries = creditUsageRows.map((usage) => {
+    const sourceLabel =
+      usage.source_type === 'opening_credit'
+        ? 'رصيد افتتاحي'
+        : usage.source_type === 'advance_payment'
+          ? 'دفعة مقدمة'
+          : usage.source_type === 'purchase_overpayment'
+            ? 'زيادة دفع فاتورة'
+            : usage.source_type === 'payment_overpayment'
+              ? 'زيادة دفعة مورد'
+              : 'مرتجع شراء';
+
+    return {
+      id: `supplier-credit-use-${usage.source_kind}-${usage.id}`,
+      type: 'supplier_credit_usage',
+      title: usage.cancelled_at
+        ? `تسوية رصيد معكوسة - فاتورة #${usage.purchase_id}`
+        : `استخدام رصيد دائن في فاتورة #${usage.purchase_id}`,
+      debit: 0,
+      credit: 0,
+      purchase_id: usage.purchase_id,
+      applied_amount: usage.amount,
+      payment_method: null,
+      notes: `القيمة: ${usage.amount} ج.م - المصدر: ${sourceLabel} #${usage.source_id}`,
+      cancelled_at: usage.cancelled_at,
+      created_at: String(usage.created_at ?? ''),
+    };
+  });
+
   const entries = [
+    ...creditUsageEntries,
     ...accountCreditEntries,
     ...purchases
       .filter(
@@ -7149,12 +7249,36 @@ export function getSupplierStatement(
 
         type: 'purchase',
 
+        opening_balance_id:
+          purchase.payment_method === 'opening_balance'
+            ? Number(purchase.id)
+            : null,
+
+        opening_balance_direction:
+          purchase.payment_method === 'opening_balance' ? 'payable' : null,
+
+        opening_original_amount:
+          purchase.payment_method === 'opening_balance'
+            ? Number(purchase.total_amount)
+            : null,
+
+        cancelled_at:
+          purchase.payment_method === 'opening_balance'
+            ? (purchase.cancelled_at ?? null)
+            : null,
+
         title:
-          purchase.status === 'opening_balance'
-            ? `رصيد افتتاحي مستحق #${purchase.id}`
+          purchase.payment_method === 'opening_balance'
+            ? purchase.status === 'cancelled'
+              ? `رصيد افتتاحي مستحق #${purchase.id} - ملغي`
+              : `رصيد افتتاحي مستحق #${purchase.id}`
             : `فاتورة شراء #${purchase.id}`,
 
-        debit: Number(purchase.total_amount || 0),
+        debit:
+          purchase.payment_method === 'opening_balance' &&
+          purchase.status === 'cancelled'
+            ? 0
+            : Number(purchase.total_amount || 0),
 
         credit: 0,
 

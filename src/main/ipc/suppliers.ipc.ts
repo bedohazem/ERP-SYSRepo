@@ -1,7 +1,5 @@
 import { ipcMain } from 'electron';
-
 import { runCriticalActionWithAudit } from './activity-helper';
-
 import {
   createSupplier,
   deleteSupplier,
@@ -10,19 +8,20 @@ import {
   listSuppliers,
   updateSupplier,
 } from '../database/repositories/suppliers.repo';
-import { requireAuthenticatedAdmin } from '../auth-session';
-
-import { createSupplierOpeningBalance } from '../database/repositories/supplier-opening-balances.repo';
-
-import { requireEnumValue, requirePositiveMoney } from './input-validation';
-import { requireAnyPermission, requirePermission } from '../auth-session';
+import {
+  requireAuthenticatedAdmin,
+  requireAnyPermission,
+  requirePermission,
+} from '../auth-session';
+import {
+  createSupplierOpeningBalance,
+  changeSupplierOpeningBalance,
+} from '../database/repositories/supplier-opening-balances.repo';
 import {
   createSupplierAdvancePayment,
   cancelSupplierAdvancePayment,
+  updateSupplierAdvancePayment,
 } from '../database/repositories/supplier-advances.repo';
-
-import { requirePositiveFinancialMoney } from './input-validation';
-
 import { resolveCashAccountKey } from '../../shared/cash-accounts';
 import {
   optionalBooleanValue,
@@ -32,8 +31,10 @@ import {
   requireObjectInput,
   requirePositiveInteger,
   requireTrimmedString,
+  requireEnumValue,
+  requirePositiveMoney,
+  requirePositiveFinancialMoney,
 } from './input-validation';
-
 import { roundMoney } from '../../shared/money';
 
 export function registerSuppliersIpc(): void {
@@ -67,6 +68,118 @@ export function registerSuppliersIpc(): void {
           amount: result.amount,
           balance: result.balance,
           notes: openingInput.notes,
+        },
+      }),
+    );
+  });
+
+  ipcMain.handle('suppliers:change-opening-balance', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event);
+    const payload = requireObjectInput(input, 'تعديل الرصيد الافتتاحي');
+
+    const mode = requireEnumValue(
+      payload.mode,
+      ['edit', 'cancel'] as const,
+      'نوع العملية',
+    );
+
+    const openingInput = {
+      opening_id: requirePositiveInteger(
+        payload.opening_id,
+        'رقم الرصيد الافتتاحي',
+      ),
+      direction: requireEnumValue(
+        payload.direction,
+        ['payable', 'receivable'] as const,
+        'اتجاه الرصيد الافتتاحي',
+      ),
+      mode,
+      amount:
+        mode === 'edit'
+          ? requirePositiveFinancialMoney(payload.amount, 'المبلغ الجديد')
+          : undefined,
+      notes: optionalTrimmedString(
+        payload.notes,
+        'ملاحظات الرصيد الافتتاحي',
+        2000,
+      ),
+      reason: requireTrimmedString(
+        payload.reason,
+        'سبب التعديل أو الإلغاء',
+        500,
+      ),
+      actor_id: actorId,
+    };
+
+    return runCriticalActionWithAudit(
+      () => changeSupplierOpeningBalance(openingInput),
+      (result) => ({
+        actor_id: actorId,
+        action:
+          mode === 'edit'
+            ? 'supplier_opening_balance_updated'
+            : 'supplier_opening_balance_cancelled',
+        entity:
+          result.direction === 'payable'
+            ? 'purchase_invoices'
+            : 'supplier_account_credits',
+        entity_id: result.opening_id,
+        details: {
+          ...result,
+          reason: openingInput.reason,
+          notes: openingInput.notes,
+        },
+      }),
+    );
+  });
+
+  ipcMain.handle('suppliers:update-advance', (event, input) => {
+    const actorId = requireAuthenticatedAdmin(event);
+    const payload = requireObjectInput(input, 'تعديل الدفعة المقدمة');
+
+    const method = requireEnumValue(
+      payload.payment_method,
+      [
+        'store_cash',
+        'store_safe',
+        'owner_cash',
+        'owner_bank',
+        'owner_vodafone',
+        'fawry_machine',
+      ] as const,
+      'الحساب المالي',
+    );
+
+    const updateInput = {
+      advance_id: requirePositiveInteger(
+        payload.advance_id,
+        'رقم الدفعة المقدمة',
+      ),
+      amount: requirePositiveFinancialMoney(payload.amount, 'المبلغ الجديد'),
+      payment_method: resolveCashAccountKey(method),
+      notes: optionalTrimmedString(
+        payload.notes,
+        'ملاحظات الدفعة المقدمة',
+        1000,
+      ),
+      reason: requireTrimmedString(
+        payload.reason,
+        'سبب تعديل الدفعة المقدمة',
+        500,
+      ),
+      actor_id: actorId,
+    };
+
+    return runCriticalActionWithAudit(
+      () => updateSupplierAdvancePayment(updateInput),
+      (result) => ({
+        actor_id: actorId,
+        action: 'supplier_advance_updated',
+        entity: 'supplier_account_credits',
+        entity_id: result.advance_id,
+        details: {
+          ...result,
+          notes: updateInput.notes,
         },
       }),
     );
