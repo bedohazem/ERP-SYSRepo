@@ -4619,6 +4619,10 @@ export function resetDatabaseData(): void {
 
       DELETE FROM activity_logs;
       DELETE FROM auth_recovery_requests;
+
+      DELETE FROM supplier_account_credit_allocations;
+      DELETE FROM supplier_account_credits;
+
       DELETE FROM cash_shift_variances;
       DELETE FROM cash_shifts;
 
@@ -4630,8 +4634,6 @@ export function resetDatabaseData(): void {
       DELETE FROM store_liabilities;
 
       DELETE FROM supplier_credit_allocations;
-      DELETE FROM supplier_account_credit_allocations;
-      DELETE FROM supplier_account_credits;
       DELETE FROM supplier_payments;
       DELETE FROM supplier_payment_batches;
 

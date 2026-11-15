@@ -109,6 +109,7 @@ export type CreatePurchaseInput = {
   supplier_id: number;
   paid_amount?: number;
   sub_total?: number;
+  overpayment_to_credit?: boolean;
   discount_type?: 'amount' | 'percent' | string;
   discount_input?: number;
   discount_value?: number;
@@ -1037,7 +1038,28 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
      */
     const cashPaidAmount = cashAmountInput;
 
-    if (settleFullBalance) {
+    const overpaymentToCredit = Boolean(input.overpayment_to_credit);
+
+    const supplierOverpayment = overpaymentToCredit
+      ? normalizePreciseZero(preciseSubtract(cashPaidAmount, totalAmount))
+      : 0;
+
+    if (
+      overpaymentToCredit &&
+      (settleFullBalance || !hasPositivePreciseAmount(supplierOverpayment))
+    ) {
+      throw new Error('قيمة زيادة دفع المورد غير صحيحة');
+    }
+
+    if (hasPositivePreciseAmount(supplierOverpayment)) {
+      // قيمة الفاتورة تظل كما هي.
+      // الزائد عن مبلغ التسوية النقدية يُرحّل لرصيد المورد.
+      cashAccountingAmount = totalAmount;
+      supplierCreditApplied = 0;
+      paidAmount = totalAmount;
+      remainingAmount = 0;
+      roundingAdjustment = 0;
+    } else if (settleFullBalance) {
       /*
        * أولًا:
        * هل الكاش المدخل وحده
@@ -1273,6 +1295,38 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
     const purchaseId = Number(purchaseResult.lastInsertRowid);
 
+    if (hasPositivePreciseAmount(supplierOverpayment)) {
+      db.prepare(
+        `
+        INSERT INTO supplier_account_credits (
+          supplier_id,
+          source_type,
+          source_id,
+          amount,
+          payment_method,
+          notes,
+          created_by,
+          business_date,
+          shift_id
+        )
+        VALUES (
+          ?,
+          'purchase_overpayment',
+          ?, ?, ?, ?, ?, ?, ?
+        )
+      `,
+      ).run(
+        supplierId,
+        purchaseId,
+        supplierOverpayment,
+        paymentMethod,
+        `زيادة دفع على فاتورة شراء #${purchaseId}`,
+        actorId > 0 ? actorId : null,
+        businessDate,
+        openShift?.id ?? null,
+      );
+    }
+
     const allocatedSupplierCredit = allocateSupplierCreditToPurchase(db, {
       supplier_id: supplierId,
 
@@ -1374,6 +1428,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       WHERE id = ?
       `,
     ).run(totalAmount, supplierId);
+
+    if (hasPositivePreciseAmount(supplierOverpayment)) {
+      applyAvailableSupplierCreditToOpenPurchases(db, supplierId);
+    }
 
     rebuildSupplierBalance(db, supplierId);
 
@@ -1733,6 +1791,25 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
     if (purchase.safe_status === 'opening_balance') {
       throw new Error('الرصيد الافتتاحي لا يتم تعديله كفاتورة شراء');
+    }
+
+    const existingOverpayment = db
+      .prepare(
+        `
+      SELECT id
+      FROM supplier_account_credits
+      WHERE source_type = 'purchase_overpayment'
+        AND source_id = ?
+        AND cancelled_at IS NULL
+      LIMIT 1
+    `,
+      )
+      .get(purchaseId);
+
+    if (existingOverpayment) {
+      throw new Error(
+        'لا يمكن تعديل فاتورة نتج عنها رصيد زيادة دفع؛ يلزم معالجة الرصيد المرتبط بها أولًا',
+      );
     }
 
     const activeSupplierCreditAllocation = db
@@ -2740,6 +2817,42 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       throw new Error('الرصيد الافتتاحي لا يتم إلغاؤه كفاتورة شراء');
     }
 
+    const overpaymentRow = db
+      .prepare(
+        `
+      SELECT
+        c.id,
+        c.amount,
+        IFNULL((
+          SELECT SUM(a.amount)
+          FROM supplier_account_credit_allocations a
+          WHERE a.credit_id = c.id
+            AND a.cancelled_at IS NULL
+        ), 0) AS allocated_amount
+      FROM supplier_account_credits c
+      WHERE c.source_type = 'purchase_overpayment'
+        AND c.source_id = ?
+        AND c.cancelled_at IS NULL
+      LIMIT 1
+    `,
+      )
+      .get(purchaseId) as
+      | {
+          id: number;
+          amount: number;
+          allocated_amount: number;
+        }
+      | undefined;
+
+    if (
+      overpaymentRow &&
+      hasPositivePreciseAmount(overpaymentRow.allocated_amount)
+    ) {
+      throw new Error(
+        'لا يمكن إلغاء الفاتورة لأن زيادة الدفع الناتجة عنها استُخدمت في فاتورة أخرى',
+      );
+    }
+
     const returnsCountRow = db
       .prepare(
         `
@@ -2838,7 +2951,12 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 
     const paidAmount = preservePrecision(Number(purchase.paid_amount || 0));
 
-    const cashPaidAmount = resolveStoredPurchaseInitialCashAmount(purchase);
+    const cashPaidAmount = normalizePreciseZero(
+      preciseAdd(
+        resolveStoredPurchaseInitialCashAmount(purchase),
+        Number(overpaymentRow?.amount || 0),
+      ),
+    );
 
     const paymentMethod = resolveCashAccount(purchase.payment_method || 'cash');
 
@@ -2944,6 +3062,24 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
     );
 
     releaseSupplierAccountCreditAllocations(db, purchaseId);
+
+    if (overpaymentRow) {
+      db.prepare(
+        `
+        UPDATE supplier_account_credits
+        SET
+          cancelled_at = CURRENT_TIMESTAMP,
+          cancelled_by = ?,
+          cancel_reason = ?
+        WHERE id = ?
+          AND cancelled_at IS NULL
+      `,
+      ).run(
+        actorId > 0 ? actorId : null,
+        `إلغاء فاتورة شراء #${purchaseId}`,
+        overpaymentRow.id,
+      );
+    }
     /*
      * إلغاء الفاتورة حرر Credit
      * كان مستخدم عليها.
@@ -4796,6 +4932,7 @@ export function recordSupplierPayment(input: {
   supplier_id: number;
 
   purchase_id?: number | null;
+  overpayment_to_credit?: boolean;
 
   /*
    * الكاش الحقيقي الخارج.
@@ -4830,7 +4967,11 @@ export function recordSupplierPayment(input: {
   const cashAmount = roundMoney(rawCashAmount);
 
   const settleFullBalance = Boolean(input.settle_full_balance);
+  const overpaymentToCredit = Boolean(input.overpayment_to_credit);
 
+  if (overpaymentToCredit && settleFullBalance) {
+    throw new Error('لا يمكن الجمع بين تسوية التقريب وترحيل زيادة الدفع');
+  }
   /*
    * صفر مسموح فقط في تسوية
    * رصيد أقل من نصف جنيه.
@@ -4943,8 +5084,19 @@ export function recordSupplierPayment(input: {
     let accountingAmount = 0;
 
     let roundingAdjustment = 0;
+    let overpaymentCredit = 0;
+    if (overpaymentToCredit) {
+      overpaymentCredit = normalizePreciseZero(
+        preciseSubtract(cashAmount, targetOutstanding),
+      );
 
-    if (settleFullBalance) {
+      if (!hasPositivePreciseAmount(overpaymentCredit)) {
+        throw new Error('لا توجد زيادة دفع يمكن ترحيلها');
+      }
+
+      accountingAmount = targetOutstanding;
+      roundingAdjustment = 0;
+    } else if (settleFullBalance) {
       const settlement = resolveWholeMoneySettlement(
         cashAmount,
         targetOutstanding,
@@ -5041,6 +5193,37 @@ export function recordSupplierPayment(input: {
       );
 
     const paymentBatchId = Number(batchResult.lastInsertRowid);
+
+    if (hasPositivePreciseAmount(overpaymentCredit)) {
+      db.prepare(
+        `
+        INSERT INTO supplier_account_credits (
+          supplier_id,
+          source_type,
+          source_id,
+          amount,
+          payment_method,
+          notes,
+          created_by,
+          business_date,
+          shift_id
+        )
+        VALUES (
+          ?, 'payment_overpayment',
+          ?, ?, ?, ?, ?, ?, ?
+        )
+      `,
+      ).run(
+        supplierId,
+        paymentBatchId,
+        overpaymentCredit,
+        paymentMethod,
+        `زيادة دفع في دفعة المورد #${paymentBatchId}`,
+        actorId > 0 ? actorId : null,
+        businessDate,
+        openShift?.id ?? null,
+      );
+    }
 
     const insertPayment = db.prepare(
       `
@@ -5173,6 +5356,35 @@ export function recordSupplierPayment(input: {
       throw new Error('قيمة توزيعات دفعة المورد غير متطابقة');
     }
 
+    if (hasPositivePreciseAmount(overpaymentCredit)) {
+      applyAvailableSupplierCreditToOpenPurchases(db, supplierId);
+    }
+
+    const overpaymentAvailability = db
+      .prepare(
+        `
+      SELECT
+        MAX(
+          0,
+          c.amount - IFNULL((
+            SELECT SUM(a.amount)
+            FROM supplier_account_credit_allocations a
+            WHERE a.credit_id = c.id
+              AND a.cancelled_at IS NULL
+          ), 0)
+        ) AS remaining
+      FROM supplier_account_credits c
+      WHERE c.source_type = 'payment_overpayment'
+        AND c.source_id = ?
+        AND c.cancelled_at IS NULL
+    `,
+      )
+      .get(paymentBatchId) as { remaining: number } | undefined;
+
+    const remainingOverpaymentCredit = normalizePreciseZero(
+      Number(overpaymentAvailability?.remaining || 0),
+    );
+
     const supplierBalance = rebuildSupplierBalance(db, supplierId);
 
     db.prepare(
@@ -5249,6 +5461,8 @@ export function recordSupplierPayment(input: {
       remaining_supplier_balance: supplierBalance,
 
       allocations,
+      overpayment_credit: overpaymentCredit,
+      remaining_overpayment_credit: remainingOverpaymentCredit,
 
       shift_id: openShift?.id ?? null,
     };
@@ -5434,15 +5648,42 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
     Number(batch.cash_amount ?? batch.amount ?? 0),
   );
 
-  const batchRoundingAdjustment =
-    batch.rounding_adjustment == null
-      ? preciseSubtract(batchCashAmount, batchAmount)
-      : preservePrecision(Number(batch.rounding_adjustment));
+  const overpaymentCredit = db
+    .prepare(
+      `
+      SELECT
+        c.id,
+        c.amount,
+        IFNULL((
+          SELECT SUM(a.amount)
+          FROM supplier_account_credit_allocations a
+          WHERE a.credit_id = c.id
+            AND a.cancelled_at IS NULL
+        ), 0) AS allocated_amount
+      FROM supplier_account_credits c
+      WHERE c.source_type = 'payment_overpayment'
+        AND c.source_id = ?
+        AND c.cancelled_at IS NULL
+      LIMIT 1
+  `,
+    )
+    .get(batchId) as
+    | {
+        id: number;
+        amount: number;
+        allocated_amount: number;
+      }
+    | undefined;
 
   const expectedRoundingAdjustment = preciseSubtract(
-    batchCashAmount,
-    batchAmount,
+    preciseSubtract(batchCashAmount, batchAmount),
+    Number(overpaymentCredit?.amount || 0),
   );
+
+  const batchRoundingAdjustment =
+    batch.rounding_adjustment == null
+      ? expectedRoundingAdjustment
+      : preservePrecision(Number(batch.rounding_adjustment));
 
   if (Math.abs(batchRoundingAdjustment - expectedRoundingAdjustment) > 0.001) {
     throw new Error('فرق تسوية دفعة المورد غير متطابق');
@@ -5513,7 +5754,7 @@ function getSupplierPaymentBatchMutationContext(batchId: number) {
      * الدين المحاسبي الذي تم إقفاله.
      */
     allocationTotal,
-
+    overpaymentCredit,
     /*
      * الكاش الذي خرج بالفعل.
      */
@@ -5600,6 +5841,15 @@ export function cancelSupplierPaymentBatch(input: {
     cashMovement,
   } = context;
 
+  if (
+    context.overpaymentCredit &&
+    hasPositivePreciseAmount(context.overpaymentCredit.allocated_amount)
+  ) {
+    throw new Error(
+      'لا يمكن إلغاء الدفعة لأن رصيد زيادة الدفع استُخدم في فواتير أخرى',
+    );
+  }
+
   const actorId = Number(input.actor_id || 0);
 
   const paymentMethod = resolveCashAccount(
@@ -5683,6 +5933,20 @@ export function cancelSupplierPaymentBatch(input: {
 
         Number(allocation.purchase_id),
       );
+    }
+
+    if (context.overpaymentCredit) {
+      db.prepare(
+        `
+        UPDATE supplier_account_credits
+        SET
+          cancelled_at = CURRENT_TIMESTAMP,
+          cancelled_by = ?,
+          cancel_reason = ?
+        WHERE id = ?
+          AND cancelled_at IS NULL
+      `,
+      ).run(actorId > 0 ? actorId : null, reason, context.overpaymentCredit.id);
     }
 
     /*
@@ -5836,6 +6100,12 @@ export function updateSupplierPaymentBatch(input: {
   }
 
   const context = getSupplierPaymentBatchMutationContext(batchId);
+
+  if (context.overpaymentCredit) {
+    throw new Error(
+      'لا يمكن تعديل دفعة نتج عنها رصيد زيادة دفع؛ ألغِ الدفعة أولًا إذا كان الرصيد غير مستخدم',
+    );
+  }
 
   const {
     db,

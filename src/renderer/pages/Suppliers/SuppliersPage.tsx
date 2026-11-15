@@ -11,6 +11,7 @@ import {
   roundMoney,
   hasPositivePreciseAmount,
   preciseAdd,
+  preciseSubtract,
 } from '../../../shared/money';
 
 function hasRemainingAmount(value: number) {
@@ -865,6 +866,10 @@ export default function SuppliersPage() {
 
     const amount = Number(paymentAmount || 0);
 
+    const overpaymentToCredit =
+      !settleFullSupplierBalance &&
+      roundMoney(amount) > paymentSupplier.balance;
+
     if (
       !Number.isFinite(amount) ||
       (amount <= 0 && !settleFullSupplierBalance)
@@ -879,17 +884,24 @@ export default function SuppliersPage() {
       const result = await window.api.recordSupplierPayment({
         supplier_id: paymentSupplier.id,
         amount,
+        overpayment_to_credit: overpaymentToCredit,
         settle_full_balance: settleFullSupplierBalance,
         payment_method: paymentMethod,
         notes: paymentNotes.trim() || null,
       });
 
       showMessage(
-        result.rounding_adjustment
-          ? `تم سداد ${money(result.paid_amount)} من الرصيد بكاش ${money(
-              result.cash_amount,
+        result.overpayment_credit > 0
+          ? `تم سداد ${money(result.paid_amount)}، وترحيل ${money(
+              result.overpayment_credit,
+            )} رصيدًا لصالحنا. المتاح من الزيادة: ${money(
+              result.remaining_overpayment_credit,
             )}`
-          : `تم تسجيل دفعة ${money(result.cash_amount)}`,
+          : result.rounding_adjustment
+            ? `تم سداد ${money(result.paid_amount)} بكاش ${money(
+                result.cash_amount,
+              )}`
+            : `تم تسجيل دفعة ${money(result.cash_amount)}`,
       );
 
       setPaymentSupplier(null);
@@ -2617,12 +2629,6 @@ export default function SuppliersPage() {
                   type="number"
                   min={0}
 
-                  max={
-                    settleFullSupplierBalance
-                      ? undefined
-                      : paymentSupplier.balance
-                  }
-
                   value={paymentAmount}
 
                   readOnly={settleFullSupplierBalance}
@@ -2632,6 +2638,28 @@ export default function SuppliersPage() {
                   style={inputStyle}
                   autoFocus
                 />
+
+                {!settleFullSupplierBalance &&
+                  roundMoney(Number(paymentAmount || 0)) >
+                    paymentSupplier.balance && (
+                    <div
+                      style={{
+                        color: '#6ee7b7',
+                        fontSize: '13px',
+                        fontWeight: 800,
+                        marginTop: '8px',
+                      }}
+                    >
+                      سيتم ترحيل{' '}
+                      {money(
+                        preciseSubtract(
+                          roundMoney(Number(paymentAmount || 0)),
+                          paymentSupplier.balance,
+                        ),
+                      )}{' '}
+                      رصيدًا لصالحنا عند المورد، دون التأثير على الأرباح.
+                    </div>
+                  )}
 
                 {settleFullSupplierBalance && (
                   <div

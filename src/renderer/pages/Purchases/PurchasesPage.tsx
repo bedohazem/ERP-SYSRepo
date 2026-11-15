@@ -208,6 +208,11 @@ export default function PurchasesPage() {
     ? roundMoney(totalAmount)
     : roundMoney(Math.max(0, Number(paidAmount || 0)));
 
+  const purchaseOverpayment =
+    !isEditing && !settleFullInvoice && cashPaidAmount > totalAmount
+      ? preciseSubtract(cashPaidAmount, totalAmount)
+      : 0;
+
   const paid = settleFullInvoice
     ? totalAmount
     : Math.min(cashPaidAmount, totalAmount);
@@ -1026,7 +1031,7 @@ export default function PurchasesPage() {
          * المحاسبي المسدد.
          */
         paid_amount: cashPaidAmount,
-
+        overpayment_to_credit: purchaseOverpayment > 0,
         payment_method: paymentMethod,
 
         notes: notes.trim() || null,
@@ -1641,6 +1646,20 @@ export default function PurchasesPage() {
                 style={inputStyle}
               />
             </div>
+
+            {purchaseOverpayment > 0 && (
+              <div
+                style={{
+                  color: '#6ee7b7',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  marginTop: '8px',
+                }}
+              >
+                سيتم ترحيل {formatPreciseMoney(purchaseOverpayment)} رصيدًا
+                لصالحنا عند المورد.
+              </div>
+            )}
 
             <label
               style={{

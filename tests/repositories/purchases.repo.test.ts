@@ -6943,4 +6943,306 @@ describe('purchases repository', () => {
     // باقي 3 قطع تم بيعها، وليس إرجاعها.
     expect(Number(finalInvoice.items[0].returned_quantity)).toBe(32);
   });
+
+  it('keeps the exact purchase overpayment as credit without rounding profit', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 100,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 80.62,
+        },
+      ],
+    });
+
+    expect(purchase.cash_amount).toBe(100);
+    expect(purchase.paid_amount).toBeCloseTo(80.62, 8);
+    expect(purchase.remaining_amount).toBe(0);
+    expect(purchase.rounding_adjustment).toBe(0);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(-19.38, 8);
+
+    const credit = getDb()
+      .prepare(
+        `
+      SELECT amount
+      FROM supplier_account_credits
+      WHERE source_type = 'purchase_overpayment'
+        AND source_id = ?
+    `,
+      )
+      .get(purchase.purchaseId) as { amount: number };
+
+    expect(credit.amount).toBeCloseTo(19.38, 8);
+
+    const cash = getDb()
+      .prepare(
+        `
+      SELECT amount
+      FROM cash_movements
+      WHERE reference_type = 'purchase_invoice'
+        AND reference_id = ?
+        AND direction = 'out'
+    `,
+      )
+      .get(purchase.purchaseId) as { amount: number };
+
+    expect(cash.amount).toBe(100);
+  });
+
+  it('records, cancels and protects supplier payment overpayment', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 80.62,
+        },
+      ],
+    });
+
+    const payment = recordSupplierPayment({
+      supplier_id: supplierId,
+      actor_id: 1,
+      amount: 100,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+    });
+
+    expect(payment.paid_amount).toBeCloseTo(80.62, 8);
+    expect(payment.cash_amount).toBe(100);
+    expect(payment.rounding_adjustment).toBe(0);
+    expect(payment.overpayment_credit).toBeCloseTo(19.38, 8);
+    expect(payment.remaining_overpayment_credit).toBeCloseTo(19.38, 8);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(-19.38, 8);
+
+    expect(() =>
+      updateSupplierPaymentBatch({
+        batch_id: payment.payment_batch_id,
+        actor_id: 1,
+        amount: 90,
+        payment_method: 'store_cash',
+      }),
+    ).toThrow('لا يمكن تعديل دفعة نتج عنها رصيد');
+
+    const cancelled = cancelSupplierPaymentBatch({
+      batch_id: payment.payment_batch_id,
+      actor_id: 1,
+      reason: 'إلغاء دفعة اختبارية',
+    });
+
+    expect(cancelled.success).toBe(true);
+    expect(cancelled.cancelled_cash_amount).toBe(100);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(80.62, 8);
+
+    const credit = getDb()
+      .prepare(
+        `
+      SELECT cancelled_at
+      FROM supplier_account_credits
+      WHERE source_type = 'payment_overpayment'
+        AND source_id = ?
+    `,
+      )
+      .get(payment.payment_batch_id) as {
+      cancelled_at: string | null;
+    };
+
+    expect(credit.cancelled_at).not.toBeNull();
+  });
+
+  it('uses purchase overpayment in a later invoice and protects its source', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    // فاتورة 80.62، دفعنا 100.
+    const first = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 100,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 80.62,
+        },
+      ],
+    });
+
+    expect(first.rounding_adjustment).toBe(0);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(-19.38, 8);
+
+    const inventoryBefore = getVariantCostState('PURCHASE001');
+
+    expect(inventoryBefore.inventory_value).toBeCloseTo(80.62, 8);
+
+    // فاتورة ثانية بـ30 تستخدم الرصيد السابق.
+    const second = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 30,
+        },
+      ],
+    });
+
+    expect(second.supplier_credit_applied).toBeCloseTo(19.38, 8);
+    expect(second.paid_amount).toBeCloseTo(19.38, 8);
+    expect(second.remaining_amount).toBeCloseTo(10.62, 8);
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(10.62, 8);
+    expect(getCashMovementTotal('out')).toBe(100);
+
+    // ممنوع إلغاء مصدر رصيد تم استخدامه.
+    expect(() =>
+      cancelPurchaseInvoice({
+        purchase_id: first.purchaseId,
+        actor_id: 1,
+        reason: 'Test used overpayment',
+      }),
+    ).toThrow('زيادة الدفع الناتجة عنها استُخدمت');
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(10.62, 8);
+    expect(getCashMovementTotal('in')).toBe(1000000);
+
+    // إلغاء الفاتورة المستفيدة يعيد الرصيد.
+    cancelPurchaseInvoice({
+      purchase_id: second.purchaseId,
+      actor_id: 1,
+      reason: 'Release supplier credit',
+    });
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(-19.38, 8);
+
+    // أصبح إلغاء المصدر آمنًا.
+    const cancelled = cancelPurchaseInvoice({
+      purchase_id: first.purchaseId,
+      actor_id: 1,
+      reason: 'Cancel original overpayment',
+    });
+
+    expect(cancelled.reversed_cash).toBeCloseTo(100, 8);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(0, 8);
+
+    // الخزنة خرج منها 100 ورجع لها 100 فقط.
+    expect(getCashMovementTotal('out')).toBe(100);
+    expect(getCashMovementTotal('in')).toBe(1000100);
+
+    const credit = getDb()
+      .prepare(
+        `
+      SELECT cancelled_at
+      FROM supplier_account_credits
+      WHERE source_type = 'purchase_overpayment'
+        AND source_id = ?
+    `,
+      )
+      .get(first.purchaseId) as {
+      cancelled_at: string | null;
+    };
+
+    expect(credit.cancelled_at).not.toBeNull();
+  });
+
+  it('protects payment overpayment used by a later purchase', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    // مديونية 80.62.
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 80.62,
+        },
+      ],
+    });
+
+    // دفعنا 100، أصبح لنا 19.38.
+    const payment = recordSupplierPayment({
+      supplier_id: supplierId,
+      actor_id: 1,
+      amount: 100,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+    });
+
+    const second = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 30,
+        },
+      ],
+    });
+
+    expect(second.supplier_credit_applied).toBeCloseTo(19.38, 8);
+    expect(second.remaining_amount).toBeCloseTo(10.62, 8);
+    expect(getCashMovementTotal('out')).toBe(100);
+
+    // الرصيد مستخدم: لا يمكن إلغاء الدفعة.
+    expect(() =>
+      cancelSupplierPaymentBatch({
+        batch_id: payment.payment_batch_id,
+        actor_id: 1,
+        reason: 'Used overpayment',
+      }),
+    ).toThrow('رصيد زيادة الدفع استُخدم');
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(10.62, 8);
+    expect(getCashMovementTotal('in')).toBe(1000000);
+
+    // نلغي الفاتورة المستفيدة أولًا.
+    cancelPurchaseInvoice({
+      purchase_id: second.purchaseId,
+      actor_id: 1,
+      reason: 'Release payment credit',
+    });
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(-19.38, 8);
+
+    // الآن يمكن إلغاء الدفعة.
+    const cancelled = cancelSupplierPaymentBatch({
+      batch_id: payment.payment_batch_id,
+      actor_id: 1,
+      reason: 'Cancel unused overpayment',
+    });
+
+    expect(cancelled.success).toBe(true);
+    expect(cancelled.cancelled_cash_amount).toBe(100);
+
+    // تعود المديونية الأصلية.
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(80.62, 8);
+
+    // لا يوجد صرف أو رد نقدي مكرر.
+    expect(getCashMovementTotal('out')).toBe(100);
+    expect(getCashMovementTotal('in')).toBe(1000100);
+  });
 });

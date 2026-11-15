@@ -2546,6 +2546,7 @@ declare global {
         settle_full_balance?: boolean;
         payment_method?: string;
         notes?: string | null;
+        overpayment_to_credit?: boolean;
         items: Array<{
           variant_id: number;
           quantity: number;
@@ -2916,6 +2917,7 @@ declare global {
         amount: number;
         settle_full_balance?: boolean;
         payment_method?: string;
+        overpayment_to_credit?: boolean;
         notes?: string | null;
       }) => Promise<{
         ok: boolean;
@@ -2927,7 +2929,8 @@ declare global {
         rounding_adjustment: number;
 
         settle_full_balance: boolean;
-
+        overpayment_credit: number;
+        remaining_overpayment_credit: number;
         remaining_supplier_balance: number;
         shift_id?: number | null;
         allocations?: Array<{

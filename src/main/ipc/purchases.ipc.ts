@@ -155,7 +155,11 @@ function normalizePurchaseWriteInput(input: unknown) {
       PURCHASE_PAYMENT_METHODS,
       'طريقة دفع فاتورة الشراء',
     ),
-
+    overpayment_to_credit:
+      optionalBooleanValue(
+        payload.overpayment_to_credit,
+        'ترحيل زيادة دفع المورد',
+      ) ?? false,
     notes: optionalTrimmedString(payload.notes, 'ملاحظات فاتورة الشراء', 2000),
 
     items: normalizePurchaseItems(payload.items),
@@ -885,6 +889,12 @@ export function registerPurchasesIpc(): void {
 
       settle_full_balance: settleFullBalance,
 
+      overpayment_to_credit:
+        optionalBooleanValue(
+          payload.overpayment_to_credit,
+          'ترحيل زيادة دفع المورد',
+        ) ?? false,
+
       payment_method: paymentMethod,
 
       notes: optionalTrimmedString(payload.notes, 'ملاحظات دفعة المورد', 1000),
@@ -917,7 +927,8 @@ export function registerPurchasesIpc(): void {
 
           settle_full_balance: result.settle_full_balance,
           allocations: result.allocations,
-
+          overpayment_credit: result.overpayment_credit,
+          remaining_overpayment_credit: result.remaining_overpayment_credit,
           shift_id: result.shift_id,
         },
       }),
