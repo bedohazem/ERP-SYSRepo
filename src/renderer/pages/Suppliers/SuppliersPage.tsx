@@ -2100,6 +2100,18 @@ export default function SuppliersPage() {
                           <td style={statementTdStyle}>
                             <strong>{entry.title}</strong>
 
+                            {entry.created_by_name && (
+                              <div
+                                style={{
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                  marginTop: '4px',
+                                }}
+                              >
+                                سُجّل بواسطة: {entry.created_by_name}
+                              </div>
+                            )}
+
                             {entry.allocations_text && (
                               <div
                                 style={{
@@ -2605,8 +2617,9 @@ export default function SuppliersPage() {
               {balanceAction.kind === 'advance'
                 ? 'تعديل الدفعة المقدمة يعكس الحركة النقدية القديمة ويسجل المبلغ الصحيح.'
                 : 'تعديل الرصيد الافتتاحي لا ينشئ حركة نقدية أو مخزنية.'}{' '}
-              لو الرصيد مستخدم في فواتير أو تسويات، النظام هيمنع العملية لحماية
-              الحسابات.
+              يمكن تعديل المبلغ بعد استخدام جزء من الرصيد، بشرط ألا تقل القيمة
+              الجديدة عن المبلغ المستخدم بالفعل. الإلغاء الكامل يظل ممنوعًا حتى
+              تحرير كل التسويات المرتبطة.
             </div>
 
             <div

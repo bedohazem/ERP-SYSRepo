@@ -4906,6 +4906,32 @@ export function getPurchaseInvoice(purchaseId: number) {
     )
     .all(Number(purchaseId));
 
+  const originalCashRow = db
+    .prepare(
+      `
+      SELECT IFNULL(SUM(amount), 0) AS amount
+      FROM cash_movements
+      WHERE reference_type = 'purchase_invoice'
+        AND reference_id = ?
+        AND direction = 'out'
+        AND cancelled_at IS NULL
+    `,
+    )
+    .get(Number(purchaseId)) as { amount: number };
+
+  const purchaseOverpaymentRow = db
+    .prepare(
+      `
+      SELECT amount
+      FROM supplier_account_credits
+      WHERE source_type = 'purchase_overpayment'
+        AND source_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    )
+    .get(Number(purchaseId)) as { amount: number } | undefined;
+
   return {
     purchase,
     items,
@@ -4913,6 +4939,8 @@ export function getPurchaseInvoice(purchaseId: number) {
     returns,
     credit_allocations: creditAllocations,
     account_credit_allocations: accountCreditAllocations,
+    original_cash_out: Number(originalCashRow.amount || 0),
+    purchase_overpayment_credit: Number(purchaseOverpaymentRow?.amount || 0),
   };
 }
 
@@ -6979,9 +7007,12 @@ export function getSupplierStatement(
   const accountCredits = db
     .prepare(
       `
-    SELECT *
-    FROM supplier_account_credits
-    WHERE supplier_id = ?
+    SELECT
+      c.*,
+      creator.name AS created_by_name
+    FROM supplier_account_credits c
+    LEFT JOIN users creator ON creator.id = c.created_by
+    WHERE c.supplier_id = ?
     ORDER BY created_at DESC, id DESC
   `,
     )
@@ -6992,6 +7023,7 @@ export function getSupplierStatement(
     amount: number;
     notes: string | null;
     created_at: string;
+    created_by_name: string | null;
     cancelled_at: string | null;
   }>;
 
@@ -7014,6 +7046,7 @@ export function getSupplierStatement(
     notes: item.notes,
     cancelled_at: item.cancelled_at,
     created_at: item.created_at,
+    created_by_name: item.created_by_name,
   }));
 
   const batchPayments = new Map<number, any[]>();
@@ -7237,7 +7270,104 @@ export function getSupplierStatement(
     };
   });
 
+  const correctionRows = db
+    .prepare(
+      `
+    SELECT
+      al.id,
+      al.action,
+      al.details,
+      al.created_at,
+      COALESCE(u.name, u.username, 'غير محدد') AS actor_name
+    FROM activity_logs al
+    LEFT JOIN users u ON u.id = al.user_id
+    WHERE al.action IN (
+      'supplier_opening_balance_created',
+      'supplier_opening_balance_updated',
+      'supplier_opening_balance_cancelled',
+      'supplier_advance_created',
+      'supplier_advance_updated',
+      'supplier_advance_cancelled'
+    )
+    AND (
+      (
+        al.entity = 'suppliers'
+        AND al.entity_id = ?
+        AND al.action = 'supplier_opening_balance_created'
+      )
+      OR (
+        al.entity = 'purchase_invoices'
+        AND al.entity_id IN (
+          SELECT id FROM purchase_invoices
+          WHERE supplier_id = ?
+            AND payment_method = 'opening_balance'
+        )
+      )
+      OR (
+        al.entity = 'supplier_account_credits'
+        AND al.entity_id IN (
+          SELECT id FROM supplier_account_credits
+          WHERE supplier_id = ?
+        )
+      )
+    )
+    ORDER BY al.id DESC
+  `,
+    )
+    .all(id, id, id) as Array<{
+    id: number;
+    action: string;
+    details: string | null;
+    created_at: string;
+    actor_name: string;
+  }>;
+
+  const correctionEntries = correctionRows.map((row) => {
+    let info: Record<string, unknown> = {};
+
+    try {
+      const parsed = JSON.parse(row.details || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        info = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Legacy audit details may not be JSON.
+    }
+
+    const actionTitles: Record<string, string> = {
+      supplier_opening_balance_created: 'تسجيل رصيد افتتاحي',
+      supplier_opening_balance_updated: 'تعديل رصيد افتتاحي',
+      supplier_opening_balance_cancelled: 'إلغاء رصيد افتتاحي',
+      supplier_advance_created: 'تسجيل دفعة مقدمة',
+      supplier_advance_updated: 'تصحيح دفعة مقدمة',
+      supplier_advance_cancelled: 'إلغاء دفعة مقدمة',
+    };
+
+    const oldAmount = info.old_amount ?? info.cancelled_amount;
+    const newAmount = info.new_amount ?? info.amount;
+
+    const details = [
+      `بواسطة: ${row.actor_name}`,
+      oldAmount != null ? `القيمة السابقة: ${oldAmount} ج.م` : null,
+      newAmount != null ? `القيمة الجديدة: ${newAmount} ج.م` : null,
+      info.reason ? `السبب: ${String(info.reason)}` : null,
+    ].filter(Boolean);
+
+    return {
+      id: `supplier-correction-audit-${row.id}`,
+      type: 'supplier_correction_audit',
+      title: actionTitles[row.action] || 'تصحيح مالي للمورد',
+      debit: 0,
+      credit: 0,
+      purchase_id: null,
+      payment_method: null,
+      notes: details.join(' — '),
+      created_at: row.created_at,
+    };
+  });
+
   const entries = [
+    ...correctionEntries,
     ...creditUsageEntries,
     ...accountCreditEntries,
     ...purchases

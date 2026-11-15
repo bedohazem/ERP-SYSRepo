@@ -7084,6 +7084,11 @@ describe('purchases repository', () => {
       ],
     });
 
+    const details = getPurchaseInvoice(first.purchaseId) as any;
+
+    expect(details.original_cash_out).toBeCloseTo(100, 8);
+    expect(details.purchase_overpayment_credit).toBeCloseTo(19.38, 8);
+
     expect(first.rounding_adjustment).toBe(0);
     expect(getSupplierBalance(supplierId)).toBeCloseTo(-19.38, 8);
 

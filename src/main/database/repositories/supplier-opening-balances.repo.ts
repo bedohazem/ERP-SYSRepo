@@ -1,6 +1,14 @@
 import { getDb } from '../db';
-import { PRECISE_MONEY_EPSILON, roundFinancial } from '../../../shared/money';
-import { rebuildSupplierBalance } from './purchases.repo';
+import {
+  PRECISE_MONEY_EPSILON,
+  roundFinancial,
+  preciseSubtract,
+} from '../../../shared/money';
+
+import {
+  applyAvailableSupplierCreditToOpenPurchases,
+  rebuildSupplierBalance,
+} from './purchases.repo';
 
 export type SupplierOpeningBalanceInput = {
   supplier_id: number;
@@ -299,19 +307,48 @@ export function changeSupplierOpeningBalance(input: {
         )
         .get(id, id, id, id) as { count: number };
 
-      if (
+      const alreadyPaid = Number(row.paid_amount || 0);
+
+      if (editing) {
+        const returnRow = db
+          .prepare(
+            `
+            SELECT COUNT(*) AS count
+            FROM purchase_returns
+            WHERE purchase_id = ?
+          `,
+          )
+          .get(id) as { count: number };
+
+        if (returnRow.count > 0) {
+          throw new Error('لا يمكن تعديل الرصيد الافتتاحي المرتبط بمرتجع شراء');
+        }
+
+        if (amount + PRECISE_MONEY_EPSILON < alreadyPaid) {
+          throw new Error('المبلغ الجديد أقل من المبلغ المسدد بالفعل');
+        }
+      } else if (
         dependent.count > 0 ||
-        Math.abs(Number(row.paid_amount || 0)) > PRECISE_MONEY_EPSILON ||
+        Math.abs(alreadyPaid) > PRECISE_MONEY_EPSILON ||
         Math.abs(
           Number(row.remaining_amount || 0) - Number(row.total_amount || 0),
         ) > PRECISE_MONEY_EPSILON
       ) {
         throw new Error(
-          'لا يمكن تعديل أو إلغاء الرصيد الافتتاحي بعد استخدامه في دفعات أو تسويات',
+          'لا يمكن إلغاء رصيد افتتاحي تم استخدامه في دفعات أو تسويات',
         );
       }
 
       if (editing) {
+        const remaining = Math.max(0, preciseSubtract(amount, alreadyPaid));
+
+        const paymentStatus =
+          remaining <= PRECISE_MONEY_EPSILON
+            ? 'paid'
+            : alreadyPaid > PRECISE_MONEY_EPSILON
+              ? 'partial'
+              : 'unpaid';
+
         db.prepare(
           `
           UPDATE purchase_invoices
@@ -320,6 +357,7 @@ export function changeSupplierOpeningBalance(input: {
             exact_total_amount = ?,
             sub_total = ?,
             remaining_amount = ?,
+            payment_status = ?,
             notes = ?
           WHERE id = ?
         `,
@@ -327,7 +365,8 @@ export function changeSupplierOpeningBalance(input: {
           amount,
           amount,
           amount,
-          amount,
+          remaining,
+          paymentStatus,
           input.notes?.trim() || row.notes,
           id,
         );
@@ -385,10 +424,16 @@ export function changeSupplierOpeningBalance(input: {
         )
         .get(id) as { amount: number };
 
-      if (Number(allocated.amount || 0) > PRECISE_MONEY_EPSILON) {
+      const usedCredit = Number(allocated.amount || 0);
+
+      if (editing && amount + PRECISE_MONEY_EPSILON < usedCredit) {
         throw new Error(
-          'لا يمكن تعديل أو إلغاء رصيد افتتاحي مستخدم في فواتير شراء',
+          'المبلغ الجديد أقل من الرصيد المستخدم في فواتير الشراء',
         );
+      }
+
+      if (!editing && usedCredit > PRECISE_MONEY_EPSILON) {
+        throw new Error('لا يمكن إلغاء رصيد افتتاحي مستخدم في فواتير شراء');
       }
 
       if (editing) {
@@ -413,6 +458,10 @@ export function changeSupplierOpeningBalance(input: {
       }
     } else {
       throw new Error('نوع الرصيد الافتتاحي غير صحيح');
+    }
+
+    if (editing) {
+      applyAvailableSupplierCreditToOpenPurchases(db, supplierId);
     }
 
     const balance = rebuildSupplierBalance(db, supplierId);

@@ -142,7 +142,7 @@ const lookups: Record<string, PartyLookup> = {
 
   supplier_advance: supplierAdvance,
   supplier_advance_cancel: supplierAdvance,
-
+  supplier_advance_adjustment: supplierAdvance,
   customer_payment: customerBatch,
   customer_payment_cancel: customerBatch,
   customer_payment_update_reverse: customerBatch,

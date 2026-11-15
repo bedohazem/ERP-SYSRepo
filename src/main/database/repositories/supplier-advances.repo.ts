@@ -38,6 +38,42 @@ function validateMoney(value: number) {
   return roundFinancial(value);
 }
 
+function getAdvanceCashNet(db: ReturnType<typeof getDb>, advanceId: number) {
+  return db
+    .prepare(
+      `
+    SELECT
+      IFNULL(SUM(
+        CASE
+          WHEN reference_type = 'supplier_advance'
+            AND direction = 'out'
+          THEN 1
+          ELSE 0
+        END
+      ), 0) AS original_count,
+
+      IFNULL(SUM(
+        CASE
+          WHEN direction = 'out' THEN amount
+          WHEN direction = 'in' THEN -amount
+          ELSE 0
+        END
+      ), 0) AS net_amount
+    FROM cash_movements
+    WHERE reference_id = ?
+      AND reference_type IN (
+        'supplier_advance',
+        'supplier_advance_adjustment'
+      )
+      AND cancelled_at IS NULL
+  `,
+    )
+    .get(advanceId) as {
+    original_count: number;
+    net_amount: number;
+  };
+}
+
 export function createSupplierAdvancePayment(input: AdvanceInput) {
   const supplierId = input.supplier_id;
   const actorId = input.actor_id;
@@ -227,25 +263,13 @@ export function cancelSupplierAdvancePayment(input: {
       );
     }
 
-    const originalMovement = db
-      .prepare(
-        `
-      SELECT id, amount
-      FROM cash_movements
-      WHERE reference_type = 'supplier_advance'
-        AND reference_id = ?
-        AND direction = 'out'
-        AND cancelled_at IS NULL
-      LIMIT 1
-    `,
-      )
-      .get(advanceId) as { id: number; amount: number } | undefined;
+    const cashNet = getAdvanceCashNet(db, advanceId);
 
     if (
-      !originalMovement ||
-      Math.abs(originalMovement.amount - advance.amount) > PRECISE_MONEY_EPSILON
+      cashNet.original_count !== 1 ||
+      Math.abs(cashNet.net_amount - advance.amount) > PRECISE_MONEY_EPSILON
     ) {
-      throw new Error('حركة الدفعة المقدمة الأصلية غير متطابقة');
+      throw new Error('حركات الدفعة المقدمة غير متطابقة');
     }
 
     const paymentMethod = resolveCashAccount(advance.payment_method);
@@ -341,6 +365,100 @@ export function updateSupplierAdvancePayment(input: {
 
     if (!oldAdvance) {
       throw new Error('الدفعة المقدمة غير موجودة أو ملغاة');
+    }
+
+    const allocatedRow = db
+      .prepare(
+        `
+      SELECT IFNULL(SUM(amount), 0) AS amount
+      FROM supplier_account_credit_allocations
+      WHERE credit_id = ?
+        AND cancelled_at IS NULL
+    `,
+      )
+      .get(oldAdvance.id) as { amount: number };
+
+    const allocated = Number(allocatedRow.amount || 0);
+
+    if (allocated > PRECISE_MONEY_EPSILON) {
+      if (newAmount + PRECISE_MONEY_EPSILON < allocated) {
+        throw new Error(
+          'المبلغ الجديد أقل من الجزء المستخدم من الدفعة المقدمة',
+        );
+      }
+
+      const oldMethod = resolveCashAccount(oldAdvance.payment_method);
+      const newMethod = resolveCashAccount(input.payment_method);
+
+      if (oldMethod !== newMethod) {
+        throw new Error(
+          'لا يمكن تغيير الحساب المالي لدفعة مستخدمة؛ صحح المبلغ على نفس الحساب',
+        );
+      }
+
+      const cashNet = getAdvanceCashNet(db, oldAdvance.id);
+
+      if (
+        cashNet.original_count !== 1 ||
+        Math.abs(cashNet.net_amount - oldAdvance.amount) > PRECISE_MONEY_EPSILON
+      ) {
+        throw new Error('حركات الدفعة المقدمة غير متطابقة');
+      }
+
+      const difference = roundFinancial(
+        preciseSubtract(newAmount, oldAdvance.amount),
+      );
+
+      if (Math.abs(difference) > PRECISE_MONEY_EPSILON) {
+        const openShift = resolveFinancialOperationShift(
+          input.actor_id,
+          [oldMethod],
+          'لا يمكن تصحيح دفعة من درج المحل بدون شفت مفتوح',
+        );
+
+        const businessDate = resolveFinancialBusinessDate(
+          openShift?.id ?? null,
+        );
+
+        createCashMovement({
+          type: 'supplier_payment',
+          direction: difference > 0 ? 'out' : 'in',
+          amount: Math.abs(difference),
+          payment_method: oldMethod,
+          reference_type: 'supplier_advance_adjustment',
+          reference_id: oldAdvance.id,
+          notes: `تصحيح دفعة مقدمة #${oldAdvance.id}: ${reason}`,
+          created_by: input.actor_id,
+          business_date: businessDate,
+          shift_id: openShift?.id ?? null,
+        });
+      }
+
+      db.prepare(
+        `
+        UPDATE supplier_account_credits
+        SET amount = ?, notes = ?
+        WHERE id = ?
+          AND cancelled_at IS NULL
+      `,
+      ).run(newAmount, input.notes ?? oldAdvance.notes, oldAdvance.id);
+
+      applyAvailableSupplierCreditToOpenPurchases(db, oldAdvance.supplier_id);
+
+      const balance = rebuildSupplierBalance(db, oldAdvance.supplier_id);
+
+      return {
+        success: true,
+        replaced_advance_id: null,
+        advance_id: oldAdvance.id,
+        supplier_id: oldAdvance.supplier_id,
+        old_amount: oldAdvance.amount,
+        new_amount: newAmount,
+        old_payment_method: oldMethod,
+        new_payment_method: newMethod,
+        reason,
+        supplier_balance: balance,
+      };
     }
 
     // نعكس القديمة وننشئ المصححة في معاملة واحدة.

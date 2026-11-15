@@ -278,4 +278,92 @@ describe('supplier advances', () => {
 
     expect(getSupplierAccountAvailableCredit(getDb(), supplierId)).toBe(700);
   });
+
+  it('corrects a used advance by cash difference only', () => {
+    const { supplierId, actorId } = setup();
+    const db = getDb();
+
+    db.prepare(
+      `
+      INSERT INTO purchase_invoices (
+        supplier_id, total_amount, sub_total,
+        paid_amount, remaining_amount, payment_status
+      )
+      VALUES (?, 300, 300, 0, 300, 'unpaid')
+    `,
+    ).run(supplierId);
+
+    const advance = createSupplierAdvancePayment({
+      supplier_id: supplierId,
+      amount: 500,
+      payment_method: 'owner_cash',
+      actor_id: actorId,
+    });
+
+    expect(advance.allocated).toBe(300);
+    expect(advance.remaining_credit).toBe(200);
+
+    const edited = updateSupplierAdvancePayment({
+      advance_id: advance.id,
+      amount: 400,
+      payment_method: 'owner_cash',
+      reason: 'تصحيح مبلغ الدفعة',
+      actor_id: actorId,
+    });
+
+    expect(edited.advance_id).toBe(advance.id);
+    expect(edited.supplier_balance).toBeCloseTo(-100, 8);
+    expect(getSupplierAccountAvailableCredit(db, supplierId)).toBeCloseTo(
+      100,
+      8,
+    );
+
+    const cash = db
+      .prepare(
+        `
+      SELECT direction, amount
+      FROM cash_movements
+      WHERE reference_id = ?
+        AND reference_type IN (
+          'supplier_advance',
+          'supplier_advance_adjustment'
+        )
+      ORDER BY id
+    `,
+      )
+      .all(advance.id);
+
+    expect(cash).toEqual([
+      { direction: 'out', amount: 500 },
+      { direction: 'in', amount: 100 },
+    ]);
+
+    expect(() =>
+      updateSupplierAdvancePayment({
+        advance_id: advance.id,
+        amount: 250,
+        payment_method: 'owner_cash',
+        reason: 'مبلغ أقل من المستخدم',
+        actor_id: actorId,
+      }),
+    ).toThrow('أقل من الجزء المستخدم');
+
+    expect(() =>
+      cancelSupplierAdvancePayment({
+        advance_id: advance.id,
+        reason: 'إلغاء رصيد مستخدم',
+        actor_id: actorId,
+      }),
+    ).toThrow('رصيدها مستخدم');
+
+    const inventory = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count FROM stock_movements
+    `,
+      )
+      .get() as { count: number };
+
+    expect(inventory.count).toBe(0);
+  });
 });

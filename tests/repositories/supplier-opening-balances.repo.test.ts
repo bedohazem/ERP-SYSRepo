@@ -13,6 +13,11 @@ import {
   allocateSupplierAccountCreditToPurchase,
   releaseSupplierAccountCreditAllocations,
 } from '../../src/main/database/repositories/supplier-account-credits.repo';
+import {
+  applyAvailableSupplierCreditToOpenPurchases,
+  rebuildSupplierBalance,
+  recordSupplierPayment,
+} from '../../src/main/database/repositories/purchases.repo';
 
 function makeSupplier() {
   return createSupplier({
@@ -321,5 +326,134 @@ describe('supplier opening balances', () => {
       .get() as { count: number };
 
     expect(cash.count).toBe(0);
+  });
+
+  it('corrects a partially paid opening payable without reversing payments', () => {
+    const supplier = makeSupplier();
+    const db = getDb();
+
+    const opening = createSupplierOpeningBalance({
+      supplier_id: supplier.id,
+      direction: 'payable',
+      amount: 500,
+      notes: 'رصيد سابق',
+    });
+
+    db.prepare(
+      `
+      INSERT INTO cash_movements (
+        type, direction, amount, payment_method
+      )
+      VALUES ('deposit', 'in', 1000, 'owner_cash')
+    `,
+    ).run();
+
+    recordSupplierPayment({
+      supplier_id: supplier.id,
+      purchase_id: opening.id,
+      amount: 200,
+      payment_method: 'owner_cash',
+      actor_id: 1,
+    });
+
+    const edited = changeSupplierOpeningBalance({
+      opening_id: opening.id,
+      direction: 'payable',
+      mode: 'edit',
+      amount: 450,
+      reason: 'تصحيح مستحق سابق',
+      actor_id: 1,
+    });
+
+    expect(edited.balance).toBeCloseTo(250, 8);
+
+    const invoice = db
+      .prepare(
+        `
+      SELECT total_amount, paid_amount, remaining_amount
+      FROM purchase_invoices WHERE id = ?
+    `,
+      )
+      .get(opening.id) as {
+      total_amount: number;
+      paid_amount: number;
+      remaining_amount: number;
+    };
+
+    expect(invoice.total_amount).toBe(450);
+    expect(invoice.paid_amount).toBe(200);
+    expect(invoice.remaining_amount).toBe(250);
+
+    expect(() =>
+      changeSupplierOpeningBalance({
+        opening_id: opening.id,
+        direction: 'payable',
+        mode: 'edit',
+        amount: 150,
+        reason: 'تعديل أقل من المسدد',
+        actor_id: 1,
+      }),
+    ).toThrow('أقل من المبلغ المسدد');
+
+    expect(() =>
+      changeSupplierOpeningBalance({
+        opening_id: opening.id,
+        direction: 'payable',
+        mode: 'cancel',
+        reason: 'إلغاء رصيد مستخدم',
+        actor_id: 1,
+      }),
+    ).toThrow('لا يمكن إلغاء');
+  });
+
+  it('corrects used opening credit without invalidating allocations', () => {
+    const supplier = makeSupplier();
+    const db = getDb();
+
+    const opening = createSupplierOpeningBalance({
+      supplier_id: supplier.id,
+      direction: 'receivable',
+      amount: 500,
+      notes: 'رصيد لصالحنا',
+    });
+
+    db.prepare(
+      `
+      INSERT INTO purchase_invoices (
+        supplier_id, total_amount, sub_total,
+        paid_amount, remaining_amount, payment_status
+      )
+      VALUES (?, 300, 300, 0, 300, 'unpaid')
+    `,
+    ).run(supplier.id);
+
+    applyAvailableSupplierCreditToOpenPurchases(db, supplier.id);
+    rebuildSupplierBalance(db, supplier.id);
+
+    const result = changeSupplierOpeningBalance({
+      opening_id: opening.id,
+      direction: 'receivable',
+      mode: 'edit',
+      amount: 400,
+      reason: 'تصحيح رصيد سابق',
+      actor_id: 1,
+    });
+
+    expect(result.balance).toBeCloseTo(-100, 8);
+    expect(getSupplierAccountAvailableCredit(db, supplier.id)).toBeCloseTo(
+      100,
+      8,
+    );
+
+    expect(() =>
+      changeSupplierOpeningBalance({
+        opening_id: opening.id,
+        direction: 'receivable',
+        mode: 'edit',
+        amount: 200,
+        reason: 'أقل من المستخدم',
+        actor_id: 1,
+      }),
+    ).toThrow('أقل من الرصيد المستخدم');
   });
 });

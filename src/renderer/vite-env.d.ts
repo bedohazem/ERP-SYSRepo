@@ -2549,7 +2549,7 @@ declare global {
         reason: string;
       }) => Promise<{
         success: boolean;
-        replaced_advance_id: number;
+        replaced_advance_id: number | null;
         advance_id: number;
         supplier_id: number;
         old_amount: number;

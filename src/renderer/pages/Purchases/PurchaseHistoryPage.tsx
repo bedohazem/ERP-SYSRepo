@@ -1643,6 +1643,16 @@ export default function PurchaseHistoryPage() {
               />
 
               <InfoCard
+                title="الخارج الفعلي وقت تسجيل الفاتورة"
+                value={money(selectedPurchase.original_cash_out || 0)}
+              />
+
+              <InfoCard
+                title="زيادة الدفع المُرحّلة لرصيد المورد"
+                value={money(selectedPurchase.purchase_overpayment_credit || 0)}
+              />
+
+              <InfoCard
                 title="المتبقي"
                 value={money(selectedPurchase.purchase.remaining_amount)}
               />
