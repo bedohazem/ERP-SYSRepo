@@ -1001,6 +1001,13 @@ export default function PurchasesPage() {
       return;
     }
 
+    if (!isEditing && purchaseOverpayment > 0 && totalAmount <= 0) {
+      showMessage(
+        'الفاتورة قيمتها صفر؛ سجل المبلغ كدفعة مقدمة من شاشة الموردين',
+      );
+      return;
+    }
+
     if (isEditing && !editReason.trim()) {
       showMessage('اكتب سبب تعديل الفاتورة');
       return;

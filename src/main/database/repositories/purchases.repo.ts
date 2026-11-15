@@ -1044,6 +1044,12 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       ? normalizePreciseZero(preciseSubtract(cashPaidAmount, totalAmount))
       : 0;
 
+    if (overpaymentToCredit && !hasPositivePreciseAmount(totalAmount)) {
+      throw new Error(
+        'لا يمكن ترحيل زيادة الدفع على فاتورة قيمتها صفر؛ استخدم دفعة مقدمة للمورد',
+      );
+    }
+
     if (
       overpaymentToCredit &&
       (settleFullBalance || !hasPositivePreciseAmount(supplierOverpayment))

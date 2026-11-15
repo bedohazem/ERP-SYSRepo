@@ -7245,4 +7245,55 @@ describe('purchases repository', () => {
     expect(getCashMovementTotal('out')).toBe(100);
     expect(getCashMovementTotal('in')).toBe(1000100);
   });
+
+  it('rejects overpayment on a zero-value purchase without creating phantom credit', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    expect(() =>
+      createPurchaseInvoice({
+        supplier_id: supplierId,
+        actor_id: 1,
+        paid_amount: 100,
+        payment_method: 'store_cash',
+        overpayment_to_credit: true,
+        discount_type: 'percent',
+        discount_input: 100,
+        items: [
+          {
+            variant_id: variant.variant_id,
+            quantity: 1,
+            unit_cost: 100,
+          },
+        ],
+      }),
+    ).toThrow('لا يمكن ترحيل زيادة الدفع على فاتورة قيمتها صفر');
+
+    const db = getDb();
+
+    const credits = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+      FROM supplier_account_credits
+      WHERE supplier_id = ?
+    `,
+      )
+      .get(supplierId) as { count: number };
+
+    const purchases = db
+      .prepare(
+        `
+      SELECT COUNT(*) AS count
+      FROM purchase_invoices
+      WHERE supplier_id = ?
+    `,
+      )
+      .get(supplierId) as { count: number };
+
+    expect(credits.count).toBe(0);
+    expect(purchases.count).toBe(0);
+    expect(getSupplierBalance(supplierId)).toBe(0);
+    expect(getCashMovementTotal('out')).toBe(0);
+  });
 });
