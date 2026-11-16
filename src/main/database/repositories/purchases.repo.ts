@@ -4909,11 +4909,28 @@ export function getPurchaseInvoice(purchaseId: number) {
   const originalCashRow = db
     .prepare(
       `
-      SELECT IFNULL(SUM(amount), 0) AS amount
+      SELECT IFNULL(SUM(
+        CASE
+          WHEN reference_type = 'purchase_invoice'
+            AND direction = 'out'
+          THEN amount
+
+          WHEN reference_type IN (
+            'purchase_edit_reversal',
+            'purchase_cancel'
+          ) AND direction = 'in'
+          THEN -amount
+
+          ELSE 0
+        END
+      ), 0) AS amount
       FROM cash_movements
-      WHERE reference_type = 'purchase_invoice'
-        AND reference_id = ?
-        AND direction = 'out'
+      WHERE reference_id = ?
+        AND reference_type IN (
+          'purchase_invoice',
+          'purchase_edit_reversal',
+          'purchase_cancel'
+        )
         AND cancelled_at IS NULL
     `,
     )

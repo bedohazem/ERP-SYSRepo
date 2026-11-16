@@ -1643,7 +1643,7 @@ export default function PurchaseHistoryPage() {
               />
 
               <InfoCard
-                title="الخارج الفعلي وقت تسجيل الفاتورة"
+                title="صافي النقدية للفاتورة (الإنشاء والتعديل)"
                 value={money(selectedPurchase.original_cash_out || 0)}
               />
 

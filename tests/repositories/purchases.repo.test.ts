@@ -7361,4 +7361,65 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBeCloseTo(10.62, 8);
     expect(getCashMovementTotal('out')).toBe(100);
   });
+
+  it('shows net invoice cash after edits and cancellation without double counting', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 100,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(
+      (getPurchaseInvoice(purchase.purchaseId) as any).original_cash_out,
+    ).toBe(100);
+
+    updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+      actor_id: 1,
+      reason: 'تصحيح الدفعة النقدية',
+      supplier_id: supplierId,
+      sub_total: 100,
+      discount_type: 'amount',
+      discount_input: 0,
+      discount_value: 0,
+      paid_amount: 20,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const afterEdit = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(afterEdit.original_cash_out).toBeCloseTo(20, 8);
+    expect(afterEdit.purchase.paid_amount).toBeCloseTo(20, 8);
+    expect(afterEdit.purchase.remaining_amount).toBeCloseTo(80, 8);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(80, 8);
+
+    cancelPurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+      actor_id: 1,
+      reason: 'إلغاء فاتورة اختبارية',
+    });
+
+    const afterCancel = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(afterCancel.original_cash_out).toBeCloseTo(0, 8);
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(0, 8);
+  });
 });
