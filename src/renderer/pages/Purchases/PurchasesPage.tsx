@@ -1558,6 +1558,7 @@ export default function PurchasesPage() {
               gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
               gap: '12px',
               direction: 'rtl',
+              alignItems: 'start',
             }}
           >
             <div style={fieldStyle}>
@@ -1641,75 +1642,104 @@ export default function PurchasesPage() {
               />
             </div>
 
-            <div style={fieldStyle}>
+            <div style={{ ...fieldStyle, minWidth: 0 }}>
               <label style={labelStyle}>المدفوع الآن</label>
-              <input
-                type="number"
-                readOnly={settleFullInvoice}
-                step={1}
-                min={0}
-                value={settleFullInvoice ? String(cashPaidAmount) : paidAmount}
-                onChange={(e) => setPaidAmount(e.target.value)}
-                style={inputStyle}
-              />
-            </div>
 
-            {purchaseOverpayment > 0 && (
               <div
                 style={{
-                  color: '#6ee7b7',
-                  fontSize: '13px',
-                  fontWeight: 800,
-                  marginTop: '8px',
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) 115px',
+                  alignItems: 'center',
+                  gap: '8px',
+                  minWidth: 0,
                 }}
               >
-                سيتم ترحيل {formatPreciseMoney(purchaseOverpayment)} رصيدًا
-                لصالحنا عند المورد.
-              </div>
-            )}
-
-            <label
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                cursor: 'pointer',
-                fontWeight: 800,
-              }}
-            >
-              <input
-                type="checkbox"
-
-                checked={settleFullInvoice}
-
-                onChange={(e) => {
-                  const checked = e.target.checked;
-
-                  setSettleFullInvoice(checked);
-
-                  if (checked) {
-                    setPaidAmount(String(roundMoney(totalAmount)));
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  readOnly={settleFullInvoice}
+                  value={
+                    settleFullInvoice ? String(cashPaidAmount) : paidAmount
                   }
-                }}
-              />
-              تسوية كامل الفاتورة
-            </label>
+                  onChange={(e) => setPaidAmount(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    minWidth: 0,
+                    width: '100%',
+                    boxSizing: 'border-box',
+                  }}
+                />
 
-            {settleFullInvoice && (
-              <div
-                style={{
-                  color: '#94a3b8',
-                  fontSize: '12px',
-                  lineHeight: 1.7,
-                }}
-              >
-                سيتم إقفال {formatPreciseMoney(totalAmount)}
-                {' — '}
-                الدفع الفعلي {formatPreciseMoney(cashPaidAmount)}
-                {' — '}
-                فرق التسوية {formatPreciseMoney(roundingAdjustment)}
+                <select
+                  aria-label="طريقة سداد فاتورة الشراء"
+                  value={settleFullInvoice ? 'full' : 'manual'}
+                  onChange={(e) => {
+                    const checked = e.target.value === 'full';
+
+                    setSettleFullInvoice(checked);
+
+                    if (checked) {
+                      setPaidAmount(String(roundMoney(totalAmount)));
+                    }
+                  }}
+                  style={{
+                    ...inputStyle,
+                    minWidth: 0,
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    padding: '0 6px',
+                    color: settleFullInvoice ? '#6ee7b7' : '#cbd5e1',
+                    borderColor: settleFullInvoice
+                      ? 'rgba(110,231,183,0.35)'
+                      : 'rgba(148,163,184,0.18)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="manual">دفع عادي</option>
+                  <option value="full">تسوية كاملة</option>
+                </select>
               </div>
-            )}
+
+              {settleFullInvoice && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '3px 10px',
+                    marginTop: '4px',
+                    fontSize: '11px',
+                    lineHeight: 1.6,
+                    color: '#94a3b8',
+                  }}
+                >
+                  <span>إقفال: {formatPreciseMoney(totalAmount)}</span>
+
+                  <span>
+                    فرق التسوية:{' '}
+                    <strong style={{ color: '#fbbf24' }}>
+                      {formatPreciseMoney(roundingAdjustment)}
+                    </strong>
+                  </span>
+                </div>
+              )}
+
+              {purchaseOverpayment > 0 && (
+                <div
+                  style={{
+                    color: '#6ee7b7',
+                    fontSize: '13px',
+                    fontWeight: 800,
+                    marginTop: '8px',
+                  }}
+                >
+                  سيتم ترحيل {formatPreciseMoney(purchaseOverpayment)} رصيدًا
+                  لصالحنا عند المورد.
+                </div>
+              )}
+            </div>
 
             <div style={fieldStyle}>
               <label style={labelStyle}>المتبقي للمورد</label>
