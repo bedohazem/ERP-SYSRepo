@@ -1,4 +1,5 @@
 import { getDb } from '../db';
+import { getSupplierFinancialTraces } from './supplier-financial-trace.repo';
 import {
   getSupplierAgingSummary,
   getSupplierDueSummary,
@@ -7519,6 +7520,7 @@ export function getSupplierStatement(
     returns,
     entries,
     account_credits: accountCredits,
+    financial_traces: getSupplierFinancialTraces(id),
     summary: {
       total_purchased: Number(supplier.total_purchased || 0),
 

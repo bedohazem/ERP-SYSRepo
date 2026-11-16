@@ -86,6 +86,9 @@ export default function SuppliersPage() {
   const [message, setMessage] = useState('');
 
   const [statementData, setStatementData] = useState<any | null>(null);
+  const [financialTraceKey, setFinancialTraceKey] = useState<string | null>(
+    null,
+  );
   const [openingSupplier, setOpeningSupplier] = useState<Supplier | null>(null);
 
   const [openingDirection, setOpeningDirection] = useState<
@@ -1366,6 +1369,10 @@ export default function SuppliersPage() {
     return `${match[3]}/${match[2]}/${match[1]}`;
   }
 
+  const selectedFinancialTrace = (statementData?.financial_traces ?? []).find(
+    (item: any) => item.key === financialTraceKey,
+  );
+
   return (
     <div
       style={{
@@ -2100,6 +2107,28 @@ export default function SuppliersPage() {
                           <td style={statementTdStyle}>
                             <strong>{entry.title}</strong>
 
+                            {((entry.type === 'supplier_account_credit' &&
+                              entry.account_credit_id) ||
+                              (entry.type === 'payment' && entry.batch_id)) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFinancialTraceKey(
+                                    entry.type === 'supplier_account_credit'
+                                      ? `credit-${entry.account_credit_id}`
+                                      : `payment-${entry.batch_id}`,
+                                  )
+                                }
+                                style={{
+                                  ...smallButtonStyle,
+                                  display: 'block',
+                                  marginTop: '7px',
+                                }}
+                              >
+                                سجل الحركة المالي
+                              </button>
+                            )}
+
                             {entry.created_by_name && (
                               <div
                                 style={{
@@ -2217,6 +2246,185 @@ export default function SuppliersPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {financialTraceKey && (
+        <div
+          className="theme-modal-overlay"
+          style={{ ...modalOverlayStyle, zIndex: 1000002 }}
+        >
+          <div
+            className="theme-modal-card"
+            role="dialog"
+            aria-label="سجل تتبع الحركة المالية"
+            style={{
+              ...modalStyle,
+              width: 'min(740px, calc(100vw - 24px))',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              direction: 'rtl',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+              }}
+            >
+              <h3 style={{ margin: 0 }}>سجل تتبع الحركة المالية</h3>
+              <button
+                type="button"
+                style={secondaryButtonStyle}
+                onClick={() => setFinancialTraceKey(null)}
+              >
+                إغلاق
+              </button>
+            </div>
+
+            {selectedFinancialTrace ? (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '15px',
+                  marginTop: '18px',
+                  lineHeight: 1.9,
+                }}
+              >
+                <div>
+                  <strong>{selectedFinancialTrace.title}</strong>
+                  <div>
+                    القيمة المحاسبية الحالية:{' '}
+                    {money(selectedFinancialTrace.amount)}
+                  </div>
+                  {selectedFinancialTrace.cash_amount != null && (
+                    <div>
+                      النقدية الأصلية للدفعة:{' '}
+                      {money(selectedFinancialTrace.cash_amount)}
+                    </div>
+                  )}
+                  <div>
+                    الحساب المالي:{' '}
+                    {paymentMethodLabel(selectedFinancialTrace.payment_method)}
+                  </div>
+                  <div>
+                    تاريخ الإنشاء:{' '}
+                    {formatDate(selectedFinancialTrace.created_at)}
+                  </div>
+                  <div>
+                    سجّلها:{' '}
+                    {selectedFinancialTrace.created_by_name || 'غير محدد'}
+                  </div>
+                  <div>
+                    الحالة:{' '}
+                    {selectedFinancialTrace.cancelled_at
+                      ? 'ملغاة / مستبدلة'
+                      : 'فعالة'}
+                  </div>
+                  {selectedFinancialTrace.cancelled_at && (
+                    <div>
+                      تاريخ الإلغاء أو الاستبدال:{' '}
+                      {formatDate(selectedFinancialTrace.cancelled_at)}
+                      {' — '}بواسطة:{' '}
+                      {selectedFinancialTrace.cancelled_by_name || 'غير محدد'}
+                      {selectedFinancialTrace.cancel_reason
+                        ? ` — السبب: ${selectedFinancialTrace.cancel_reason}`
+                        : ''}
+                    </div>
+                  )}
+                  {selectedFinancialTrace.replacement_batch_id && (
+                    <div>
+                      رقم الدفعة البديلة: #
+                      {selectedFinancialTrace.replacement_batch_id}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <strong>الفواتير المرتبطة والتسويات</strong>
+                  {selectedFinancialTrace.allocations.length ? (
+                    selectedFinancialTrace.allocations.map((item: any) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.08)',
+                          padding: '7px 0',
+                        }}
+                      >
+                        فاتورة #{item.purchase_id}: {money(item.amount)}
+                        {' — '}
+                        {formatDate(item.created_at)}
+                        {' — '}
+                        {item.cancelled_at ? 'تسوية معكوسة' : 'تسوية مسجلة'}
+                      </div>
+                    ))
+                  ) : (
+                    <div>لا توجد تسويات على فواتير.</div>
+                  )}
+                </div>
+
+                <div>
+                  <strong>حركة النقدية الفعلية</strong>
+                  {selectedFinancialTrace.cash_movements.length ? (
+                    selectedFinancialTrace.cash_movements.map((item: any) => (
+                      <div
+                        key={item.id}
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.08)',
+                          padding: '7px 0',
+                        }}
+                      >
+                        {item.direction === 'out' ? 'خارج' : 'داخل'}:{' '}
+                        {money(item.amount)}
+                        {' — '}
+                        {paymentMethodLabel(item.payment_method)}
+                        {' — '}
+                        {formatDate(item.created_at)}
+                        {' — '}
+                        {item.actor_name || 'غير محدد'}
+                      </div>
+                    ))
+                  ) : (
+                    <div>لا توجد حركة نقدية مباشرة مرتبطة بهذا الرصيد.</div>
+                  )}
+                </div>
+
+                <div>
+                  <strong>سجل الإنشاء والتعديلات والإلغاء</strong>
+                  {selectedFinancialTrace.events.length ? (
+                    selectedFinancialTrace.events.map((event: any) => (
+                      <div
+                        key={event.id}
+                        style={{
+                          borderTop: '1px solid rgba(255,255,255,0.08)',
+                          padding: '7px 0',
+                        }}
+                      >
+                        <strong>{event.title}</strong>
+                        {' — '}
+                        {formatDate(event.created_at)}
+                        {' — '}
+                        {event.actor_name || 'غير محدد'}
+                        {event.old_amount != null
+                          ? ` — قبل: ${money(event.old_amount)}`
+                          : ''}
+                        {event.new_amount != null
+                          ? ` — بعد: ${money(event.new_amount)}`
+                          : ''}
+                        {event.reason ? ` — السبب: ${event.reason}` : ''}
+                      </div>
+                    ))
+                  ) : (
+                    <div>لا توجد أحداث مراجعة إضافية مسجلة.</div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p>لم يتم العثور على سجل هذه العملية.</p>
+            )}
           </div>
         </div>
       )}
