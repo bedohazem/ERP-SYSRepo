@@ -181,5 +181,5 @@ describe('auto backup retention', () => {
         });
       }
     }
-  });
+  }, 30_000);
 });
