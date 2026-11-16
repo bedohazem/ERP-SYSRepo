@@ -1209,8 +1209,14 @@ export default function SuppliersPage() {
 
         return;
       }
-    } else if (!paymentActionReason.trim()) {
-      showMessage('سبب الإلغاء مطلوب');
+    }
+
+    if (!paymentActionReason.trim()) {
+      showMessage(
+        paymentAction.mode === 'edit'
+          ? 'سبب تعديل دفعة المورد مطلوب'
+          : 'سبب الإلغاء مطلوب',
+      );
       return;
     }
 
@@ -1232,6 +1238,7 @@ export default function SuppliersPage() {
               payment_method: paymentActionMethod,
 
               notes: paymentActionNotes.trim() || null,
+              reason: paymentActionReason.trim(),
               admin_password: paymentActionRequirePassword
                 ? paymentActionPassword
                 : undefined,
@@ -2606,6 +2613,22 @@ export default function SuppliersPage() {
                     onChange={(e) => setPaymentActionNotes(e.target.value)}
                     placeholder="ملاحظات الدفعة"
                     style={inputStyle}
+                  />
+                </div>
+
+                <div style={fieldStyle}>
+                  <label style={labelStyle}>سبب التعديل *</label>
+
+                  <textarea
+                    value={paymentActionReason}
+                    onChange={(e) => setPaymentActionReason(e.target.value)}
+                    placeholder="وضح سبب تعديل الدفعة"
+                    maxLength={500}
+                    style={{
+                      ...inputStyle,
+                      minHeight: '90px',
+                      resize: 'vertical',
+                    }}
                   />
                 </div>
               </div>

@@ -3008,6 +3008,7 @@ declare global {
         settle_full_balance?: boolean;
         payment_method?: string;
         notes?: string | null;
+        reason: string;
         admin_password?: string;
       }) => Promise<{
         success: boolean;

@@ -30,6 +30,7 @@ import {
   requireObjectInput,
   requirePositiveInteger,
   requirePositiveMoney,
+  requireTrimmedString,
   optionalNonNegativeInteger,
   requirePositiveNumber,
   optionalBooleanValue,
@@ -1031,6 +1032,12 @@ export function registerPurchasesIpc(): void {
         'رقم دفعة المورد',
       );
 
+      const reason = requireTrimmedString(
+        payload.reason,
+        'سبب تعديل دفعة المورد',
+        500,
+      );
+
       const adminPassword = optionalStringValue(
         payload.admin_password,
         'كلمة مرور المدير',
@@ -1089,6 +1096,7 @@ export function registerPurchasesIpc(): void {
 
           details: {
             supplier_id: result.supplier_id,
+            reason,
 
             replacement_batch_id: result.batch_id,
 
