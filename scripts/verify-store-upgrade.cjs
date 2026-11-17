@@ -41,11 +41,16 @@ function openReadOnly(file) {
 }
 
 function latestMigration(db) {
-  const exists = db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
-  ).get();
+  const exists = db
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
+    )
+    .get();
   if (!exists) return 0;
-  return Number(db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get().version || 0);
+  return Number(
+    db.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()
+      .version || 0,
+  );
 }
 
 function snapshot(db) {
@@ -57,13 +62,18 @@ function snapshot(db) {
     stop(`SQLite foreign_key_check found ${foreignKeyErrors.length} problems`);
   }
 
-  const tables = db.prepare(`
+  const tables = db
+    .prepare(
+      `
     SELECT name FROM sqlite_master
     WHERE type = 'table'
       AND name NOT LIKE 'sqlite_%'
       AND name <> 'schema_migrations'
     ORDER BY name
-  `).all().map(row => row.name);
+  `,
+    )
+    .all()
+    .map((row) => row.name);
 
   const result = {};
   for (const table of tables) {
@@ -84,7 +94,9 @@ function snapshot(db) {
 async function main() {
   const [mode, sourceArg, rootArg] = process.argv.slice(2);
   if (!['prepare', 'verify'].includes(mode) || !sourceArg || !rootArg) {
-    stop('Usage: node scripts/verify-store-upgrade.cjs prepare|verify "PATH_TO_STORE_ERP.DB" "ISOLATED_TEST_DIR"');
+    stop(
+      'Usage: node scripts/verify-store-upgrade.cjs prepare|verify "PATH_TO_STORE_ERP.DB" "ISOLATED_TEST_DIR"',
+    );
   }
 
   const source = path.resolve(sourceArg);
@@ -95,7 +107,10 @@ async function main() {
   if (!fs.existsSync(source) || !fs.statSync(source).isFile()) {
     stop('Original database not found. Verify the store database path.');
   }
-  if (rootLower === liveDirectory || rootLower.startsWith(liveDirectory + path.sep)) {
+  if (
+    rootLower === liveDirectory ||
+    rootLower.startsWith(liveDirectory + path.sep)
+  ) {
     stop('Test directory must be OUTSIDE the live ERP userData directory.');
   }
 
@@ -105,7 +120,9 @@ async function main() {
   const manifestPath = path.join(root, 'baseline.json');
 
   if (mode === 'prepare') {
-    if ([beforePath, isolatedDb, manifestPath].some(file => fs.existsSync(file))) {
+    if (
+      [beforePath, isolatedDb, manifestPath].some((file) => fs.existsSync(file))
+    ) {
       stop('Test files already exist. Use a NEW isolated test directory.');
     }
 
@@ -121,7 +138,9 @@ async function main() {
 
     const originalHashAfter = sha256File(source);
     if (originalHash !== originalHashAfter) {
-      stop('Live database file changed during backup. Stop the store app and start again with a new test folder.');
+      stop(
+        'Live database file changed during backup. Stop the store app and start again with a new test folder.',
+      );
     }
 
     fs.copyFileSync(beforePath, isolatedDb, fs.constants.COPYFILE_EXCL);
@@ -132,24 +151,40 @@ async function main() {
     } finally {
       beforeDb.close();
     }
-    fs.writeFileSync(manifestPath, JSON.stringify({
-      sourcePath: source,
-      sourceSha256: originalHash,
-      createdAt: new Date().toISOString(),
-      ...baseline
-    }, null, 2));
+    fs.writeFileSync(
+      manifestPath,
+      JSON.stringify(
+        {
+          sourcePath: source,
+          sourceSha256: originalHash,
+          createdAt: new Date().toISOString(),
+          ...baseline,
+        },
+        null,
+        2,
+      ),
+    );
 
     console.log('PASS: Consistent SQLite backup created.');
     console.log('Source opened READ-ONLY. Original SHA256:', originalHash);
     console.log('Starting schema version:', baseline.version);
-    console.log('Existing tables captured:', Object.keys(baseline.tables).length);
+    console.log(
+      'Existing tables captured:',
+      Object.keys(baseline.tables).length,
+    );
     console.log('Isolated userData folder:', isolatedDir);
     console.log('Test root (KEEP for audit):', root);
-    console.log('NEXT: Run the NEW ERP Electron E2E mode with ERP_E2E_USER_DATA_DIR pointing to this isolated userData folder.');
+    console.log(
+      'NEXT: Run the NEW ERP Electron E2E mode with ERP_E2E_USER_DATA_DIR pointing to this isolated userData folder.',
+    );
     return;
   }
 
-  if (!fs.existsSync(manifestPath) || !fs.existsSync(beforePath) || !fs.existsSync(isolatedDb)) {
+  if (
+    !fs.existsSync(manifestPath) ||
+    !fs.existsSync(beforePath) ||
+    !fs.existsSync(isolatedDb)
+  ) {
     stop('Missing baseline/test database. Run prepare first.');
   }
 
@@ -158,7 +193,9 @@ async function main() {
     stop('Source path does not match the originally backed-up database.');
   }
   if (sha256File(source) !== baseline.sourceSha256) {
-    stop('Original store DB file SHA256 changed since prepare. Investigate before approval.');
+    stop(
+      'Original store DB file SHA256 changed since prepare. Investigate before approval.',
+    );
   }
 
   const testDb = openReadOnly(isolatedDb);
@@ -175,33 +212,49 @@ async function main() {
     if (!now) {
       changed.push(`${table}: table missing after upgrade`);
     } else if (before.rows !== now.rows || before.sha256 !== now.sha256) {
-      changed.push(`${table}: ${before.rows} -> ${now.rows} rows; original content changed`);
+      changed.push(
+        `${table}: ${before.rows} -> ${now.rows} rows; original content changed`,
+      );
     }
   }
 
   console.log('Original DB remains unchanged: PASS');
   console.log(`Version: ${baseline.version} -> ${after.version}`);
-  console.log('Original data tables compared:', Object.keys(baseline.tables).length);
+  console.log(
+    'Original data tables compared:',
+    Object.keys(baseline.tables).length,
+  );
   console.log('SQLite integrity_check: PASS');
   console.log('SQLite foreign_key_check: PASS');
 
   if (after.version < 42) changed.push('Migration 42 not applied');
-  if (after.version < baseline.version) changed.push('Database version went backwards');
+  if (after.version < baseline.version)
+    changed.push('Database version went backwards');
 
   if (changed.length) {
     for (const item of changed) console.error('MISMATCH:', item);
-    console.error('NOT APPROVED. Do NOT update the store. Keep the test directory for investigation:', root);
+    console.error(
+      'NOT APPROVED. Do NOT update the store. Keep the test directory for investigation:',
+      root,
+    );
     process.exitCode = 1;
   } else {
-    console.log('PASS: Every pre-existing data table has identical rows/content after opening the copied DB with the new ERP code.');
+    console.log(
+      'PASS: Every pre-existing data table has identical rows/content after opening the copied DB with the new ERP code.',
+    );
     if (baseline.version >= after.version) {
-      console.log('WARNING: The backup was already on the same schema version; this verifies preservation, NOT a historical-version migration.');
+      console.log(
+        'WARNING: The backup was already on the same schema version; this verifies preservation, NOT a historical-version migration.',
+      );
     }
-    console.log('Keep test directory for further manual acceptance checks:', root);
+    console.log(
+      'Keep test directory for further manual acceptance checks:',
+      root,
+    );
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error('Upgrade audit stopped:', err.message);
   process.exitCode = 1;
 });
