@@ -23,6 +23,8 @@ import {
 } from '../../utils/draft-storage';
 import SelectedProductSummary from '../../components/SelectedProductSummary';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 type SaleVariant = {
   variant_id: number;
   product_id: number;
@@ -49,6 +51,9 @@ type Category = {
 
 type CartItem = SaleVariant & {
   quantity: number;
+  catalog_available?: boolean;
+  catalog_current_price?: number;
+  original_sale_item?: boolean;
 };
 
 type ActivePromotion = {
@@ -649,6 +654,8 @@ export default function SalesPage() {
   );
   const navigate = useNavigate();
 
+  const catalogVersion = useCatalogVersion();
+
   const [searchParams, setSearchParams] = useSearchParams();
 
   const requestedEditSaleId = Number(searchParams.get('edit') || 0);
@@ -884,6 +891,7 @@ export default function SalesPage() {
 
           groupedItems.set(variantId, {
             variant_id: variantId,
+            original_sale_item: true,
 
             product_id: Number(item.product_id || 0),
 
@@ -1129,6 +1137,85 @@ export default function SalesPage() {
 
   const activeInvoice =
     invoices.find((x) => x.id === activeInvoiceId) ?? invoices[0];
+
+  useEffect(() => {
+    if (!salesDraftHydrated || !user?.id) return;
+
+    const currentInvoices = latestSalesDraftRef.current?.invoices ?? [];
+
+    const ids = [
+      ...new Set(
+        currentInvoices.flatMap((invoice) =>
+          invoice.cart.map((item) => Number(item.variant_id)),
+        ),
+      ),
+    ].filter((id) => Number.isSafeInteger(id) && id > 0);
+
+    if (ids.length === 0) return;
+
+    let cancelled = false;
+    const requestedIds = new Set(ids);
+
+    void window.api
+      .getCatalogVariantSnapshots(ids)
+      .then((snapshots) => {
+        if (cancelled) return;
+
+        const byId = new Map(
+          snapshots.map((item) => [Number(item.variant_id), item]),
+        );
+
+        setInvoices((previous) =>
+          previous.map((invoice) => ({
+            ...invoice,
+            cart: invoice.cart.map((item) => {
+              const id = Number(item.variant_id);
+
+              if (!requestedIds.has(id)) return item;
+
+              const current = byId.get(id);
+
+              if (!current) {
+                return { ...item, catalog_available: false };
+              }
+
+              return {
+                ...item,
+
+                product_id: Number(current.product_id),
+                product_name: current.product_name,
+                category_id: current.category_id,
+                category_name: current.category_name,
+                barcode: current.barcode ?? '',
+                size: current.size ?? '',
+                color: current.color ?? '',
+                min_stock: Number(current.min_stock),
+
+                stock: editingSaleId ? item.stock : Number(current.stock),
+
+                is_active: Number(current.is_active),
+
+                catalog_available:
+                  Number(current.is_active) === 1 &&
+                  Number(current.product_is_active) === 1,
+
+                catalog_current_price: Number(current.sell_price),
+
+                // لا نغير sell_price أو original_sell_price
+                // أو الكمية أو خصومات الفاتورة.
+              };
+            }),
+          })),
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to refresh sale cart catalog:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogVersion, salesDraftHydrated, editingSaleId, user?.id]);
 
   const effectivePromotions = editingSaleId ? [] : activePromotions;
 
@@ -1963,6 +2050,18 @@ export default function SalesPage() {
         );
       }
 
+      const acceptCurrentPrices = window.confirm(
+        'تنبيه بخصوص الفاتورة المعلّقة:\n\n' +
+          'الفواتير المعلّقة لا تحجز أسعار المنتجات.\n' +
+          'عند الاستكمال سيتم استخدام أسعار البيع والخصومات الحالية من الكتالوج، ' +
+          'وقد تكون مختلفة عن الأسعار وقت التعليق.\n\n' +
+          'هل توافق على استكمال الفاتورة بالأسعار الحالية؟',
+      );
+
+      if (!acceptCurrentPrices) {
+        return;
+      }
+
       let quantityAdjusted = false;
 
       const cart: CartItem[] = held.items.map((item) => {
@@ -2305,6 +2404,14 @@ export default function SalesPage() {
       }
 
       addToCart(variant);
+
+      if (String(variant.barcode || '').trim() !== barcode) {
+        showMessage(
+          'success',
+          `تم التعرف على باركود قديم. الباركود الحالي للصنف: ${variant.barcode}`,
+          false,
+        );
+      }
     } catch (error) {
       console.error(error);
       showMessage('error', 'حدث خطأ أثناء قراءة الباركود');
@@ -2549,6 +2656,60 @@ export default function SalesPage() {
     setSaving(true);
 
     try {
+      const latestVariants = await window.api.getCatalogVariantSnapshots(
+        activeInvoice.cart.map((item) => Number(item.variant_id)),
+      );
+
+      const latestById = new Map(
+        latestVariants.map((item) => [Number(item.variant_id), item]),
+      );
+
+      const changedPrices: string[] = [];
+
+      for (const item of activeInvoice.cart) {
+        const current = latestById.get(Number(item.variant_id));
+
+        if (!current) {
+          throw new Error(`الصنف "${item.product_name}" لم يعد موجودًا.`);
+        }
+
+        if (
+          (Number(current.is_active) !== 1 ||
+            Number(current.product_is_active) !== 1) &&
+          !(editingSaleId && item.original_sale_item)
+        ) {
+          throw new Error(
+            `الصنف "${current.product_name}" غير نشط. راجع الفاتورة قبل الحفظ.`,
+          );
+        }
+
+        if (!editingSaleId && Number(item.quantity) > Number(current.stock)) {
+          throw new Error(
+            `المخزون غير كافي للصنف "${current.product_name}". المتاح: ${current.stock}`,
+          );
+        }
+
+        if (
+          roundMoney(Number(item.sell_price)) !==
+          roundMoney(Number(current.sell_price))
+        ) {
+          changedPrices.push(
+            `${current.product_name}: سعر الفاتورة ${money(item.sell_price)} / الحالي ${money(current.sell_price)}`,
+          );
+        }
+      }
+
+      if (
+        changedPrices.length > 0 &&
+        !window.confirm(
+          `أسعار بعض المنتجات اتغيرت بعد إضافتها للفاتورة:\n\n${changedPrices
+            .slice(0, 8)
+            .join('\n')}\n\nهل تريد الاستمرار بأسعار الفاتورة المحفوظة؟`,
+        )
+      ) {
+        return;
+      }
+
       const salePayload = {
         customer_id: activeInvoice.customer?.id ?? null,
         salesperson_id: activeInvoice.salesperson?.id ?? null,
@@ -2589,13 +2750,16 @@ export default function SalesPage() {
         items: activeInvoice.cart.map((item) => ({
           variant_id: item.variant_id,
 
-          product_name: item.product_name,
+          product_name:
+            latestById.get(Number(item.variant_id))?.product_name ??
+            item.product_name,
 
-          barcode: item.barcode,
+          barcode:
+            latestById.get(Number(item.variant_id))?.barcode ?? item.barcode,
 
-          size: item.size,
+          size: latestById.get(Number(item.variant_id))?.size ?? item.size,
 
-          color: item.color,
+          color: latestById.get(Number(item.variant_id))?.color ?? item.color,
 
           quantity: item.quantity,
 
@@ -2856,7 +3020,12 @@ export default function SalesPage() {
     return () => {
       window.clearTimeout(handle);
     };
-  }, [activeInvoice.productDraft, activeInvoiceId, saleCategoryFilter]);
+  }, [
+    activeInvoice.productDraft,
+    activeInvoiceId,
+    saleCategoryFilter,
+    catalogVersion,
+  ]);
 
   useEffect(() => {
     function handleReposition() {
@@ -4660,23 +4829,70 @@ export default function SalesPage() {
                   />
                 )}
 
-                <SelectedProductSummary
-                  name={item.product_name}
-                  category={
-                    item.category_name ||
-                    categories.find(
-                      (category) => category.id === Number(item.category_id),
-                    )?.name ||
-                    null
-                  }
-                  size={item.size}
-                  color={item.color}
-                  price={Number(item.sell_price)}
-                  originalPrice={Number(
-                    item.original_sell_price ?? item.sell_price,
+                <div style={{ minWidth: 0 }}>
+                  <SelectedProductSummary
+                    name={item.product_name}
+                    category={
+                      item.category_name ||
+                      categories.find(
+                        (category) => category.id === Number(item.category_id),
+                      )?.name ||
+                      null
+                    }
+                    size={item.size}
+                    color={item.color}
+                    price={Number(item.sell_price)}
+                    originalPrice={Number(
+                      item.original_sell_price ?? item.sell_price,
+                    )}
+                    showPrice={false}
+                  />
+
+                  {item.catalog_available === false && (
+                    <div
+                      style={{
+                        marginTop: '4px',
+                        color: '#fca5a5',
+                        fontSize: '11px',
+                        fontWeight: 800,
+                      }}
+                    >
+                      الصنف غير متاح حاليًا — راجع الفاتورة
+                    </div>
                   )}
-                  showPrice={false}
-                />
+
+                  {!editingSaleId &&
+                    item.catalog_current_price != null &&
+                    roundMoney(item.catalog_current_price) !==
+                      roundMoney(Number(item.sell_price)) && (
+                      <div
+                        style={{
+                          marginTop: '4px',
+                          color: '#fbbf24',
+                          fontSize: '11px',
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        سعر الكتالوج الآن: {money(item.catalog_current_price)}
+                        {' — '}
+                        سعر الفاتورة محفوظ بدون تغيير
+                      </div>
+                    )}
+
+                  {!editingSaleId &&
+                    Number(item.quantity) > Number(item.stock) && (
+                      <div
+                        style={{
+                          marginTop: '4px',
+                          color: '#fca5a5',
+                          fontSize: '11px',
+                          fontWeight: 800,
+                        }}
+                      >
+                        الكمية المطلوبة أكبر من المخزون الحالي
+                      </div>
+                    )}
+                </div>
 
                 <input
                   ref={index === 0 ? firstQtyInputRef : null}

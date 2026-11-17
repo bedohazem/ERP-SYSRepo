@@ -945,6 +945,8 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
         v.size,
         v.color,
         v.buy_price,
+        v.is_active AS variant_active,
+        p.is_active AS product_active,
         p.name AS product_name
       FROM product_variants v
       JOIN products p ON p.id = v.product_id
@@ -967,6 +969,15 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
       if (!variant) {
         throw new Error('الصنف غير موجود');
+      }
+
+      if (
+        Number(variant.variant_active) !== 1 ||
+        Number(variant.product_active) !== 1
+      ) {
+        throw new Error(
+          `الصنف "${variant.product_name}" غير نشط. فعّل المنتج والصنف قبل إضافته إلى فاتورة شراء جديدة.`,
+        );
       }
 
       const pricing = preparePurchaseItemInput(item, variant.product_name);
@@ -2043,8 +2054,9 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         v.color,
         v.buy_price,
 
-        p.name
-          AS product_name
+        v.is_active AS variant_active,
+        p.is_active AS product_active,
+        p.name AS product_name
 
       FROM product_variants v
 
@@ -2072,8 +2084,19 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
         throw new Error('الصنف غير موجود');
       }
 
-      const pricing = preparePurchaseItemInput(rawItem, variant.product_name);
       const oldItem = oldItemByVariant.get(variantId);
+
+      if (
+        !oldItem &&
+        (Number(variant.variant_active) !== 1 ||
+          Number(variant.product_active) !== 1)
+      ) {
+        throw new Error(
+          `لا يمكن إضافة الصنف "${variant.product_name}" لأنه غير نشط.`,
+        );
+      }
+
+      const pricing = preparePurchaseItemInput(rawItem, variant.product_name);
 
       return {
         variant,
@@ -4745,9 +4768,14 @@ export function getPurchaseInvoice(purchaseId: number) {
       `
       SELECT
         pii.*,
+        p.name AS current_product_name,
+        pv.barcode AS current_barcode,
+        pv.size AS current_size,
+        pv.color AS current_color,
         pv.buy_price AS current_buy_price,
         pv.sell_price AS sell_price,
         pv.discount_price AS discount_price,
+
 
         IFNULL((
           SELECT SUM(
@@ -4799,7 +4827,10 @@ export function getPurchaseInvoice(purchaseId: number) {
       FROM purchase_items pii
       LEFT JOIN product_variants pv
         ON pv.id = pii.variant_id
+      LEFT JOIN products p
+        ON p.id = pv.product_id
       WHERE pii.purchase_id = ?
+
       ORDER BY pii.id ASC
     `,
     )
@@ -4990,11 +5021,26 @@ export function getPurchaseReturn(returnId: number) {
   const items = db
     .prepare(
       `
-      SELECT *
-      FROM purchase_return_items
-      WHERE return_id = ?
-      ORDER BY id ASC
-    `,
+      SELECT
+        pri.*,
+
+        p.name AS current_product_name,
+        pv.barcode AS current_barcode,
+        pv.size AS current_size,
+        pv.color AS current_color
+
+      FROM purchase_return_items pri
+
+      LEFT JOIN product_variants pv
+        ON pv.id = pri.variant_id
+
+      LEFT JOIN products p
+        ON p.id = pv.product_id
+
+      WHERE pri.return_id = ?
+
+      ORDER BY pri.id ASC
+      `,
     )
     .all(Number(returnId));
 

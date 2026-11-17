@@ -4600,6 +4600,91 @@ export function getDb(): Database.Database {
           `);
         },
       },
+
+      {
+        version: 42,
+        name: 'reserve-product-variant-barcode-history',
+        up: (database) => {
+          database.exec(`
+            CREATE TABLE IF NOT EXISTS product_variant_barcode_history (
+              barcode TEXT NOT NULL PRIMARY KEY,
+              variant_id INTEGER NOT NULL
+                REFERENCES product_variants(id) ON DELETE CASCADE,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS
+              idx_product_variant_barcode_history_variant
+            ON product_variant_barcode_history (variant_id);
+
+
+            INSERT INTO product_variant_barcode_history (
+              barcode,
+              variant_id
+            )
+            SELECT
+              TRIM(v.barcode),
+              v.id
+            FROM product_variants v
+            WHERE v.barcode IS NOT NULL
+              AND TRIM(v.barcode) <> ''
+              AND NOT EXISTS (
+                SELECT 1
+                FROM product_variant_barcode_history h
+                WHERE h.barcode = TRIM(v.barcode)
+                  AND h.variant_id = v.id
+              );
+
+            CREATE TRIGGER IF NOT EXISTS
+              trg_variant_barcode_history_insert
+            AFTER INSERT ON product_variants
+            WHEN NEW.barcode IS NOT NULL
+              AND TRIM(NEW.barcode) <> ''
+            BEGIN
+              SELECT RAISE(
+                ABORT,
+                'barcode_reserved_by_other_variant'
+              )
+              WHERE EXISTS (
+                SELECT 1
+                FROM product_variant_barcode_history
+                WHERE barcode = TRIM(NEW.barcode)
+                  AND variant_id <> NEW.id
+              );
+
+              INSERT OR IGNORE INTO product_variant_barcode_history (
+                barcode,
+                variant_id
+              )
+              VALUES (TRIM(NEW.barcode), NEW.id);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS
+              trg_variant_barcode_history_update
+            AFTER UPDATE OF barcode ON product_variants
+            WHEN NEW.barcode IS NOT NULL
+              AND TRIM(NEW.barcode) <> ''
+            BEGIN
+              SELECT RAISE(
+                ABORT,
+                'barcode_reserved_by_other_variant'
+              )
+              WHERE EXISTS (
+                SELECT 1
+                FROM product_variant_barcode_history
+                WHERE barcode = TRIM(NEW.barcode)
+                  AND variant_id <> NEW.id
+              );
+
+              INSERT OR IGNORE INTO product_variant_barcode_history (
+                barcode,
+                variant_id
+              )
+              VALUES (TRIM(NEW.barcode), NEW.id);
+            END;
+          `);
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

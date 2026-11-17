@@ -479,6 +479,11 @@ describe('database migrations', () => {
         name: 'supplier-account-credits',
         version: 41,
       },
+
+      {
+        name: 'reserve-product-variant-barcode-history',
+        version: 42,
+      },
     ]);
 
     const performanceIndexes = database

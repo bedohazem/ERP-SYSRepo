@@ -151,7 +151,13 @@ export function getSaleCurrentState(saleIdInput: number) {
       SELECT
         si.*,
 
+        p.name AS current_product_name,
+        pv.barcode AS current_barcode,
+        pv.size AS current_size,
+        pv.color AS current_color,
+
         IFNULL(
+
           (
             SELECT SUM(
               sri.quantity
@@ -179,7 +185,14 @@ export function getSaleCurrentState(saleIdInput: number) {
 
       FROM sale_items si
 
+      LEFT JOIN product_variants pv
+        ON pv.id = si.variant_id
+
+      LEFT JOIN products p
+        ON p.id = pv.product_id
+
       WHERE si.sale_id = ?
+
 
       ORDER BY si.id ASC
       `,
@@ -462,6 +475,16 @@ export function getSaleCurrentState(saleIdInput: number) {
     })
     .map((item) => ({
       ...item,
+
+      original_product_name: item.product_name,
+      original_barcode: item.barcode,
+      original_size: item.size,
+      original_color: item.color,
+
+      product_name: item.current_product_name ?? item.product_name,
+      barcode: item.current_barcode ?? item.barcode,
+      size: item.current_size ?? item.size,
+      color: item.current_color ?? item.color,
 
       id: Number(item.id),
 

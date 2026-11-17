@@ -154,7 +154,11 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.setTitle(appName);
 
-    if (!e2eSmokeEnabled || !mainWindow) {
+    if (
+      !e2eSmokeEnabled ||
+      (process.env.ERP_E2E_MANUAL === '1' && Boolean(e2eUserDataDir)) ||
+      !mainWindow
+    ) {
       return;
     }
 
@@ -312,7 +316,10 @@ if (!hasSingleInstanceLock) {
     registerPromotionsIpc();
 
     createWindow();
-    startAutoBackupScheduler();
+
+    if (!e2eSmokeEnabled) {
+      startAutoBackupScheduler();
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -322,6 +329,10 @@ if (!hasSingleInstanceLock) {
   });
 
   app.on('before-quit', async (event) => {
+    if (e2eSmokeEnabled) {
+      return;
+    }
+
     if (shutdownBackupDone) {
       return;
     }

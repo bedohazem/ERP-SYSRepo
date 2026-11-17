@@ -6,6 +6,8 @@ import PaginationBar, {
 import JsBarcode from 'jsbarcode';
 import { truncateForDisplay } from '../../../shared/money';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 type Category = {
   id: number;
   name: string;
@@ -595,6 +597,14 @@ export default function ProductsPage() {
     setProductPage(1);
     void loadData(1);
   }, [debouncedSearch, includeInactive, categoryFilter]);
+
+  const catalogVersion = useCatalogVersion();
+
+  useEffect(() => {
+    if (catalogVersion === 0) return;
+
+    void loadData(productPage);
+  }, [catalogVersion]);
 
   useEffect(() => {
     setVariantsMap({});

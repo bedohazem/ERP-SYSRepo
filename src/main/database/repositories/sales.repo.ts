@@ -310,6 +310,8 @@ type CreateSaleInternalOptions = {
   preserve_due_date?: boolean;
 
   due_date_override?: string | null;
+
+  allowed_inactive_variant_ids?: ReadonlySet<number>;
 };
 
 export type UpdateSaleInvoiceInput = Omit<
@@ -1658,9 +1660,59 @@ function createSaleInternal(
 
       const lineTotal = roundMoney(qty * price);
 
+      const productStatus = db
+        .prepare(
+          `
+          SELECT
+            v.is_active AS variant_active,
+            p.is_active AS product_active,
+            p.name AS product_name,
+            v.barcode,
+            v.size,
+            v.color
+
+          FROM product_variants v
+
+          JOIN products p
+            ON p.id = v.product_id
+
+          WHERE v.id = ?
+
+          LIMIT 1
+          `,
+        )
+        .get(Number(item.variant_id)) as
+        | {
+            variant_active: number;
+            product_active: number;
+            product_name: string;
+            barcode: string | null;
+            size: string | null;
+            color: string | null;
+          }
+        | undefined;
+
+      if (!productStatus) {
+        throw new Error(`الصنف "${item.product_name}" لم يعد موجودًا.`);
+      }
+
+      const isInactive =
+        Number(productStatus.variant_active) !== 1 ||
+        Number(productStatus.product_active) !== 1;
+
+      if (
+        isInactive &&
+        !options.allowed_inactive_variant_ids?.has(Number(item.variant_id))
+      ) {
+        throw new Error(
+          `الصنف "${productStatus.product_name}" غير نشط. راجع الفاتورة قبل الحفظ.`,
+        );
+      }
+
       const stockRow = getCurrentStock.get(item.variant_id) as {
         stock: number;
       };
+
       const availableStock = Number(stockRow?.stock || 0);
 
       if (qty > availableStock) {
@@ -1729,10 +1781,11 @@ function createSaleInternal(
           const itemResult = insertItem.run(
             saleId,
             item.variant_id,
-            item.product_name,
-            item.barcode ?? null,
-            item.size ?? null,
-            item.color ?? null,
+            productStatus.product_name,
+            productStatus.barcode,
+            productStatus.size,
+            productStatus.color,
+
             fragment.quantity,
             saleUnitCost,
             fragmentCostValue,
@@ -1791,10 +1844,10 @@ function createSaleInternal(
         insertItem.run(
           saleId,
           item.variant_id,
-          item.product_name,
-          item.barcode ?? null,
-          item.size ?? null,
-          item.color ?? null,
+          productStatus.product_name,
+          productStatus.barcode,
+          productStatus.size,
+          productStatus.color,
 
           qty,
 
@@ -4293,22 +4346,36 @@ export function getSaleReturnHistory(originalSaleId: number) {
 
   const getItems = db.prepare(`
     SELECT
-      id,
-      return_id,
-      original_sale_item_id,
-      variant_id,
-      product_name,
-      barcode,
-      size,
-      color,
-      quantity,
-      unit_price,
-      list_unit_price,
-      product_discount_value,
-      line_total
-    FROM sale_return_items
-    WHERE return_id = ?
-    ORDER BY id ASC
+      sri.id,
+      sri.return_id,
+      sri.original_sale_item_id,
+      sri.variant_id,
+      sri.product_name,
+      sri.barcode,
+      sri.size,
+      sri.color,
+      sri.quantity,
+      sri.unit_price,
+      sri.list_unit_price,
+      sri.product_discount_value,
+      sri.line_total,
+
+      p.name AS current_product_name,
+      pv.barcode AS current_barcode,
+      pv.size AS current_size,
+      pv.color AS current_color
+
+    FROM sale_return_items sri
+
+    LEFT JOIN product_variants pv
+      ON pv.id = sri.variant_id
+
+    LEFT JOIN products p
+      ON p.id = pv.product_id
+
+    WHERE sri.return_id = ?
+
+    ORDER BY sri.id ASC
   `);
 
   return returns.map((item) => ({
@@ -4698,7 +4765,12 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
       cost_value: number | null;
     }>;
 
+    const originalVariantIds = new Set(
+      oldItems.map((item) => Number(item.variant_id)),
+    );
+
     const storedPayments = db
+
       .prepare(
         `
         SELECT
@@ -4888,6 +4960,8 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
 
     const result = createSaleInternal(nextSaleInput, {
       forced_sale_id: saleId,
+      allowed_inactive_variant_ids: originalVariantIds,
+
       shift_id_override: sale.shift_id == null ? null : Number(sale.shift_id),
       invoice_user_id: Number(sale.user_id || 0) || actorId,
       salesperson_snapshot: preservedSalespersonSnapshot,

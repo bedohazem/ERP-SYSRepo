@@ -6,6 +6,8 @@ import { useAuthStore } from '../../store/auth.store';
 import { hasUserPermission } from '../../utils/permissions';
 import { formatPreciseMoney } from '../../../shared/money';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 type InventoryRow = {
   variant_id: number;
   product_id: number;
@@ -97,6 +99,7 @@ const emptyInventoryAnalytics: InventoryAnalytics = {
 
 export default function InventoryPage() {
   const currentUser = useAuthStore((s) => s.user);
+  const catalogVersion = useCatalogVersion();
   const isAdmin = currentUser?.role === 'admin';
   const canViewCosts = hasUserPermission(currentUser, 'costs.view');
   const canAdjustInventory = hasUserPermission(currentUser, 'inventory.adjust');
@@ -284,6 +287,22 @@ export default function InventoryPage() {
       window.clearTimeout(handle);
     };
   }, [categoryFilter]);
+
+  useEffect(() => {
+    if (catalogVersion === 0) return;
+
+    void loadInventory(inventoryPage);
+    void loadAnalytics();
+
+    void window.api
+      .getCategories()
+      .then((result) => {
+        setCategories(Array.isArray(result) ? result : []);
+      })
+      .catch((error) => {
+        console.error('Failed to refresh inventory categories:', error);
+      });
+  }, [catalogVersion]);
 
   function toggleStatusFilter(filter: InventoryStatusFilter) {
     setStatusFilters((current) =>

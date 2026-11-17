@@ -6,6 +6,8 @@ import { useAuthStore } from '../../store/auth.store';
 import { hasUserPermission } from '../../utils/permissions';
 import { formatMoney } from '../../../shared/money';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 type StockCountSession = {
   id: number;
   title: string;
@@ -61,6 +63,7 @@ type StockCountDetails = {
 
 export default function StockCountPage() {
   const currentUser = useAuthStore((s) => s.user);
+  const catalogVersion = useCatalogVersion();
   const isAdmin = currentUser?.role === 'admin';
   const canCountStock = hasUserPermission(currentUser, 'stock_count.count');
   const [sessions, setSessions] = useState<StockCountSession[]>([]);
@@ -250,6 +253,35 @@ export default function StockCountPage() {
   useEffect(() => {
     void loadSessions();
   }, []);
+
+  useEffect(() => {
+    if (catalogVersion === 0) return;
+
+    let cancelled = false;
+
+    void loadSessions();
+
+    const sessionId = Number(selected?.session?.id || 0);
+
+    if (sessionId > 0) {
+      void window.api
+        .getStockCountSession(sessionId)
+        .then((result) => {
+          if (cancelled) return;
+
+          setSelected((previous) =>
+            Number(previous?.session?.id) === sessionId ? result : previous,
+          );
+        })
+        .catch((error) => {
+          console.error('Stock count catalog refresh failed:', error);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogVersion]);
 
   useEffect(() => {
     let mounted = true;

@@ -126,6 +126,26 @@ contextBridge.exposeInMainWorld('api', {
   getProducts: (payload) => invokeMain('products:list', payload),
   getProductsPage: (input) => invokeMain('products:list-page', input),
   getProductVariants: (payload) => invokeMain('products:get-variants', payload),
+
+  getCatalogVariantSnapshots: (variantIds) =>
+    invokeMain('products:catalog-snapshots', variantIds),
+
+  onProductCatalogChanged: (callback) => {
+    if (typeof callback !== 'function') {
+      throw new TypeError('Catalog listener must be a function');
+    }
+
+    const listener = () => {
+      callback();
+    };
+
+    ipcRenderer.on('products:catalog-changed', listener);
+
+    return () => {
+      ipcRenderer.removeListener('products:catalog-changed', listener);
+    };
+  },
+
   toggleVariantActive: (variantId, isActive) =>
     invokeMain('products:toggle-variant-active', variantId, isActive),
   createProduct: (input) => invokeMain('products:create', input),

@@ -1759,9 +1759,10 @@ export function getReportsSummary(input?: ReportFilter) {
       `
       SELECT
         x.variant_id,
-        x.product_name,
-        x.size,
-        x.color,
+        COALESCE(p.name, MAX(x.product_name)) AS product_name,
+        COALESCE(v.size, MAX(x.size)) AS size,
+        COALESCE(v.color, MAX(x.color)) AS color,
+
 
         IFNULL(
           SUM(x.quantity),
@@ -1976,13 +1977,31 @@ export function getReportsSummary(input?: ReportFilter) {
             IS NULL
       ) x
 
+
+      LEFT JOIN product_variants v
+        ON v.id = x.variant_id
+
+      LEFT JOIN products p
+        ON p.id = v.product_id
+
+
       ${combinedWhere.whereSql}
 
       GROUP BY
         x.variant_id,
-        x.product_name,
-        x.size,
-        x.color
+        CASE
+          WHEN x.variant_id IS NULL OR x.variant_id <= 0
+          THEN x.product_name
+        END,
+        CASE
+          WHEN x.variant_id IS NULL OR x.variant_id <= 0
+          THEN x.size
+        END,
+        CASE
+          WHEN x.variant_id IS NULL OR x.variant_id <= 0
+          THEN x.color
+        END
+
 
       HAVING
         net_quantity > 0

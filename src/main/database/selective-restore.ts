@@ -441,6 +441,18 @@ function restoreCatalogStock(
         variant.created_at ?? null,
       );
 
+      for (const previousBarcode of variant.historical_barcodes ?? []) {
+        db.prepare(
+          `
+          INSERT INTO product_variant_barcode_history (
+            barcode,
+            variant_id
+          )
+          VALUES (?, ?)
+          `,
+        ).run(previousBarcode, variantId);
+      }
+
       if (currentStock > 0) {
         receiveStockAtCost(db, {
           variant_id: variantId,

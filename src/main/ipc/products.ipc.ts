@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 import {
   runCriticalActionWithAudit,
   type ActionLogInput,
@@ -21,6 +21,7 @@ import {
   createCategory,
   updateCategory,
   listProductsPage,
+  getCatalogVariantSnapshots,
   toggleCategoryActive,
 } from '../database/repositories/product.repo';
 import { userHasPermission } from '../database/repositories/user.repo';
@@ -43,6 +44,43 @@ import {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'حدث خطأ غير متوقع';
+}
+
+function runCatalogMutationWithAudit<T>(
+  run: () => T,
+  buildAudit:
+    ((result: T) => ActionLogInput) | ((result: T) => ActionLogInput[]),
+): T {
+  // تنفيذ التعديل والـ Audit أولًا داخل Transaction.
+  const result = runCriticalActionWithAudit(run, buildAudit);
+
+  // لا نعلن عن تعديل فاشل.
+  if (
+    result &&
+    typeof result === 'object' &&
+    'success' in result &&
+    result.success === false
+  ) {
+    return result;
+  }
+
+  // الإشعار بعد نجاح العملية، ولا يجوز لفشله
+  // أن يحول عملية محفوظة بنجاح إلى رسالة فشل.
+  try {
+    for (const target of BrowserWindow.getAllWindows()) {
+      try {
+        if (!target.isDestroyed() && !target.webContents.isDestroyed()) {
+          target.webContents.send('products:catalog-changed');
+        }
+      } catch (error) {
+        console.error('Catalog notification failed:', error);
+      }
+    }
+  } catch (error) {
+    console.error('Catalog broadcast failed:', error);
+  }
+
+  return result;
 }
 
 function normalizeVariantInput(
@@ -121,6 +159,21 @@ function normalizeCategoryFilter(value: unknown) {
 }
 
 export function registerProductsIpc(): void {
+  ipcMain.handle('products:catalog-snapshots', (event, input: unknown) => {
+    requireAnyPermission(event, [
+      'sales.use',
+      'purchases.manage',
+      'products.manage',
+      'inventory.view',
+    ]);
+
+    const ids = requireArrayInput(input, 'أرقام الأصناف', 500).map((id) =>
+      requirePositiveInteger(id, 'رقم الصنف'),
+    );
+
+    return getCatalogVariantSnapshots(ids);
+  });
+
   ipcMain.handle('products:get-categories', (event, input?: unknown) => {
     const actor = requireAuthenticatedUser(event);
 
@@ -160,7 +213,7 @@ export function registerProductsIpc(): void {
         ),
       };
 
-      return runCriticalActionWithAudit(
+      return runCatalogMutationWithAudit(
         () => createCategory(input),
 
         (result) => ({
@@ -204,7 +257,7 @@ export function registerProductsIpc(): void {
         ),
       };
 
-      return runCriticalActionWithAudit(
+      return runCatalogMutationWithAudit(
         () => updateCategory(input),
 
         () => ({
@@ -240,7 +293,7 @@ export function registerProductsIpc(): void {
 
         isActive = requireBinaryFlag(isActive, 'حالة التصنيف');
 
-        return runCriticalActionWithAudit(
+        return runCatalogMutationWithAudit(
           () => toggleCategoryActive(categoryId, isActive),
 
           () => ({
@@ -381,7 +434,7 @@ export function registerProductsIpc(): void {
         ),
       };
 
-      return runCriticalActionWithAudit(
+      return runCatalogMutationWithAudit(
         () =>
           createProduct({
             ...input,
@@ -423,7 +476,7 @@ export function registerProductsIpc(): void {
         withOpeningQty: true,
       });
 
-      return runCriticalActionWithAudit(
+      return runCatalogMutationWithAudit(
         () =>
           addProductVariant({
             ...input,
@@ -504,7 +557,7 @@ export function registerProductsIpc(): void {
         variants,
       };
 
-      return runCriticalActionWithAudit(
+      return runCatalogMutationWithAudit(
         () => updateProduct(input),
 
         () => {
@@ -580,7 +633,7 @@ export function registerProductsIpc(): void {
         withId: true,
       });
 
-      return runCriticalActionWithAudit(
+      return runCatalogMutationWithAudit(
         () => updateVariant(input),
 
         () => ({
@@ -626,7 +679,7 @@ export function registerProductsIpc(): void {
 
         isActive = requireBinaryFlag(isActive, 'حالة المنتج');
 
-        return runCriticalActionWithAudit(
+        return runCatalogMutationWithAudit(
           () => toggleProductActive(productId, isActive),
 
           () => ({
@@ -663,7 +716,7 @@ export function registerProductsIpc(): void {
 
         isActive = requireBinaryFlag(isActive, 'حالة الصنف');
 
-        return runCriticalActionWithAudit(
+        return runCatalogMutationWithAudit(
           () => toggleVariantActive(variantId, isActive),
 
           () => ({

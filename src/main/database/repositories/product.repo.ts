@@ -252,31 +252,24 @@ function ensureBarcodeAvailable(barcode: string, exceptVariantId?: number) {
     throw new Error('الباركود مطلوب');
   }
 
-  const existing = exceptVariantId
-    ? db
-        .prepare(
-          `
-          SELECT id
-          FROM product_variants
-          WHERE barcode = ?
-            AND id <> ?
-          LIMIT 1
-        `,
-        )
-        .get(cleanBarcode, exceptVariantId)
-    : db
-        .prepare(
-          `
-          SELECT id
-          FROM product_variants
-          WHERE barcode = ?
-          LIMIT 1
-        `,
-        )
-        .get(cleanBarcode);
+  const existing = db
+    .prepare(
+      `
+      SELECT variant_id
+      FROM product_variant_barcode_history
+      WHERE barcode = ?
+      LIMIT 1
+      `,
+    )
+    .get(cleanBarcode) as { variant_id: number } | undefined;
 
-  if (existing) {
-    throw new Error(`الباركود "${cleanBarcode}" مستخدم بالفعل`);
+  if (
+    existing &&
+    Number(existing.variant_id) !== Number(exceptVariantId || 0)
+  ) {
+    throw new Error(
+      `الباركود "${cleanBarcode}" مستخدم بالفعل أو مرتبط سابقًا بصنف آخر`,
+    );
   }
 }
 
@@ -1193,7 +1186,15 @@ export function searchSaleVariants(
 
   const likeQuery = `%${trimmed}%`;
 
-  params.push(likeQuery, likeQuery, likeQuery, likeQuery, trimmed, safeLimit);
+  params.push(
+    likeQuery,
+    likeQuery,
+    likeQuery,
+    likeQuery,
+    trimmed,
+    trimmed,
+    safeLimit,
+  );
 
   return db
     .prepare(
@@ -1234,6 +1235,12 @@ export function searchSaleVariants(
           OR p.name LIKE ?
           OR IFNULL(v.size, '') LIKE ?
           OR IFNULL(v.color, '') LIKE ?
+          OR EXISTS (
+            SELECT 1
+            FROM product_variant_barcode_history history
+            WHERE history.variant_id = v.id
+              AND history.barcode = ?
+          )
         )
       GROUP BY
         v.id,
@@ -1294,7 +1301,11 @@ export function getVariantByBarcode(
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
       WHERE p.is_active = 1
         AND v.is_active = 1
-        AND v.barcode = ?
+        AND v.id = (
+          SELECT history.variant_id
+          FROM product_variant_barcode_history history
+          WHERE history.barcode = ?
+        )
       GROUP BY
         v.id,
         p.id,
@@ -1311,4 +1322,85 @@ export function getVariantByBarcode(
       `,
     )
     .get(barcode) as SaleSearchVariantRow | undefined;
+}
+
+export function getCatalogVariantSnapshots(variantIds: number[]) {
+  const db = getDb();
+
+  const ids = [
+    ...new Set(
+      variantIds.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0),
+    ),
+  ].slice(0, 500);
+
+  if (ids.length === 0) return [];
+
+  const placeholders = ids.map(() => '?').join(', ');
+
+  return db
+    .prepare(
+      `
+      SELECT
+        v.id AS variant_id,
+        v.product_id,
+        p.name AS product_name,
+        p.category_id,
+        c.name AS category_name,
+        v.barcode,
+        v.size,
+        v.color,
+        v.sell_price AS original_sell_price,
+
+        CASE
+          WHEN v.discount_price > 0
+            AND v.discount_price < v.sell_price
+          THEN v.discount_price
+          ELSE v.sell_price
+        END AS sell_price,
+
+        v.discount_price,
+        v.min_stock,
+        v.is_active,
+        p.is_active AS product_is_active,
+
+        IFNULL((
+          SELECT SUM(
+            CASE
+              WHEN sm.type = 'in' THEN sm.quantity
+              WHEN sm.type = 'out' THEN -sm.quantity
+              ELSE 0
+            END
+          )
+          FROM stock_movements sm
+          WHERE sm.variant_id = v.id
+        ), 0) AS stock
+
+      FROM product_variants v
+
+      JOIN products p
+        ON p.id = v.product_id
+
+      LEFT JOIN categories c
+        ON c.id = p.category_id
+
+      WHERE v.id IN (${placeholders})
+      `,
+    )
+    .all(...ids) as Array<{
+    variant_id: number;
+    product_id: number;
+    product_name: string;
+    category_id: number | null;
+    category_name: string | null;
+    barcode: string | null;
+    size: string | null;
+    color: string | null;
+    original_sell_price: number;
+    sell_price: number;
+    discount_price: number | null;
+    min_stock: number;
+    is_active: number;
+    product_is_active: number;
+    stock: number;
+  }>;
 }

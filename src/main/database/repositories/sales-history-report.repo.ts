@@ -118,12 +118,41 @@ export function getSalesHistoryReport(input?: SalesHistoryFilter) {
   const topProducts = db
     .prepare(
       `
-    SELECT x.variant_id, x.product_name, x.size, x.color,
-      COALESCE(SUM(x.quantity),0) AS net_quantity,
-      COALESCE(SUM(x.total),0) AS net_total
-    FROM (${productJournal}) x ${f.where}
-    GROUP BY x.variant_id, x.product_name, x.size, x.color
+    SELECT
+      x.variant_id,
+      COALESCE(p.name, MAX(x.product_name)) AS product_name,
+      COALESCE(v.size, MAX(x.size)) AS size,
+      COALESCE(v.color, MAX(x.color)) AS color,
+      COALESCE(SUM(x.quantity), 0) AS net_quantity,
+      COALESCE(SUM(x.total), 0) AS net_total
+
+    FROM (${productJournal}) x
+
+    LEFT JOIN product_variants v
+      ON v.id = x.variant_id
+
+    LEFT JOIN products p
+      ON p.id = v.product_id
+
+    ${f.where}
+
+    GROUP BY
+      x.variant_id,
+      CASE
+        WHEN x.variant_id IS NULL OR x.variant_id <= 0
+        THEN x.product_name
+      END,
+      CASE
+        WHEN x.variant_id IS NULL OR x.variant_id <= 0
+        THEN x.size
+      END,
+      CASE
+        WHEN x.variant_id IS NULL OR x.variant_id <= 0
+        THEN x.color
+      END
+
     HAVING net_quantity <> 0
+
     ORDER BY net_quantity DESC
   `,
     )

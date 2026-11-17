@@ -326,6 +326,28 @@ declare global {
 
       getProductVariants: (payload?: any) => Promise<any[]>;
 
+      getCatalogVariantSnapshots: (variantIds: number[]) => Promise<
+        Array<{
+          variant_id: number;
+          product_id: number;
+          product_name: string;
+          category_id: number | null;
+          category_name: string | null;
+          barcode: string | null;
+          size: string | null;
+          color: string | null;
+          original_sell_price: number;
+          sell_price: number;
+          discount_price: number | null;
+          min_stock: number;
+          is_active: number;
+          product_is_active: number;
+          stock: number;
+        }>
+      >;
+
+      onProductCatalogChanged: (callback: () => void) => () => void;
+
       toggleVariantActive: (
         variantId: number,
         isActive: boolean | number,
@@ -2798,6 +2820,10 @@ declare global {
           barcode?: string | null;
           size?: string | null;
           color?: string | null;
+          current_product_name?: string | null;
+          current_barcode?: string | null;
+          current_size?: string | null;
+          current_color?: string | null;
           quantity: number;
           unit_cost: number;
           quantity: number;

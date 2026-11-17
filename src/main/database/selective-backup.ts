@@ -35,6 +35,8 @@ export type CatalogStockBackupVariantV1 = {
 
   barcode: string;
 
+  historical_barcodes?: string[];
+
   size: string;
 
   color: string;
@@ -255,6 +257,31 @@ export function buildCatalogStockBackupSection(): CatalogStockBackupSectionV1 {
     )
     .all() as RawVariantRow[];
 
+  const barcodeHistoryRows = db
+    .prepare(
+      `
+      SELECT
+        h.variant_id,
+        h.barcode
+      FROM product_variant_barcode_history h
+      JOIN product_variants v ON v.id = h.variant_id
+      WHERE h.barcode <> v.barcode
+      ORDER BY h.variant_id, h.barcode
+      `,
+    )
+    .all() as Array<{
+    variant_id: number;
+    barcode: string;
+  }>;
+
+  const barcodeHistoryByVariant = new Map<number, string[]>();
+
+  for (const row of barcodeHistoryRows) {
+    const previous = barcodeHistoryByVariant.get(row.variant_id) ?? [];
+    previous.push(row.barcode);
+    barcodeHistoryByVariant.set(row.variant_id, previous);
+  }
+
   const variantsByProduct = new Map<number, CatalogStockBackupVariantV1[]>();
 
   let totalStockUnits = 0;
@@ -292,6 +319,8 @@ export function buildCatalogStockBackupSection(): CatalogStockBackupSectionV1 {
       source_id: Number(row.id),
 
       barcode,
+
+      historical_barcodes: barcodeHistoryByVariant.get(Number(row.id)) ?? [],
 
       size: String(row.size || ''),
 

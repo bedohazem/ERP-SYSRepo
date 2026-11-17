@@ -296,7 +296,16 @@ export async function printPurchaseInvoiceBarcodes(purchaseId: number) {
     throw new Error('لا يمكن طباعة باركود فاتورة شراء ملغاة');
   }
 
-  const plan = buildPurchaseBarcodePlan(invoice.items || []);
+  const plan = buildPurchaseBarcodePlan(
+    (invoice.items || []).map((item) => ({
+      ...item,
+      product_name: item.current_product_name ?? item.product_name,
+      barcode: item.current_barcode ?? '',
+      size: item.current_size ?? '',
+      color: item.current_color ?? '',
+    })),
+  );
+
   const total = plan.reduce((sum, item) => sum + item.quantity, 0);
   const storeName =
     String(license?.app_name || 'ERP Store').trim() || 'ERP Store';

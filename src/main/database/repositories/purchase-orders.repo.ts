@@ -661,14 +661,25 @@ export function getPurchaseOrder(orderIdInput: number) {
   const items = db
     .prepare(
       `
-      SELECT *
+      SELECT
+        poi.*,
 
-      FROM purchase_order_items
+        p.name AS current_product_name,
+        pv.barcode AS current_barcode,
+        pv.size AS current_size,
+        pv.color AS current_color
 
-      WHERE
-        purchase_order_id = ?
+      FROM purchase_order_items poi
 
-      ORDER BY id ASC
+      LEFT JOIN product_variants pv
+        ON pv.id = poi.variant_id
+
+      LEFT JOIN products p
+        ON p.id = pv.product_id
+
+      WHERE poi.purchase_order_id = ?
+
+      ORDER BY poi.id ASC
       `,
     )
     .all(orderId);

@@ -26,6 +26,8 @@ import {
   PURCHASE_DRAFT_STORAGE_BASE,
 } from '../../utils/draft-storage';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 type Supplier = {
   id: number;
   name: string;
@@ -64,6 +66,8 @@ type QuickProductMode = 'newProduct' | 'newVariant';
 type PurchaseLine = VariantRow & {
   quantity: number;
   unit_cost: number;
+  catalog_available?: boolean;
+  original_purchase_item?: boolean;
 };
 
 function generateBarcodeValue() {
@@ -90,6 +94,9 @@ export default function PurchasesPage() {
     }
   }
   const navigate = useNavigate();
+
+  const catalogVersion = useCatalogVersion();
+
   const isAdmin = currentUser?.role === 'admin';
 
   const canManageProducts = hasUserPermission(currentUser, 'products.manage');
@@ -113,6 +120,10 @@ export default function PurchasesPage() {
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<VariantRow[]>([]);
   const [lines, setLines] = useState<PurchaseLine[]>([]);
+
+  const purchaseLinesRef = useRef(lines);
+  purchaseLinesRef.current = lines;
+
   const productSearchRef = useRef<HTMLInputElement | null>(null);
 
   const [paidAmount, setPaidAmount] = useState('');
@@ -156,6 +167,74 @@ export default function PurchasesPage() {
   const [quickMinStock, setQuickMinStock] = useState('5');
   const [quickCategoryId, setQuickCategoryId] = useState<number | ''>('');
   const [quickQuantity, setQuickQuantity] = useState('1');
+
+  useEffect(() => {
+    if ((!draftHydrated && !isEditing) || (isEditing && editLoading)) {
+      return;
+    }
+
+    const ids = [
+      ...new Set(
+        purchaseLinesRef.current.map((line) => Number(line.variant_id)),
+      ),
+    ].filter((id) => Number.isSafeInteger(id) && id > 0);
+
+    if (!ids.length) return;
+
+    let cancelled = false;
+    const requestedIds = new Set(ids);
+
+    void window.api
+      .getCatalogVariantSnapshots(ids)
+      .then((snapshots) => {
+        if (cancelled) return;
+
+        const byId = new Map(
+          snapshots.map((item) => [Number(item.variant_id), item]),
+        );
+
+        setLines((previous) =>
+          previous.map((line) => {
+            const id = Number(line.variant_id);
+
+            if (!requestedIds.has(id)) return line;
+
+            const current = byId.get(id);
+
+            if (!current) {
+              return {
+                ...line,
+                catalog_available: false,
+              };
+            }
+
+            return {
+              ...line,
+
+              product_name: current.product_name,
+              barcode: current.barcode,
+              size: current.size,
+              color: current.color,
+              stock: Number(current.stock),
+              sell_price: Number(current.original_sell_price),
+
+              catalog_available:
+                Number(current.is_active) === 1 &&
+                Number(current.product_is_active) === 1,
+
+              // لا نغير unit_cost أو quantity أو buy_price.
+            };
+          }),
+        );
+      })
+      .catch((error) => {
+        console.error('Failed to refresh purchase lines:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogVersion, draftHydrated, editLoading, isEditing, currentUser?.id]);
 
   function getPurchaseLineTotal(line: PurchaseLine) {
     const quantity = Number(line.quantity || 0);
@@ -488,6 +567,7 @@ export default function PurchasesPage() {
 
           return {
             variant_id: Number(item.variant_id),
+            original_purchase_item: true,
 
             product_name: item.product_name,
 
@@ -645,7 +725,7 @@ export default function PurchasesPage() {
     }, 250);
 
     return () => clearTimeout(handle);
-  }, [productSearch, categoryFilter]);
+  }, [productSearch, categoryFilter, catalogVersion]);
 
   useEffect(() => {
     function handleEscapeDropdown(event: globalThis.KeyboardEvent) {
@@ -1021,6 +1101,32 @@ export default function PurchasesPage() {
     setSaving(true);
 
     try {
+      const latestVariants = await window.api.getCatalogVariantSnapshots(
+        lines.map((line) => Number(line.variant_id)),
+      );
+
+      const latestById = new Map(
+        latestVariants.map((item) => [Number(item.variant_id), item]),
+      );
+
+      for (const line of lines) {
+        const current = latestById.get(Number(line.variant_id));
+
+        if (!current) {
+          throw new Error(`الصنف "${line.product_name}" لم يعد موجودًا.`);
+        }
+
+        if (
+          (Number(current.is_active) !== 1 ||
+            Number(current.product_is_active) !== 1) &&
+          !(isEditing && line.original_purchase_item)
+        ) {
+          throw new Error(
+            `الصنف "${current.product_name}" غير نشط. راجع الفاتورة قبل الحفظ.`,
+          );
+        }
+      }
+
       const purchaseInput = {
         supplier_id: Number(supplierId),
 
@@ -1448,6 +1554,19 @@ export default function PurchasesPage() {
                         }}
                       >
                         <strong>{line.product_name}</strong>
+
+                        {line.catalog_available === false && (
+                          <span
+                            style={{
+                              color: '#fca5a5',
+                              fontSize: '11px',
+                              fontWeight: 800,
+                            }}
+                          >
+                            الصنف غير متاح حاليًا — راجع الفاتورة
+                          </span>
+                        )}
+
                         <span style={{ color: '#94a3b8', fontSize: '12px' }}>
                           {line.size || '—'} / {line.color || '—'} / مخزون:{' '}
                           {line.stock}

@@ -340,7 +340,7 @@ function validateCatalog(data: UnknownRecord): CatalogValidation {
 
   const variantIds = new Set<number>();
 
-  const barcodes = new Set<string>();
+  const barcodeOwners = new Map<string, number>();
 
   let variantCount = 0;
 
@@ -411,6 +411,7 @@ function validateCatalog(data: UnknownRecord): CatalogValidation {
         [
           'source_id',
           'barcode',
+          'historical_barcodes',
           'size',
           'color',
           'buy_price',
@@ -438,11 +439,36 @@ function validateCatalog(data: UnknownRecord): CatalogValidation {
         required: true,
       });
 
-      if (barcodes.has(barcode)) {
+      if (barcodeOwners.has(barcode)) {
         throw new Error(`الباركود ${barcode} مكرر داخل النسخة`);
       }
 
-      barcodes.add(barcode);
+      barcodeOwners.set(barcode, variantId);
+
+      if (variant.historical_barcodes !== undefined) {
+        const previousBarcodes = asArray(
+          variant.historical_barcodes,
+          `الباركودات السابقة للصنف ${barcode}`,
+          2000,
+        );
+
+        for (const rawPrevious of previousBarcodes) {
+          const previous = boundedString(
+            rawPrevious,
+            `باركود سابق للصنف ${barcode}`,
+            512,
+            { required: true },
+          );
+
+          if (barcodeOwners.has(previous)) {
+            throw new Error(
+              `الباركود ${previous} مكرر أو مرتبط بأكثر من صنف داخل النسخة`,
+            );
+          }
+
+          barcodeOwners.set(previous, variantId);
+        }
+      }
 
       boundedString(variant.size, `مقاس ${barcode}`, 500);
 

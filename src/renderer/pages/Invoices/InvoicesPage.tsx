@@ -26,6 +26,8 @@ import { canUseRecordAction } from '../../utils/action-visibility';
 import { useOpenShiftId } from '../../utils/use-open-shift-id';
 import SaleAuditChanges from '../../components/SaleAuditChanges';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 type SaleRow = {
   id: number;
   shift_id?: number | null;
@@ -656,8 +658,11 @@ export default function InvoicesPage() {
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptData | null>(
     null,
   );
+
   const [selectedReturnHistory, setSelectedReturnHistory] = useState<any[]>([]);
   const [message, setMessage] = useState('');
+  const catalogVersion = useCatalogVersion();
+
   const user = useAuthStore((s) => s.user);
   const openShiftId = useOpenShiftId();
   const canManageSaleHistory = hasUserPermission(user, 'sales.history');
@@ -915,6 +920,73 @@ export default function InvoicesPage() {
       setMessage('حدث خطأ أثناء فتح الفاتورة');
     }
   }
+
+  useEffect(() => {
+    if (catalogVersion === 0) return;
+
+    let cancelled = false;
+
+    const saleId = Number(selectedReceipt?.sale?.id || 0);
+    const exchangeId = Number(selectedExchange?.id || 0);
+
+    if (saleId > 0) {
+      void Promise.all([
+        loadCurrentReceiptData(saleId),
+        window.api.getSaleReturnHistory(saleId),
+      ])
+        .then(([receipt, history]) => {
+          if (cancelled) return;
+
+          setSelectedReceipt((previous) =>
+            Number(previous?.sale?.id) === saleId ? receipt : previous,
+          );
+
+          setSelectedReturnHistory(
+            getActiveSaleReturnHistory(Array.isArray(history) ? history : []),
+          );
+        })
+        .catch((error) => {
+          console.error('Invoice catalog refresh failed:', error);
+        });
+    }
+
+    if (exchangeId > 0) {
+      void window.api
+        .listSaleExchanges({
+          search: String(exchangeId),
+          status: 'all',
+          limit: 200,
+          offset: 0,
+        })
+        .then((result) => {
+          if (cancelled) return;
+
+          const updated = (result?.rows ?? []).find(
+            (row: ExchangeRow) => Number(row.id) === exchangeId,
+          );
+
+          if (!updated) return;
+
+          setSelectedExchange((previous) =>
+            Number(previous?.id) === exchangeId ? updated : previous,
+          );
+        })
+        .catch((error) => {
+          console.error('Exchange catalog refresh failed:', error);
+        });
+    }
+
+    // نعيد تحميل السجلات دون تغيير فلاتر المستخدم.
+    void Promise.all([
+      loadInvoices(salesPage),
+      loadReturns(returnsPage),
+      loadExchanges(exchangesPage),
+    ]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogVersion]);
 
   async function printReceipt(receipt: ReceiptData, returnHistory: any[] = []) {
     if (printingSaleId !== null) return;
@@ -4447,9 +4519,30 @@ export default function InvoicesPage() {
                           }}
                         >
                           <span>
-                            {item.product_name} {item.size || ''}{' '}
-                            {item.color || ''}
+                            {item.current_product_name ?? item.product_name}{' '}
+                            {item.current_size ?? item.size ?? ''}{' '}
+                            {item.current_color ?? item.color ?? ''}
+                            {((item.current_product_name &&
+                              item.current_product_name !==
+                                item.product_name) ||
+                              (item.current_size != null &&
+                                item.current_size !== item.size) ||
+                              (item.current_color != null &&
+                                item.current_color !== item.color)) && (
+                              <small
+                                style={{
+                                  display: 'block',
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                  marginTop: '3px',
+                                }}
+                              >
+                                وقت المرتجع: {item.product_name}{' '}
+                                {item.size || ''} {item.color || ''}
+                              </small>
+                            )}
                           </span>
+
                           <strong>
                             كمية: {Number(item.quantity || 0)} |{' '}
                             {money(item.line_total)}

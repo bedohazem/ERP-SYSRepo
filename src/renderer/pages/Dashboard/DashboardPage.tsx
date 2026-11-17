@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { useAuthStore } from '../../store/auth.store';
 import { formatMoney, roundCost, roundFinancial } from '../../../shared/money';
+import { useCatalogVersion } from '../../utils/use-catalog-version';
 
 type ReportsData = {
   summary: {
@@ -276,6 +277,7 @@ const emptyAdminCashFlowAlerts: AdminCashFlowAlerts = {
 export default function DashboardPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const catalogVersion = useCatalogVersion();
   const isCashier = user?.role !== 'admin';
   const [data, setData] = useState<DashboardState>(emptyDashboard);
 
@@ -427,6 +429,12 @@ export default function DashboardPage() {
 
     void loadDashboard();
   }, [user?.id, isCashier, todayKey]);
+
+  useEffect(() => {
+    if (catalogVersion === 0 || !user?.id) return;
+
+    void loadDashboard(true);
+  }, [catalogVersion]);
 
   const bestProduct = data.month.topProducts[0];
   const bestCustomer = data.month.topCustomers[0];

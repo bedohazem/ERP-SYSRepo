@@ -1043,4 +1043,112 @@ describe('product repository', () => {
       }),
     ).toThrow('السعر بعد الخصم يجب أن يكون أقل من سعر البيع الأصلي');
   });
+
+  it('preserves old barcodes for the same variant and prevents reuse', () => {
+    createProduct({
+      name: 'Original Shirt',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'OLD-SCAN-001',
+          size: 'M',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 200,
+          min_stock: 5,
+          opening_qty: 3,
+        },
+      ],
+    });
+
+    const original = getVariantByBarcode('OLD-SCAN-001');
+
+    expect(original).toBeDefined();
+
+    const variantId = Number(original!.variant_id);
+
+    updateVariant({
+      id: variantId,
+      barcode: 'NEW-SCAN-001',
+      size: 'L',
+      color: 'Blue',
+      buy_price: 110,
+      sell_price: 250,
+      discount_price: null,
+      min_stock: 5,
+      is_active: 1,
+    });
+
+    const current = getVariantByBarcode('NEW-SCAN-001');
+    const previous = getVariantByBarcode('OLD-SCAN-001');
+
+    expect(current?.variant_id).toBe(variantId);
+    expect(previous?.variant_id).toBe(variantId);
+
+    expect(previous?.barcode).toBe('NEW-SCAN-001');
+    expect(previous?.size).toBe('L');
+    expect(previous?.color).toBe('Blue');
+    expect(previous?.sell_price).toBe(250);
+    expect(previous?.stock).toBe(3);
+
+    expect(
+      searchSaleVariants('OLD-SCAN-001').some(
+        (item) => Number(item.variant_id) === variantId,
+      ),
+    ).toBe(true);
+
+    expect(() =>
+      createProduct({
+        name: 'Another Shirt',
+        category_id: null,
+        variants: [
+          {
+            barcode: 'OLD-SCAN-001',
+            size: 'XL',
+            color: 'White',
+            buy_price: 100,
+            sell_price: 300,
+            min_stock: 5,
+            opening_qty: 1,
+          },
+        ],
+      }),
+    ).toThrow('مستخدم بالفعل');
+
+    const other = createProduct({
+      name: 'Other Product',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'OTHER-SCAN-001',
+          size: 'S',
+          color: 'Red',
+          buy_price: 50,
+          sell_price: 100,
+          min_stock: 5,
+          opening_qty: 1,
+        },
+      ],
+    });
+
+    expect(other.success).toBe(true);
+
+    const otherVariant = getVariantByBarcode('OTHER-SCAN-001')!;
+
+    expect(() =>
+      getDb()
+        .prepare(
+          `
+          UPDATE product_variants
+          SET barcode = ?
+          WHERE id = ?
+          `,
+        )
+        .run('OLD-SCAN-001', otherVariant.variant_id),
+    ).toThrow('barcode_reserved_by_other_variant');
+
+    expect(getVariantByBarcode('OTHER-SCAN-001')?.variant_id).toBe(
+      otherVariant.variant_id,
+    );
+  });
 });

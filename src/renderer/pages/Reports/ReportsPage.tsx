@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { buildReportsCsv, buildReportsPdfHtml } from './report-export';
 import {
@@ -358,9 +360,11 @@ export default function ReportsPage() {
     }
   }
 
+  const catalogVersion = useCatalogVersion();
+
   useEffect(() => {
     void loadReports();
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, catalogVersion]);
 
   const hasReportFilters =
     Boolean(monthFilter) || Boolean(dateFrom) || Boolean(dateTo);

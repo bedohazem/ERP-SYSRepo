@@ -22,8 +22,38 @@ import {
   preciseSum,
 } from '../../../shared/money';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 function hasRemainingAmount(value: number) {
   return hasPositivePreciseAmount(value);
+}
+
+function LiveProductValue({
+  original,
+  current,
+}: {
+  original?: string | null;
+  current?: string | null;
+}) {
+  const oldValue = String(original ?? '').trim();
+  const currentValue = String(current ?? '').trim();
+
+  return (
+    <div style={{ display: 'grid', gap: '3px' }}>
+      <span>{currentValue || oldValue || '—'}</span>
+
+      {oldValue && currentValue && oldValue !== currentValue && (
+        <small
+          style={{
+            fontSize: '11px',
+            color: '#94a3b8',
+          }}
+        >
+          وقت الفاتورة: {oldValue}
+        </small>
+      )}
+    </div>
+  );
 }
 
 type PurchaseRow = {
@@ -104,6 +134,8 @@ export default function PurchaseHistoryPage() {
     null,
   );
   const [selectedReturn, setSelectedReturn] = useState<any | null>(null);
+
+  const catalogVersion = useCatalogVersion();
 
   const [paymentPurchase, setPaymentPurchase] = useState<PurchaseRow | null>(
     null,
@@ -292,6 +324,95 @@ export default function PurchaseHistoryPage() {
       showMessage('حدث خطأ أثناء فتح تفاصيل المرتجع');
     }
   }
+
+  useEffect(() => {
+    if (catalogVersion === 0) return;
+
+    let cancelled = false;
+
+    const purchaseId = Number(selectedPurchase?.purchase?.id || 0);
+    const returnId = Number(selectedReturn?.return?.id || 0);
+
+    if (purchaseId > 0) {
+      void window.api
+        .getPurchaseInvoice(purchaseId)
+        .then((data) => {
+          if (cancelled) return;
+
+          setSelectedPurchase((previous: any) =>
+            Number(previous?.purchase?.id) === purchaseId ? data : previous,
+          );
+        })
+        .catch((error) => {
+          console.error('Purchase detail refresh failed:', error);
+        });
+    }
+
+    if (returnId > 0) {
+      void window.api
+        .getPurchaseReturn(returnId)
+        .then((data) => {
+          if (cancelled) return;
+
+          setSelectedReturn((previous: any) =>
+            Number(previous?.return?.id) === returnId ? data : previous,
+          );
+        })
+        .catch((error) => {
+          console.error('Purchase return refresh failed:', error);
+        });
+    }
+
+    // نموذج المرتجع المفتوح: نحدث الهوية فقط.
+    // لا نلمس الكميات أو الأسعار أو بيانات التعديل.
+    const ids = [
+      ...new Set<number>(
+        (returnPurchase?.items ?? [])
+          .map((item: any) => Number(item.variant_id))
+          .filter((id: number) => Number.isSafeInteger(id) && id > 0),
+      ),
+    ];
+
+    if (ids.length > 0) {
+      void window.api
+        .getCatalogVariantSnapshots(ids)
+        .then((snapshots) => {
+          if (cancelled) return;
+
+          const byId = new Map(
+            snapshots.map((item) => [Number(item.variant_id), item]),
+          );
+
+          setReturnPurchase((previous: any) => {
+            if (!previous) return previous;
+
+            return {
+              ...previous,
+              items: (previous.items ?? []).map((item: any) => {
+                const current = byId.get(Number(item.variant_id));
+
+                if (!current) return item;
+
+                return {
+                  ...item,
+                  current_product_name: current.product_name,
+                  current_barcode: current.barcode,
+                  current_size: current.size,
+                  current_color: current.color,
+                };
+              }),
+            };
+          });
+        })
+        .catch((error) => {
+          console.error('Purchase return draft refresh failed:', error);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogVersion]);
 
   async function openEditReturnModal(row: PurchaseReturnRow) {
     if (row.cancelled_at) {
@@ -1726,6 +1847,7 @@ export default function PurchaseHistoryPage() {
                     <th style={thStyle}>مرتجع</th>
                     <th style={thStyle}>متاح</th>
                     <th style={thStyle}>سعر الشراء</th>
+                    <th style={thStyle}>سعر البيع الحالي</th>
                     <th style={thStyle}>الإجمالي</th>
                   </tr>
                 </thead>
@@ -1736,16 +1858,40 @@ export default function PurchaseHistoryPage() {
                       key={item.id}
                       style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                     >
-                      <td style={tdStyle}>{item.product_name}</td>
-                      <td style={tdStyle}>{item.barcode || '—'}</td>
-                      <td style={tdStyle}>{item.size || '—'}</td>
-                      <td style={tdStyle}>{item.color || '—'}</td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.product_name}
+                          current={item.current_product_name}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.barcode}
+                          current={item.current_barcode}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.size}
+                          current={item.current_size}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.color}
+                          current={item.current_color}
+                        />
+                      </td>
+
                       <td style={tdStyle}>{item.quantity}</td>
                       <td style={tdStyle}>{item.returned_quantity || 0}</td>
                       <td style={tdStyle}>
                         {item.returnable_quantity ?? item.quantity}
                       </td>
                       <td style={tdStyle}>{money(item.unit_cost)}</td>
+                      <td style={tdStyle}>
+                        {item.sell_price == null ? '—' : money(item.sell_price)}
+                      </td>
                       <td style={tdStyle}>{money(item.line_total)}</td>
                     </tr>
                   ))}
@@ -2267,10 +2413,31 @@ export default function PurchaseHistoryPage() {
                       key={item.id}
                       style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
                     >
-                      <td style={tdStyle}>{item.product_name}</td>
-                      <td style={tdStyle}>{item.barcode || '—'}</td>
-                      <td style={tdStyle}>{item.size || '—'}</td>
-                      <td style={tdStyle}>{item.color || '—'}</td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.product_name}
+                          current={item.current_product_name}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.barcode}
+                          current={item.current_barcode}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.size}
+                          current={item.current_size}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <LiveProductValue
+                          original={item.color}
+                          current={item.current_color}
+                        />
+                      </td>
+
                       <td style={tdStyle}>{item.quantity}</td>
                       <td style={tdStyle}>{money(item.unit_cost)}</td>
                       <td style={tdStyle}>{money(item.line_total)}</td>
@@ -2645,12 +2812,15 @@ export default function PurchaseHistoryPage() {
                                 minWidth: '160px',
                               }}
                             >
-                              <strong>{item.product_name}</strong>
+                              <strong>
+                                {item.current_product_name ?? item.product_name}
+                              </strong>
                               <span
                                 style={{ color: '#94a3b8', fontSize: '12px' }}
                               >
-                                {item.barcode || '—'} / {item.size || '—'} /{' '}
-                                {item.color || '—'}
+                                {item.current_barcode ?? item.barcode ?? '—'} /{' '}
+                                {item.current_size ?? item.size ?? '—'} /{' '}
+                                {item.current_color ?? item.color ?? '—'}
                               </span>
                             </div>
                           </td>

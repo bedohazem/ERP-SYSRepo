@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 import type { CSSProperties } from 'react';
 
+import { useCatalogVersion } from '../../utils/use-catalog-version';
+
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import {
   truncateMoney,
@@ -106,6 +108,11 @@ type PurchaseOrderItem = {
 
   color?: string | null;
 
+  current_product_name?: string | null;
+  current_barcode?: string | null;
+  current_size?: string | null;
+  current_color?: string | null;
+
   quantity: number;
 
   unit_cost: number;
@@ -206,6 +213,7 @@ export default function PurchaseOrdersPanel({
   onPurchaseReceived,
 }: Props) {
   const [tab, setTab] = useState<'reorder' | 'orders'>('reorder');
+  const catalogVersion = useCatalogVersion();
 
   const [message, setMessage] = useState('');
 
@@ -402,6 +410,63 @@ export default function PurchaseOrdersPanel({
       setActionLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!open || catalogVersion === 0) return;
+
+    if (tab === 'orders') {
+      void loadOrders(orderPage, orderStatus);
+    }
+
+    const ids = [
+      ...new Set(
+        detailItems
+          .map((item) => Number(item.variant_id))
+          .filter((id) => Number.isSafeInteger(id) && id > 0),
+      ),
+    ];
+
+    if (!ids.length) return;
+
+    let cancelled = false;
+
+    void window.api
+      .getCatalogVariantSnapshots(ids)
+      .then((snapshots) => {
+        if (cancelled) return;
+
+        const byId = new Map(
+          snapshots.map((item) => [Number(item.variant_id), item]),
+        );
+
+        setDetailItems((previous) =>
+          previous.map((item) => {
+            const current = byId.get(Number(item.variant_id));
+
+            if (!current) return item;
+
+            return {
+              ...item,
+
+              current_product_name: current.product_name,
+              current_barcode: current.barcode,
+              current_size: current.size,
+              current_color: current.color,
+
+              // نحتفظ بالكمية وسعر الشراء والإجمالي
+              // اللي المستخدم عدلهم داخل أمر الشراء.
+            };
+          }),
+        );
+      })
+      .catch((error) => {
+        console.error('Purchase order catalog refresh failed:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [catalogVersion, open]);
 
   useEffect(() => {
     if (!open) {
@@ -1477,12 +1542,37 @@ export default function PurchaseOrdersPanel({
                   {detailItems.map((item) => (
                     <tr key={item.variant_id}>
                       <td style={tdStyle}>
-                        <strong>{item.product_name}</strong>
+                        <strong>
+                          {item.current_product_name ?? item.product_name}
+                        </strong>
 
                         <div style={mutedStyle}>
-                          {item.barcode || '—'} | {item.size || '—'} /{' '}
-                          {item.color || '—'}
+                          {item.current_barcode ?? item.barcode ?? '—'} |{' '}
+                          {item.current_size ?? item.size ?? '—'} /{' '}
+                          {item.current_color ?? item.color ?? '—'}
                         </div>
+
+                        {((item.current_product_name &&
+                          item.current_product_name !== item.product_name) ||
+                          (item.current_barcode &&
+                            item.current_barcode !== item.barcode) ||
+                          (item.current_size != null &&
+                            item.current_size !== item.size) ||
+                          (item.current_color != null &&
+                            item.current_color !== item.color)) && (
+                          <small
+                            style={{
+                              display: 'block',
+                              marginTop: '4px',
+                              fontSize: '11px',
+                              color: '#94a3b8',
+                            }}
+                          >
+                            وقت إنشاء الأمر: {item.product_name} —{' '}
+                            {item.barcode || '—'} / {item.size || '—'} /{' '}
+                            {item.color || '—'}
+                          </small>
+                        )}
                       </td>
 
                       <td style={tdStyle}>

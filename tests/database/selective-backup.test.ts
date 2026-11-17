@@ -6,6 +6,7 @@ import {
   createCategory,
   createProduct,
   getVariantByBarcode,
+  updateVariant,
 } from '../../src/main/database/repositories/product.repo';
 
 import { receiveStockAtCost } from '../../src/main/database/inventory-cost';
@@ -984,5 +985,91 @@ describe('selective backup exporter', () => {
         )
         .all(),
     ).toEqual([]);
+  }, 30_000);
+
+  it('preserves historical barcodes through selective backup and restore', () => {
+    createProduct({
+      name: 'Barcode History Product',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'BACKUP-OLD-001',
+          size: 'M',
+          color: 'Black',
+          buy_price: 100,
+          sell_price: 200,
+          min_stock: 5,
+          opening_qty: 3,
+        },
+      ],
+    });
+
+    const original = getVariantByBarcode('BACKUP-OLD-001')!;
+
+    updateVariant({
+      id: original.variant_id,
+      barcode: 'BACKUP-NEW-001',
+      size: 'L',
+      color: 'Blue',
+      buy_price: 100,
+      sell_price: 250,
+      discount_price: null,
+      min_stock: 5,
+      is_active: 1,
+    });
+
+    const backup = buildSelectiveBackupPackage({
+      sections: ['catalog_stock'],
+      appVersion: 'barcode-history-test',
+    });
+
+    const savedVariant = backup.data.catalog_stock!.products[0].variants[0];
+
+    expect(savedVariant.barcode).toBe('BACKUP-NEW-001');
+    expect(savedVariant.historical_barcodes).toEqual(['BACKUP-OLD-001']);
+
+    expect(() => validateSelectiveBackupPackageV1(backup)).not.toThrow();
+
+    const legacyBackup = structuredClone(backup);
+    delete legacyBackup.data.catalog_stock!.products[0].variants[0]
+      .historical_barcodes;
+
+    expect(() => validateSelectiveBackupPackageV1(legacyBackup)).not.toThrow();
+
+    const invalidBackup = structuredClone(backup);
+    invalidBackup.data.catalog_stock!.products[0].variants[0].historical_barcodes =
+      ['BACKUP-OLD-001', 'BACKUP-OLD-001'];
+
+    expect(() => validateSelectiveBackupPackageV1(invalidBackup)).toThrow(
+      'الباركود',
+    );
+
+    // إعادة التهيئة هنا تخص قاعدة الاختبارات المؤقتة فقط.
+    resetDatabaseData();
+
+    const db = getDb();
+
+    const admin = db
+      .prepare(
+        `
+        SELECT id
+        FROM users
+        WHERE role = 'admin'
+        ORDER BY id
+        LIMIT 1
+        `,
+      )
+      .get() as { id: number };
+
+    restoreSelectiveBackupPackage(backup, ['catalog_stock'], admin.id);
+
+    const current = getVariantByBarcode('BACKUP-NEW-001');
+    const previous = getVariantByBarcode('BACKUP-OLD-001');
+
+    expect(current?.variant_id).toBe(original.variant_id);
+    expect(previous?.variant_id).toBe(original.variant_id);
+    expect(previous?.barcode).toBe('BACKUP-NEW-001');
+    expect(current?.stock).toBe(3);
+    expect(previous?.stock).toBe(3);
   }, 30_000);
 });
