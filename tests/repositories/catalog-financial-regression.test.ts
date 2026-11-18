@@ -194,7 +194,9 @@ describe('catalog metadata financial regression', () => {
     expect(before.financialReport.summary.net_sales).toBeGreaterThan(0);
     expect(before.financialReport.summary.normal_discounts).toBeGreaterThan(0);
     expect(before.financialReport.summary.total_returns).toBeGreaterThan(0);
-    expect(before.financialReport.summary.gross_profit_before_discounts).toBe(200);
+    expect(before.financialReport.summary.gross_profit_before_discounts).toBe(
+      200,
+    );
     expect((before.supplier as { balance: number }).balance).toBe(800);
     expect(before.financialReport.topProducts).toHaveLength(1);
     expect(before.financialReport.topProducts[0].net_quantity).toBe(2);
@@ -243,7 +245,9 @@ describe('catalog metadata financial regression', () => {
 
     // فواتير الأصل تحافظ على الهوية والسعر وقت العملية.
     const originalSale = getSaleReceipt(sale.saleId) as any;
-    expect(originalSale.items[0].product_name).toBe('Original Regression Shirt');
+    expect(originalSale.items[0].product_name).toBe(
+      'Original Regression Shirt',
+    );
     expect(originalSale.items[0].barcode).toBe('REG-FIN-OLD-001');
     expect(Number(originalSale.items[0].unit_price)).toBe(200);
     expect(Number(originalSale.sale.discount_value)).toBe(20);
@@ -260,8 +264,12 @@ describe('catalog metadata financial regression', () => {
     );
 
     const currentPurchase = getPurchaseInvoice(purchase.purchaseId) as any;
-    expect(currentPurchase.items[0].product_name).toBe('Original Regression Shirt');
-    expect(currentPurchase.items[0].current_product_name).toBe('Current Regression Shirt');
+    expect(currentPurchase.items[0].product_name).toBe(
+      'Original Regression Shirt',
+    );
+    expect(currentPurchase.items[0].current_product_name).toBe(
+      'Current Regression Shirt',
+    );
     expect(currentPurchase.items[0].current_barcode).toBe('REG-FIN-NEW-001');
     expect(currentPurchase.items[0].current_size).toBe('XL');
     expect(currentPurchase.items[0].current_color).toBe('Blue');
@@ -269,12 +277,18 @@ describe('catalog metadata financial regression', () => {
     expect(Number(currentPurchase.items[0].sell_price)).toBe(350);
 
     const saleReturnHistory = getSaleReturnHistory(sale.saleId) as any[];
-    expect(saleReturnHistory[0].items[0].product_name).toBe('Original Regression Shirt');
+    expect(saleReturnHistory[0].items[0].product_name).toBe(
+      'Original Regression Shirt',
+    );
     expect(saleReturnHistory[0].items[0].current_product_name).toBe(
       'Current Regression Shirt',
     );
-    const purchaseReturnHistory = getPurchaseReturn(purchaseReturn.return_id) as any;
-    expect(purchaseReturnHistory.items[0].product_name).toBe('Original Regression Shirt');
+    const purchaseReturnHistory = getPurchaseReturn(
+      purchaseReturn.return_id,
+    ) as any;
+    expect(purchaseReturnHistory.items[0].product_name).toBe(
+      'Original Regression Shirt',
+    );
     expect(purchaseReturnHistory.items[0].current_product_name).toBe(
       'Current Regression Shirt',
     );
@@ -284,7 +298,9 @@ describe('catalog metadata financial regression', () => {
     expect(report.topProducts).toHaveLength(1);
     expect(history.topProducts).toHaveLength(1);
     expect(report.topProducts[0].product_name).toBe('Current Regression Shirt');
-    expect(history.topProducts[0].product_name).toBe('Current Regression Shirt');
+    expect(history.topProducts[0].product_name).toBe(
+      'Current Regression Shirt',
+    );
     expect(report.topProducts[0].net_total).toBe(
       before.financialReport.topProducts[0].net_total,
     );
@@ -319,7 +335,9 @@ describe('catalog metadata financial regression', () => {
     expect(newReceipt.items[0].size).toBe('XL');
     expect(newReceipt.items[0].color).toBe('Blue');
     expect(Number(newReceipt.items[0].unit_price)).toBe(350);
-    expect(Number((getSaleReceipt(sale.saleId) as any).items[0].unit_price)).toBe(200);
+    expect(
+      Number((getSaleReceipt(sale.saleId) as any).items[0].unit_price),
+    ).toBe(200);
 
     const finalReport = getReportsSummary();
     expect(finalReport.topProducts).toHaveLength(1);
