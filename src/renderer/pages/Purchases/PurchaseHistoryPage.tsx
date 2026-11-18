@@ -5,7 +5,10 @@ import {
   getPaymentMethodLabel,
 } from '../../utils/payment-method';
 import { useNavigate } from 'react-router-dom';
-import { printPurchaseInvoiceBarcodes } from '../../utils/purchase-barcode-print';
+import {
+  printPurchaseInvoiceBarcodes,
+  printPurchaseItemBarcodes,
+} from '../../utils/purchase-barcode-print';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
@@ -300,6 +303,30 @@ export default function PurchaseHistoryPage() {
     } catch (error) {
       console.error('Purchase barcode reprint failed:', error);
       showMessage(getErrorMessage(error, 'تعذر طباعة باركود المشتريات'));
+    } finally {
+      setPrintingPurchaseId(null);
+    }
+  }
+
+  async function printHistoryPurchaseItemBarcode(
+    purchaseId: number,
+    itemId: number,
+  ) {
+    if (printingPurchaseId !== null) return;
+
+    setPrintingPurchaseId(purchaseId);
+
+    try {
+      const result = await printPurchaseItemBarcodes(purchaseId, itemId);
+
+      if (result.ok) {
+        showMessage('تم إرسال باركود الصنف للطابعة');
+      } else if (!result.canceled) {
+        showMessage(result.message || 'تعذر طباعة باركود الصنف');
+      }
+    } catch (error) {
+      console.error('Purchase item barcode printing failed:', error);
+      showMessage(getErrorMessage(error, 'تعذر طباعة باركود الصنف'));
     } finally {
       setPrintingPurchaseId(null);
     }
@@ -1849,6 +1876,7 @@ export default function PurchaseHistoryPage() {
                     <th style={thStyle}>سعر الشراء</th>
                     <th style={thStyle}>سعر البيع الحالي</th>
                     <th style={thStyle}>الإجمالي</th>
+                    <th style={thStyle}>طباعة</th>
                   </tr>
                 </thead>
 
@@ -1889,10 +1917,88 @@ export default function PurchaseHistoryPage() {
                         {item.returnable_quantity ?? item.quantity}
                       </td>
                       <td style={tdStyle}>{money(item.unit_cost)}</td>
+
                       <td style={tdStyle}>
-                        {item.sell_price == null ? '—' : money(item.sell_price)}
+                        {item.sell_price == null ? (
+                          '—'
+                        ) : Number(item.discount_price) > 0 &&
+                          Number(item.discount_price) <
+                            Number(item.sell_price) ? (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'flex-start',
+                              gap: '4px',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <span
+                              style={{
+                                color: '#4ade80',
+                                fontSize: '15px',
+                                fontWeight: 900,
+                              }}
+                            >
+                              {money(item.discount_price)}
+                            </span>
+
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                textDecoration: 'line-through',
+                                textDecorationColor: '#f87171',
+                                textDecorationThickness: '1.5px',
+                              }}
+                            >
+                              {money(item.sell_price)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span
+                            style={{
+                              fontWeight: 800,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {money(item.sell_price)}
+                          </span>
+                        )}
                       </td>
+
                       <td style={tdStyle}>{money(item.line_total)}</td>
+
+                      <td style={tdStyle}>
+                        {selectedPurchase.purchase.status !== 'cancelled' &&
+                          selectedPurchase.purchase.status !==
+                            'opening_balance' &&
+                          Boolean(
+                            String(item.current_barcode ?? '').trim(),
+                          ) && (
+                            <button
+                              type="button"
+                              disabled={printingPurchaseId !== null}
+                              onClick={() =>
+                                void printHistoryPurchaseItemBarcode(
+                                  Number(selectedPurchase.purchase.id),
+                                  Number(item.id),
+                                )
+                              }
+                              style={{
+                                ...smallButtonStyle,
+                                borderColor: 'rgba(34,197,94,0.45)',
+                                color: '#86efac',
+                                background: 'rgba(34,197,94,0.10)',
+                                whiteSpace: 'nowrap',
+                                opacity: printingPurchaseId !== null ? 0.5 : 1,
+                              }}
+                            >
+                              🖨 باركود
+                            </button>
+                          )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

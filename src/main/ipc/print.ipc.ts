@@ -493,6 +493,12 @@ export function registerPrintIpc(): void {
       };
     }
 
+    const keepPreviewOpenAfterPrint =
+      optionalBooleanValue(
+        payload.keepPreviewOpenAfterPrint,
+        'إبقاء معاينة الطباعة مفتوحة',
+      ) ?? false;
+
     if (dialogPrintInProgress) {
       return {
         ok: false,
@@ -590,6 +596,16 @@ export function registerPrintIpc(): void {
           },
         );
       });
+
+      if (
+        result.ok &&
+        keepPreviewOpenAfterPrint &&
+        !activePrintWindow.isDestroyed()
+      ) {
+        await new Promise<void>((resolve) => {
+          activePrintWindow.once('closed', () => resolve());
+        });
+      }
 
       if (result.ok && saleId !== null) {
         try {

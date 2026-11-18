@@ -2330,10 +2330,12 @@ declare global {
         print_source?: 'sale' | 'history';
         previewWidth?: number;
         previewHeight?: number;
+        keepPreviewOpenAfterPrint?: boolean;
       }) => Promise<{
         ok: boolean;
         canceled?: boolean;
         busy?: boolean;
+
         log_failed?: boolean;
         message?: string;
       }>;
@@ -2832,7 +2834,9 @@ declare global {
           line_total: number;
           current_buy_price?: number;
           sell_price?: number;
+          discount_price?: number | null;
           stock?: number;
+
           returned_quantity?: number;
           returned_value?: number;
           returnable_quantity?: number;

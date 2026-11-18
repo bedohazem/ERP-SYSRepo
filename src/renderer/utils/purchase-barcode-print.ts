@@ -319,7 +319,83 @@ export async function printPurchaseInvoiceBarcodes(purchaseId: number) {
     html,
     previewWidth: 500,
     previewHeight: 700,
+    keepPreviewOpenAfterPrint: true,
   });
 
   return { ...result, total, purchaseId };
+}
+
+export async function printPurchaseItemBarcodes(
+  purchaseId: number,
+  purchaseItemId: number,
+) {
+  if (!Number.isSafeInteger(purchaseId) || purchaseId <= 0) {
+    throw new Error('رقم فاتورة الشراء غير صحيح');
+  }
+
+  if (!Number.isSafeInteger(purchaseItemId) || purchaseItemId <= 0) {
+    throw new Error('رقم صنف الفاتورة غير صحيح');
+  }
+
+  const [invoice, settings, license] = await Promise.all([
+    window.api.getPurchaseInvoice(purchaseId),
+    window.api.getBarcodePrintSettings(),
+    window.__APP_LICENSE_STATUS__
+      ? Promise.resolve(window.__APP_LICENSE_STATUS__)
+      : window.api.getLicenseStatus(),
+  ]);
+
+  if (!invoice?.purchase) {
+    throw new Error('فاتورة الشراء غير موجودة');
+  }
+
+  if (
+    invoice.purchase.status === 'cancelled' ||
+    invoice.purchase.status === 'opening_balance'
+  ) {
+    throw new Error('لا يمكن طباعة باركود هذه الفاتورة');
+  }
+
+  const item = (invoice.items || []).find(
+    (row) => Number(row.id) === purchaseItemId,
+  );
+
+  if (!item) {
+    throw new Error('الصنف غير موجود داخل فاتورة الشراء');
+  }
+
+  const plan = buildPurchaseBarcodePlan([
+    {
+      product_name: item.current_product_name ?? item.product_name,
+      barcode: item.current_barcode ?? '',
+      size: item.current_size ?? '',
+      color: item.current_color ?? '',
+      quantity: 1,
+      sell_price: item.sell_price,
+
+      discount_price: item.discount_price,
+    },
+  ]);
+
+  const storeName =
+    String(license?.app_name || 'ERP Store').trim() || 'ERP Store';
+
+  const html = buildLabelsHtml(plan, settings, storeName);
+
+  if (html.length > 4_900_000) {
+    throw new Error('حجم الملصقات كبير جدًا');
+  }
+
+  const result = await window.api.printHtmlWithDialog({
+    html,
+    previewWidth: 500,
+    previewHeight: 700,
+  });
+
+  return {
+    ...result,
+    total: 1,
+    purchaseId,
+    purchaseItemId,
+  };
 }
