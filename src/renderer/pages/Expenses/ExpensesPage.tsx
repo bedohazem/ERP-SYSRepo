@@ -95,9 +95,46 @@ export default function ExpensesPage() {
   } | null>(null);
   const currentUser = useAuthStore((s) => s.user);
   const openShiftId = useOpenShiftId();
+
   const isAdmin = currentUser?.role === 'admin';
   const canManageExpenses = hasUserPermission(currentUser, 'expenses.manage');
+
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [filterUsers, setFilterUsers] = useState<
+    Array<{ id: number; name: string; is_active: number }>
+  >([]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setFilterUsers([]);
+      setSelectedUserId('');
+      return;
+    }
+
+    let cancelled = false;
+
+    void window.api
+      .getUsers()
+      .then((result) => {
+        if (cancelled) return;
+
+        if (result.success) {
+          setFilterUsers(result.users);
+        } else {
+          console.error('Failed to load expense filter users:', result.message);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to load expense filter users:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
   const [title, setTitle] = useState('');
+
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('store_cash');
@@ -174,6 +211,8 @@ export default function ExpensesPage() {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         search: search || undefined,
+        created_by:
+          isAdmin && selectedUserId ? Number(selectedUserId) : undefined,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
@@ -201,7 +240,7 @@ export default function ExpensesPage() {
   useEffect(() => {
     setExpensesPage(1);
     void loadExpenses(1);
-  }, [dateFrom, dateTo, search]);
+  }, [dateFrom, dateTo, search, selectedUserId]);
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -433,6 +472,8 @@ export default function ExpensesPage() {
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
         search: search || undefined,
+        created_by:
+          isAdmin && selectedUserId ? Number(selectedUserId) : undefined,
       });
 
       printExpenses = Array.isArray(data) ? data : [];
@@ -603,7 +644,11 @@ export default function ExpensesPage() {
             </div>
 
             <div class="muted">
-              المستخدم: ${escapeHtml(currentUser?.name || '—')}<br />
+              طُبع بواسطة: ${escapeHtml(currentUser?.name || '—')}<br />
+              فلتر المستخدم: ${escapeHtml(
+                filterUsers.find((user) => user.id === Number(selectedUserId))
+                  ?.name || 'كل المستخدمين',
+              )}<br />
               عدد المصروفات: ${printExpenses.length}
             </div>
           </div>
@@ -955,6 +1000,37 @@ export default function ExpensesPage() {
               />
             </label>
 
+            {isAdmin && (
+              <label
+                style={{
+                  display: 'grid',
+                  gap: '5px',
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                }}
+              >
+                <span>المستخدم</span>
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    width: '190px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <option value="">كل المستخدمين</option>
+                  {filterUsers.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.name}
+                      {Number(user.is_active) !== 1 ? ' (موقوف)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <label
               style={{
                 display: 'grid',
@@ -1005,7 +1081,11 @@ export default function ExpensesPage() {
               />
             </label>
 
-            {(dateFrom || dateTo || search || searchDraft) && (
+            {(dateFrom ||
+              dateTo ||
+              search ||
+              searchDraft ||
+              selectedUserId) && (
               <button
                 type="button"
                 onClick={() => {
@@ -1013,6 +1093,7 @@ export default function ExpensesPage() {
                   setDateTo('');
                   setSearchDraft('');
                   setSearch('');
+                  setSelectedUserId('');
                 }}
                 style={{
                   ...primaryButtonStyle,

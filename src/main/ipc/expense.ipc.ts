@@ -94,7 +94,11 @@ export function registerExpenseIpc(): void {
         optionalTrimmedString(payload.search, 'بحث المصروفات', 500) ??
         undefined,
 
-      created_by: user.role === 'admin' ? undefined : user.id,
+      created_by:
+        user.role === 'admin'
+          ? (optionalPositiveInteger(payload.created_by, 'المستخدم') ??
+            undefined)
+          : user.id,
     });
   });
 
@@ -115,7 +119,11 @@ export function registerExpenseIpc(): void {
         optionalTrimmedString(payload.search, 'بحث المصروفات', 500) ??
         undefined,
 
-      created_by: user.role === 'admin' ? undefined : user.id,
+      created_by:
+        user.role === 'admin'
+          ? (optionalPositiveInteger(payload.created_by, 'المستخدم') ??
+            undefined)
+          : user.id,
 
       limit: optionalPositiveInteger(payload.limit, 'عدد النتائج') ?? undefined,
 

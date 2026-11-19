@@ -3605,12 +3605,14 @@ declare global {
         date_from?: string;
         date_to?: string;
         search?: string;
+        created_by?: number;
       }) => Promise<any[]>;
 
       getExpensesPage: (input?: {
         date_from?: string;
         date_to?: string;
         search?: string;
+        created_by?: number;
         limit?: number;
         offset?: number;
       }) => Promise<{
