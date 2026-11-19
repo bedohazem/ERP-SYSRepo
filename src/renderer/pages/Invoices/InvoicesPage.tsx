@@ -996,10 +996,19 @@ export default function InvoicesPage() {
     setPrintingSaleId(saleId);
 
     try {
+      const [currentReceipt, latestReturnHistory] = await Promise.all([
+        loadCurrentReceiptData(saleId),
+        window.api.getSaleReturnHistory(saleId),
+      ]);
+
       await printSaleReceiptHtml({
-        receipt,
+        receipt: currentReceipt,
         printSource: 'history',
-        returnHistory: getActiveSaleReturnHistory(returnHistory),
+        returnHistory: getActiveSaleReturnHistory(
+          Array.isArray(latestReturnHistory)
+            ? latestReturnHistory
+            : returnHistory,
+        ),
         onBlocked: () => setMessage('لم يتم فتح نافذة الطباعة'),
         onError: (message) => setMessage(message),
       });

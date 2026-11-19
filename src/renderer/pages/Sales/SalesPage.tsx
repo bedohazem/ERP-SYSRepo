@@ -2492,10 +2492,17 @@ export default function SalesPage() {
     setPrintingReceipt(true);
 
     try {
+      const saleId = Number(receiptData.sale.id);
+
+      const [currentState, returnHistory] = await Promise.all([
+        window.api.getSaleCurrentState(saleId),
+        window.api.getSaleReturnHistory(saleId),
+      ]);
+
       await printSaleReceiptHtml({
-        receipt: receiptData,
+        receipt: currentState.current_receipt,
         printSource: 'sale',
-        returnHistory: [],
+        returnHistory: Array.isArray(returnHistory) ? returnHistory : [],
         onBlocked: () => showMessage('error', 'تعذر فتح نافذة الطباعة', false),
         onError: (message) =>
           showMessage('error', message || 'فشل طباعة الفاتورة', false),
