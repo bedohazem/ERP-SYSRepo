@@ -658,6 +658,34 @@ export default function PurchaseHistoryPage() {
   }
 
   function updateReturnQuantity(itemId: number, value: string) {
+    const item = (returnPurchase?.items ?? []).find(
+      (row: any) => Number(row.id) === itemId,
+    );
+
+    if (!item) return;
+
+    const available = Math.max(
+      0,
+      Number(item.returnable_quantity ?? item.quantity ?? 0) +
+        Number(editingReturnOriginalQuantities[itemId] || 0),
+    );
+
+    if (value.trim()) {
+      const requested = Number(value);
+
+      if (!Number.isFinite(requested) || requested < 0) {
+        showMessage('اكتب كمية مرتجع صحيحة');
+        return;
+      }
+
+      if (requested > available) {
+        showMessage(
+          `الكمية المطلوبة ${requested} أكبر من المتاح للمرتجع (${available})`,
+        );
+        return;
+      }
+    }
+
     setReturnQuantities((prev) => ({
       ...prev,
       [itemId]: value,

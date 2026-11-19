@@ -32,6 +32,8 @@ import {
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo';
 
+import { createSale } from '../../src/main/database/repositories/sales.repo';
+
 type PurchaseVariantTestRow = {
   variant_id: number;
   product_id: number;
@@ -6843,6 +6845,83 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBeCloseTo(0, 8);
 
     expectSupplierAccountingInvariant(supplierId);
+  });
+
+  it('excludes sold pieces from supplier return availability', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 15,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const original = getPurchaseInvoice(purchase.purchaseId) as any;
+    const itemId = Number(original.items[0].id);
+
+    createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: 150,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    createPurchaseReturn({
+      purchase_id: purchase.purchaseId,
+      actor_id: 1,
+      refund_mode: 'credit',
+      items: [
+        {
+          purchase_item_id: itemId,
+          quantity: 4,
+        },
+      ],
+    });
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.items[0].stock)).toBe(10);
+    expect(Number(invoice.items[0].returned_quantity)).toBe(4);
+    expect(Number(invoice.items[0].returnable_quantity)).toBe(10);
+
+    expect(() =>
+      createPurchaseReturn({
+        purchase_id: purchase.purchaseId,
+        actor_id: 1,
+        refund_mode: 'credit',
+        items: [
+          {
+            purchase_item_id: itemId,
+            quantity: 11,
+          },
+        ],
+      }),
+    ).toThrow('المخزون الحالي غير كافٍ');
+
+    expect(getStockByBarcode('PURCHASE001')).toBe(10);
   });
 
   it('limits available purchase return quantity to actual stock after sales', () => {
