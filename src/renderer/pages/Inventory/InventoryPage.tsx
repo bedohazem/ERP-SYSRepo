@@ -131,6 +131,10 @@ export default function InventoryPage() {
 
   const [historyItem, setHistoryItem] = useState<InventoryRow | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [showAllMovements, setShowAllMovements] = useState(false);
+  const [movementSearch, setMovementSearch] = useState('');
+  const [appliedMovementSearch, setAppliedMovementSearch] = useState('');
+  const movementRequestIdRef = useRef(0);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -388,35 +392,72 @@ export default function InventoryPage() {
     }
   }
 
-  async function openHistory(item: InventoryRow, page = 1) {
+  async function openHistory(
+    item: InventoryRow | null,
+    page = 1,
+    searchText = '',
+  ) {
+    const requestId = ++movementRequestIdRef.current;
+
     setHistoryItem(item);
+    setShowAllMovements(item === null);
     setHistoryLoading(true);
 
     try {
       const safePage = Math.max(1, Number(page || 1));
 
       const result = await window.api.getStockMovements({
-        variant_id: item.variant_id,
+        variant_id: item?.variant_id,
+        search: item ? undefined : searchText.trim() || undefined,
         limit: SYSTEM_PAGE_SIZE,
         offset: (safePage - 1) * SYSTEM_PAGE_SIZE,
       });
 
+      if (requestId !== movementRequestIdRef.current) return;
+
       setMovements(Array.isArray(result.rows) ? result.rows : []);
-
       setMovementsTotal(Number(result.total || 0));
-
       setMovementsPage(safePage);
     } catch (error) {
+      if (requestId !== movementRequestIdRef.current) return;
+
       console.error('Failed to load stock movements:', error);
-
       showMessage('حدث خطأ أثناء تحميل سجل الحركات');
-
       setMovements([]);
       setMovementsTotal(0);
     } finally {
-      setHistoryLoading(false);
+      if (requestId === movementRequestIdRef.current) {
+        setHistoryLoading(false);
+      }
     }
   }
+
+  function closeHistory() {
+    movementRequestIdRef.current += 1;
+    setHistoryItem(null);
+    setShowAllMovements(false);
+    setHistoryLoading(false);
+    setMovements([]);
+    setMovementsTotal(0);
+    setMovementsPage(1);
+    setMovementSearch('');
+    setAppliedMovementSearch('');
+  }
+
+  useEffect(() => {
+    if (!showAllMovements) return;
+
+    const query = movementSearch.trim();
+
+    if (query === appliedMovementSearch) return;
+
+    const timer = window.setTimeout(() => {
+      setAppliedMovementSearch(query);
+      void openHistory(null, 1, query);
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [movementSearch, appliedMovementSearch, showAllMovements]);
 
   async function downloadInventoryExcel() {
     if (exportingExcel) return;
@@ -532,10 +573,28 @@ export default function InventoryPage() {
           </div>
 
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setMovementSearch('');
+                setAppliedMovementSearch('');
+                void openHistory(null, 1, '');
+              }}
+              style={{
+                ...secondaryButtonStyle,
+                color: '#93c5fd',
+                border: '1px solid rgba(59,130,246,0.35)',
+                background: 'rgba(59,130,246,0.10)',
+              }}
+            >
+              كل حركات المخزون
+            </button>
+
             {isAdmin && (
               <button
                 type="button"
                 onClick={downloadInventoryEmployeesPdf}
+
                 style={secondaryButtonStyle}
               >
                 PDF المخزون
@@ -1155,13 +1214,17 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {historyItem && (
+      {(historyItem || showAllMovements) && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
           <div
             className="theme-modal-card"
             style={{
               ...modalStyle,
-              width: '1000px',
+              width: '1100px',
+              height: '78vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
             }}
           >
             <div
@@ -1174,35 +1237,74 @@ export default function InventoryPage() {
               }}
             >
               <div>
-                <h3 style={{ margin: '0 0 6px' }}>سجل حركات المخزون</h3>
+                <h3 style={{ margin: '0 0 6px', flexShrink: 0 }}>
+                  {showAllMovements ? 'كل حركات المخزون' : 'سجل حركات المخزون'}
+                </h3>
                 <p style={{ margin: 0, color: '#94a3b8', fontWeight: 700 }}>
-                  {historyItem.product_name} | {historyItem.size || '—'} |{' '}
-                  {historyItem.color || '—'}
+                  {showAllMovements
+                    ? 'جميع حركات الدخول والخروج لكل الأصناف'
+                    : `${historyItem?.product_name || '—'} | ${historyItem?.size || '—'} | ${historyItem?.color || '—'}`}
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  setHistoryItem(null);
-                  setMovements([]);
-                }}
+                onClick={closeHistory}
                 style={closeButtonStyle}
               >
                 ×
               </button>
             </div>
 
-            <PaginationBar
-              page={movementsPage}
-              totalItems={movementsTotal}
-              loading={historyLoading}
-              onPageChange={(page) => {
-                void openHistory(historyItem, page);
-              }}
-            />
+            {showAllMovements && (
+              <div
+                style={{
+                  flexShrink: 0,
+                  marginBottom: '14px',
+                }}
+              >
+                <input
+                  value={movementSearch}
+                  onChange={(event) => setMovementSearch(event.target.value)}
+                  placeholder="ابحث باسم المنتج / الباركود / المقاس / اللون / الملاحظات"
+                  style={{
+                    ...inputStyle,
+                    width: '100%',
+                    height: '44px',
+                    minHeight: '44px',
+                    boxSizing: 'border-box',
+                    fontSize: '14px',
+                    borderRadius: '12px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(148,163,184,0.20)',
+                  }}
+                />
+              </div>
+            )}
 
-            <div style={{ overflowX: 'auto' }}>
+            <div
+              style={{
+                flexShrink: 0,
+                paddingBottom: '12px',
+              }}
+            >
+              <PaginationBar
+                page={movementsPage}
+                totalItems={movementsTotal}
+                loading={historyLoading}
+                onPageChange={(page) => {
+                  void openHistory(historyItem, page, appliedMovementSearch);
+                }}
+              />
+            </div>
+
+            <div
+              style={{
+                overflow: 'auto',
+                flex: '1 1 auto',
+                minHeight: 0,
+              }}
+            >
               <table
                 style={{
                   width: '100%',
@@ -1212,6 +1314,7 @@ export default function InventoryPage() {
               >
                 <thead>
                   <tr style={{ color: '#cbd5e1', textAlign: 'right' }}>
+                    {showAllMovements && <th style={thStyle}>بيانات المنتج</th>}
                     <th style={thStyle}>التاريخ</th>
                     <th style={thStyle}>النوع</th>
                     <th style={thStyle}>الكمية</th>
@@ -1221,10 +1324,11 @@ export default function InventoryPage() {
                 </thead>
 
                 <tbody>
-                  {historyLoading && (
+                  {historyLoading && movements.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={showAllMovements ? 6 : 5}
+
                         style={{ ...tdStyle, textAlign: 'center' }}
                       >
                         جاري التحميل...
@@ -1232,45 +1336,81 @@ export default function InventoryPage() {
                     </tr>
                   )}
 
-                  {!historyLoading &&
-                    movements.map((movement) => (
-                      <tr
-                        key={movement.id}
+                  {movements.map((movement) => (
+                    <tr
+                      key={movement.id}
+                      style={{
+                        borderTop: '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      {showAllMovements && (
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gap: '4px',
+                              minWidth: '190px',
+                            }}
+                          >
+                            <strong>{movement.product_name}</strong>
+                            <span
+                              style={{
+                                color: '#93c5fd',
+                                fontSize: '12px',
+                              }}
+                            >
+                              {movement.barcode || '—'}
+                            </span>
+                            <span
+                              style={{
+                                color: '#94a3b8',
+                                fontSize: '12px',
+                              }}
+                            >
+                              {movement.size || '—'} / {movement.color || '—'}
+                            </span>
+                            <span
+                              style={{
+                                color: '#64748b',
+                                fontSize: '11px',
+                              }}
+                            >
+                              رقم الصنف: {movement.variant_id}
+                            </span>
+                          </div>
+                        </td>
+                      )}
+
+                      <td style={tdStyle}>{formatDate(movement.created_at)}</td>
+                      <td style={tdStyle}>{movementTypeName(movement)}</td>
+                      <td
                         style={{
-                          borderTop: '1px solid rgba(255,255,255,0.06)',
+                          ...tdStyle,
+                          fontWeight: 900,
+                          color:
+                            Number(movement.signed_quantity || 0) >= 0
+                              ? '#6ee7b7'
+                              : '#fca5a5',
                         }}
                       >
-                        <td style={tdStyle}>
-                          {formatDate(movement.created_at)}
-                        </td>
-                        <td style={tdStyle}>{movementTypeName(movement)}</td>
-                        <td
-                          style={{
-                            ...tdStyle,
-                            fontWeight: 900,
-                            color:
-                              Number(movement.signed_quantity || 0) >= 0
-                                ? '#6ee7b7'
-                                : '#fca5a5',
-                          }}
-                        >
-                          {Number(movement.signed_quantity || 0) > 0 ? '+' : ''}
-                          {Number(movement.signed_quantity || 0)}
-                        </td>
-                        <td style={tdStyle}>
-                          {movement.created_by_name ||
-                            (movement.created_by
-                              ? `مستخدم #${movement.created_by}`
-                              : '—')}
-                        </td>
-                        <td style={tdStyle}>{movement.notes || '—'}</td>
-                      </tr>
-                    ))}
+                        {Number(movement.signed_quantity || 0) > 0 ? '+' : ''}
+                        {Number(movement.signed_quantity || 0)}
+                      </td>
+                      <td style={tdStyle}>
+                        {movement.created_by_name ||
+                          (movement.created_by
+                            ? `مستخدم #${movement.created_by}`
+                            : '—')}
+                      </td>
+                      <td style={tdStyle}>{movement.notes || '—'}</td>
+                    </tr>
+                  ))}
 
                   {!historyLoading && movements.length === 0 && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={showAllMovements ? 6 : 5}
+
                         style={{
                           ...tdStyle,
                           textAlign: 'center',
@@ -1288,15 +1428,16 @@ export default function InventoryPage() {
 
             <button
               type="button"
-              onClick={() => {
-                setHistoryItem(null);
-                setMovements([]);
-                setMovementsTotal(0);
-                setMovementsPage(1);
-              }}
+              onClick={closeHistory}
+
               style={{
                 ...secondaryButtonStyle,
-                marginTop: '18px',
+                marginTop: '14px',
+                height: '44px',
+                minHeight: '44px',
+                flexShrink: 0,
+                borderRadius: '12px',
+                cursor: 'pointer',
               }}
             >
               إغلاق
