@@ -814,12 +814,6 @@ export default function StockCountPage() {
       <section className="glass-card" style={cardStyle}>
         <h3 style={{ margin: 0 }}>جلسات الجرد</h3>
 
-        <PaginationBar
-          page={sessionPage}
-          totalItems={sessions.length}
-          onPageChange={setSessionPage}
-        />
-
         <div style={{ overflowX: 'auto' }}>
           <table
             style={{
@@ -909,6 +903,11 @@ export default function StockCountPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={sessionPage}
+          totalItems={sessions.length}
+          onPageChange={setSessionPage}
+        />
       </section>
 
       {selected && (
@@ -1138,12 +1137,6 @@ export default function StockCountPage() {
               </button>
             )}
           </div>
-
-          <PaginationBar
-            page={countItemsPage}
-            totalItems={visibleItems.length}
-            onPageChange={setCountItemsPage}
-          />
 
           <div style={{ overflowX: 'auto' }}>
             <table
@@ -1436,6 +1429,11 @@ export default function StockCountPage() {
               </tbody>
             </table>
           </div>
+          <PaginationBar
+            page={countItemsPage}
+            totalItems={visibleItems.length}
+            onPageChange={setCountItemsPage}
+          />
         </section>
       )}
 

@@ -1607,15 +1607,6 @@ export default function SuppliersPage() {
           boxSizing: 'border-box',
         }}
       >
-        <PaginationBar
-          page={supplierPage}
-          totalItems={suppliersTotal}
-          loading={loading}
-          onPageChange={(page) => {
-            void loadSuppliers(page);
-          }}
-        />
-
         <table
           style={{
             width: '100%',
@@ -1784,6 +1775,14 @@ export default function SuppliersPage() {
             )}
           </tbody>
         </table>
+        <PaginationBar
+          page={supplierPage}
+          totalItems={suppliersTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadSuppliers(page);
+          }}
+        />
       </div>
       {statementData && (
         <div className="theme-modal-overlay" style={modalOverlayStyle}>
@@ -2037,14 +2036,6 @@ export default function SuppliersPage() {
               </div>
             )}
 
-            <PaginationBar
-              page={supplierStatementPage}
-              totalItems={statementData.entries?.length || 0}
-              pageSize={SUPPLIER_STATEMENT_PAGE_SIZE}
-              loading={statementLoading}
-              onPageChange={setSupplierStatementPage}
-            />
-
             <div
               style={{
                 width: '100%',
@@ -2253,6 +2244,13 @@ export default function SuppliersPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              page={supplierStatementPage}
+              totalItems={statementData.entries?.length || 0}
+              pageSize={SUPPLIER_STATEMENT_PAGE_SIZE}
+              loading={statementLoading}
+              onPageChange={setSupplierStatementPage}
+            />
           </div>
         </div>
       )}

@@ -820,7 +820,7 @@ export default function LiabilitiesPage() {
           height: '100%',
           minHeight: 0,
           overflow: 'hidden',
-          gridTemplateRows: 'auto auto minmax(0, 1fr)',
+          gridTemplateRows: 'auto minmax(0, 1fr) auto',
         }}
       >
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -850,15 +850,6 @@ export default function LiabilitiesPage() {
             {loading ? 'تحميل...' : 'تحديث'}
           </button>
         </div>
-
-        <PaginationBar
-          page={liabilityPage}
-          totalItems={itemsTotal}
-          loading={loading}
-          onPageChange={(page) => {
-            void loadData(page);
-          }}
-        />
 
         <div
           className="liabilities-body-scroll"
@@ -1028,6 +1019,14 @@ export default function LiabilitiesPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={liabilityPage}
+          totalItems={itemsTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadData(page);
+          }}
+        />
       </section>
 
       {editTarget && (

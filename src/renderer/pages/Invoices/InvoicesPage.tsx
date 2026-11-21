@@ -14,7 +14,7 @@ import { printSaleReceiptHtml } from '../../utils/receiptPrint';
 import { printSaleExchangeReceiptHtml } from '../../utils/exchangeReceiptPrint';
 import FinancialCancelModal from '../../components/FinancialCancelModal';
 import SaleExchangeModal from '../../components/SaleExchangeModal';
-
+import { scrollPaginationToTableTop } from '../../components/PaginationBar';
 import { getActiveSaleReturnHistory } from '../../utils/sale-return-history';
 import {
   getPromotionRulesText,
@@ -2010,18 +2010,6 @@ export default function InvoicesPage() {
         >
           <h3 style={{ margin: 0 }}>سجل المبيعات</h3>
 
-          <PaginationBar
-            page={salesPage}
-            totalPages={salesTotalPages}
-            totalItems={total}
-            pageSize={INVOICE_PAGE_SIZE}
-            loading={loading}
-            onPageChange={(page) => {
-              setSalesPage(page);
-              void loadInvoices(page);
-            }}
-          />
-
           <table
             style={{
               width: '100%',
@@ -2649,6 +2637,17 @@ export default function InvoicesPage() {
               )}
             </tbody>
           </table>
+          <PaginationBar
+            page={salesPage}
+            totalPages={salesTotalPages}
+            totalItems={total}
+            pageSize={INVOICE_PAGE_SIZE}
+            loading={loading}
+            onPageChange={(page) => {
+              setSalesPage(page);
+              void loadInvoices(page);
+            }}
+          />
         </div>
       )}
 
@@ -2677,18 +2676,6 @@ export default function InvoicesPage() {
           >
             <h3 style={{ margin: 0 }}>سجل المرتجعات</h3>
           </div>
-
-          <PaginationBar
-            page={returnsPage}
-            totalPages={returnsTotalPages}
-            totalItems={returnsTotal}
-            pageSize={INVOICE_PAGE_SIZE}
-            loading={returnsLoading}
-            onPageChange={(page) => {
-              setReturnsPage(page);
-              void loadReturns(page);
-            }}
-          />
 
           <table
             style={{
@@ -2921,6 +2908,17 @@ export default function InvoicesPage() {
               )}
             </tbody>
           </table>
+          <PaginationBar
+            page={returnsPage}
+            totalPages={returnsTotalPages}
+            totalItems={returnsTotal}
+            pageSize={INVOICE_PAGE_SIZE}
+            loading={returnsLoading}
+            onPageChange={(page) => {
+              setReturnsPage(page);
+              void loadReturns(page);
+            }}
+          />
         </div>
       )}
 
@@ -2950,19 +2948,6 @@ export default function InvoicesPage() {
           >
             سجل الاستبدالات
           </h3>
-
-          <PaginationBar
-            page={exchangesPage}
-            totalPages={exchangesTotalPages}
-            totalItems={exchangesTotal}
-            pageSize={INVOICE_PAGE_SIZE}
-            loading={exchangesLoading}
-            onPageChange={(page) => {
-              setExchangesPage(page);
-
-              void loadExchanges(page);
-            }}
-          />
 
           <table
             style={{
@@ -3453,6 +3438,18 @@ export default function InvoicesPage() {
               )}
             </tbody>
           </table>
+          <PaginationBar
+            page={exchangesPage}
+            totalPages={exchangesTotalPages}
+            totalItems={exchangesTotal}
+            pageSize={INVOICE_PAGE_SIZE}
+            loading={exchangesLoading}
+            onPageChange={(page) => {
+              setExchangesPage(page);
+
+              void loadExchanges(page);
+            }}
+          />
         </div>
       )}
 
@@ -5792,16 +5789,15 @@ function PaginationBar({
 
   return (
     <div
+      onClickCapture={scrollPaginationToTableTop}
       style={{
         display: 'grid',
         justifyItems: 'center',
         gap: '8px',
         direction: 'rtl',
-
-        marginBottom: '12px',
-        paddingBottom: '12px',
-
-        borderBottom: '1px solid rgba(255,255,255,0.10)',
+        marginTop: '12px',
+        paddingTop: '12px',
+        borderTop: '1px solid rgba(255,255,255,0.10)',
       }}
     >
       <div

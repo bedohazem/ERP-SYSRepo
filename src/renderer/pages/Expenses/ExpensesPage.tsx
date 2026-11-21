@@ -954,7 +954,7 @@ export default function ExpensesPage() {
           minHeight: 0,
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateRows: 'auto auto minmax(0, 1fr)',
+          gridTemplateRows: 'auto minmax(0, 1fr) auto',
           gap: '10px',
         }}
       >
@@ -1107,15 +1107,6 @@ export default function ExpensesPage() {
             )}
           </div>
         </div>
-
-        <PaginationBar
-          page={expensesPage}
-          totalItems={expensesTotal}
-          loading={loading}
-          onPageChange={(page) => {
-            void loadExpenses(page);
-          }}
-        />
 
         <div
           className="expenses-body-scroll"
@@ -1344,6 +1335,14 @@ export default function ExpensesPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={expensesPage}
+          totalItems={expensesTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadExpenses(page);
+          }}
+        />
       </div>
 
       {editExpenseTarget && (

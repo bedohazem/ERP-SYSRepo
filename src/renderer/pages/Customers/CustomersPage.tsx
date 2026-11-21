@@ -1225,15 +1225,6 @@ export default function CustomersPage() {
           overflowX: 'auto',
         }}
       >
-        <PaginationBar
-          page={customerPage}
-          totalItems={customersTotal}
-          loading={loadingCustomers}
-          onPageChange={(page) => {
-            void loadCustomers(page);
-          }}
-        />
-
         <table
           style={{
             width: '100%',
@@ -1391,6 +1382,14 @@ export default function CustomersPage() {
             )}
           </tbody>
         </table>
+        <PaginationBar
+          page={customerPage}
+          totalItems={customersTotal}
+          loading={loadingCustomers}
+          onPageChange={(page) => {
+            void loadCustomers(page);
+          }}
+        />
       </div>
 
       {selectedCustomer && (
@@ -1482,14 +1481,6 @@ export default function CustomersPage() {
 
             <h4>الفواتير</h4>
 
-            <PaginationBar
-              page={historySalesPage}
-              totalItems={selectedCustomer.sales?.length || 0}
-              pageSize={CUSTOMER_HISTORY_PAGE_SIZE}
-              loading={historyLoading}
-              onPageChange={setHistorySalesPage}
-            />
-
             <div style={{ display: 'grid', gap: '8px' }}>
               {(selectedCustomer.sales ?? [])
                 .slice(
@@ -1548,16 +1539,15 @@ export default function CustomersPage() {
                   </div>
                 ))}
             </div>
-
-            <h4>حركات النقاط</h4>
-
             <PaginationBar
-              page={historyLoyaltyPage}
-              totalItems={selectedCustomer.loyalty?.length || 0}
+              page={historySalesPage}
+              totalItems={selectedCustomer.sales?.length || 0}
               pageSize={CUSTOMER_HISTORY_PAGE_SIZE}
               loading={historyLoading}
-              onPageChange={setHistoryLoyaltyPage}
+              onPageChange={setHistorySalesPage}
             />
+
+            <h4>حركات النقاط</h4>
 
             <div style={{ display: 'grid', gap: '8px' }}>
               {(selectedCustomer.loyalty ?? [])
@@ -1580,6 +1570,13 @@ export default function CustomersPage() {
                   </div>
                 ))}
             </div>
+            <PaginationBar
+              page={historyLoyaltyPage}
+              totalItems={selectedCustomer.loyalty?.length || 0}
+              pageSize={CUSTOMER_HISTORY_PAGE_SIZE}
+              loading={historyLoading}
+              onPageChange={setHistoryLoyaltyPage}
+            />
 
             <button
               type="button"
@@ -1822,14 +1819,6 @@ export default function CustomersPage() {
               </div>
             )}
 
-            <PaginationBar
-              page={statementPage}
-              totalItems={statementData.entries?.length || 0}
-              pageSize={CUSTOMER_STATEMENT_PAGE_SIZE}
-              loading={statementLoading}
-              onPageChange={setStatementPage}
-            />
-
             <div
               style={{
                 width: '100%',
@@ -1994,6 +1983,13 @@ export default function CustomersPage() {
                 </tbody>
               </table>
             </div>
+            <PaginationBar
+              page={statementPage}
+              totalItems={statementData.entries?.length || 0}
+              pageSize={CUSTOMER_STATEMENT_PAGE_SIZE}
+              loading={statementLoading}
+              onPageChange={setStatementPage}
+            />
           </div>
         </div>
       )}

@@ -1398,7 +1398,7 @@ export default function CashPage() {
           minHeight: 0,
           overflow: 'hidden',
           display: 'grid',
-          gridTemplateRows: 'auto auto minmax(0, 1fr)',
+          gridTemplateRows: 'auto minmax(0, 1fr) auto',
         }}
       >
         <div style={{ marginBottom: '16px' }}>
@@ -1414,15 +1414,6 @@ export default function CashPage() {
             جميع عمليات السحب والإيداع والتحصيل
           </p>
         </div>
-
-        <PaginationBar
-          page={movementsPage}
-          totalItems={movementsTotal}
-          loading={loading}
-          onPageChange={(page) => {
-            setMovementsPage(page);
-          }}
-        />
 
         <div
           className="cash-body-scroll"
@@ -1657,6 +1648,14 @@ export default function CashPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={movementsPage}
+          totalItems={movementsTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            setMovementsPage(page);
+          }}
+        />
       </div>
 
       {manualModalOpen && (

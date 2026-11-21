@@ -8,6 +8,8 @@ import {
   formatSignedPreciseMoney,
 } from '../../../shared/money';
 
+import PaginationBar from '../../components/PaginationBar';
+
 type ReportsData = {
   summary: {
     sales_count: number;
@@ -1131,58 +1133,12 @@ function ReportTable({
       </div>
 
       {totalPages > 1 && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: '8px',
-            marginTop: '14px',
-            paddingTop: '12px',
-            borderTop: '1px solid rgba(255,255,255,0.08)',
-            direction: 'rtl',
-          }}
-        >
-          <button
-            type="button"
-            disabled={safePage <= 1}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
-            style={{
-              ...primaryButtonStyle,
-              height: '36px',
-              padding: '0 12px',
-              opacity: safePage <= 1 ? 0.45 : 1,
-            }}
-          >
-            السابق
-          </button>
-
-          <strong
-            style={{
-              color: '#fff',
-              minWidth: '110px',
-              textAlign: 'center',
-            }}
-          >
-            صفحة {safePage} من {totalPages}
-          </strong>
-
-          <button
-            type="button"
-            disabled={safePage >= totalPages}
-            onClick={() =>
-              setPage((current) => Math.min(totalPages, current + 1))
-            }
-            style={{
-              ...primaryButtonStyle,
-              height: '36px',
-              padding: '0 12px',
-              opacity: safePage >= totalPages ? 0.45 : 1,
-            }}
-          >
-            التالي
-          </button>
-        </div>
+        <PaginationBar
+          page={safePage}
+          totalItems={rows.length}
+          pageSize={pageSize}
+          onPageChange={setPage}
+        />
       )}
     </div>
   );

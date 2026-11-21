@@ -565,15 +565,6 @@ export default function UsersPage() {
         <div className="glass-card" style={cardStyle}>
           <h3 style={{ margin: 0 }}>قائمة المستخدمين</h3>
 
-          <PaginationBar
-            page={usersPage}
-            totalItems={usersTotal}
-            loading={loading}
-            onPageChange={(page) => {
-              void loadUsers(page);
-            }}
-          />
-
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -687,6 +678,14 @@ export default function UsersPage() {
               </tbody>
             </table>
           </div>
+          <PaginationBar
+            page={usersPage}
+            totalItems={usersTotal}
+            loading={loading}
+            onPageChange={(page) => {
+              void loadUsers(page);
+            }}
+          />
         </div>
       </section>
 

@@ -1765,17 +1765,6 @@ export default function ProductsPage() {
             المنتجات
           </div>
 
-          <PaginationBar
-            page={productPage}
-            totalItems={productsTotal}
-            loading={loading}
-            onPageChange={(page) => {
-              setExpandedId(null);
-              setVariantsMap({});
-              void loadData(page);
-            }}
-          />
-
           <div style={{ display: 'grid', gap: '12px', maxWidth: '100%' }}>
             {products.length === 0 ? (
               <div style={{ color: '#94a3b8' }}>لا توجد منتجات حتى الآن</div>
@@ -2234,6 +2223,16 @@ export default function ProductsPage() {
               })
             )}
           </div>
+          <PaginationBar
+            page={productPage}
+            totalItems={productsTotal}
+            loading={loading}
+            onPageChange={(page) => {
+              setExpandedId(null);
+              setVariantsMap({});
+              void loadData(page);
+            }}
+          />
         </div>
       )}
 

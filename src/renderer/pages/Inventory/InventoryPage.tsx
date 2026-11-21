@@ -135,6 +135,7 @@ export default function InventoryPage() {
   const [movementSearch, setMovementSearch] = useState('');
   const [appliedMovementSearch, setAppliedMovementSearch] = useState('');
   const movementRequestIdRef = useRef(0);
+  const movementsTableRef = useRef<HTMLDivElement | null>(null);
 
   const [stats, setStats] = useState({
     total: 0,
@@ -168,6 +169,15 @@ export default function InventoryPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (historyLoading) return;
+
+    movementsTableRef.current?.scrollTo({
+      top: 0,
+      behavior: 'auto',
+    });
+  }, [movementsPage, historyLoading]);
 
   async function loadAnalytics() {
     try {
@@ -956,15 +966,6 @@ export default function InventoryPage() {
           boxSizing: 'border-box',
         }}
       >
-        <PaginationBar
-          page={inventoryPage}
-          totalItems={inventoryTotal}
-          loading={loading}
-          onPageChange={(page) => {
-            void loadInventory(page);
-          }}
-        />
-
         <table
           style={{
             width: '100%',
@@ -1117,6 +1118,14 @@ export default function InventoryPage() {
             )}
           </tbody>
         </table>
+        <PaginationBar
+          page={inventoryPage}
+          totalItems={inventoryTotal}
+          loading={loading}
+          onPageChange={(page) => {
+            void loadInventory(page);
+          }}
+        />
       </div>
 
       {adjustItem && canAdjustInventory && (
@@ -1283,22 +1292,7 @@ export default function InventoryPage() {
             )}
 
             <div
-              style={{
-                flexShrink: 0,
-                paddingBottom: '12px',
-              }}
-            >
-              <PaginationBar
-                page={movementsPage}
-                totalItems={movementsTotal}
-                loading={historyLoading}
-                onPageChange={(page) => {
-                  void openHistory(historyItem, page, appliedMovementSearch);
-                }}
-              />
-            </div>
-
-            <div
+              ref={movementsTableRef}
               style={{
                 overflow: 'auto',
                 flex: '1 1 auto',
@@ -1424,6 +1418,21 @@ export default function InventoryPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+            <div
+              style={{
+                flexShrink: 0,
+                paddingBottom: '12px',
+              }}
+            >
+              <PaginationBar
+                page={movementsPage}
+                totalItems={movementsTotal}
+                loading={historyLoading}
+                onPageChange={(page) => {
+                  void openHistory(historyItem, page, appliedMovementSearch);
+                }}
+              />
             </div>
 
             <button

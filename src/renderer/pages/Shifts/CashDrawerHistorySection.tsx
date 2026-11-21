@@ -280,15 +280,6 @@ export default function CashDrawerHistorySection({ users }: Props) {
         )}
       </div>
 
-      <PaginationBar
-        page={page}
-        totalItems={total}
-        loading={loading}
-        onPageChange={(nextPage) => {
-          void loadData(nextPage);
-        }}
-      />
-
       <div
         style={{
           overflow: 'auto',
@@ -397,6 +388,14 @@ export default function CashDrawerHistorySection({ users }: Props) {
           </tbody>
         </table>
       </div>
+      <PaginationBar
+        page={page}
+        totalItems={total}
+        loading={loading}
+        onPageChange={(nextPage) => {
+          void loadData(nextPage);
+        }}
+      />
     </section>
   );
 }

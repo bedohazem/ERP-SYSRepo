@@ -428,15 +428,6 @@ export default function ShiftHistorySection({ users }: Props) {
           </div>
         ) : null}
 
-        <PaginationBar
-          page={page}
-          totalItems={total}
-          loading={loading}
-          onPageChange={(nextPage) => {
-            void loadHistory(nextPage);
-          }}
-        />
-
         <div
           style={{
             width: '100%',
@@ -768,6 +759,14 @@ export default function ShiftHistorySection({ users }: Props) {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={page}
+          totalItems={total}
+          loading={loading}
+          onPageChange={(nextPage) => {
+            void loadHistory(nextPage);
+          }}
+        />
       </section>
 
       {details && (

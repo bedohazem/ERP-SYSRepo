@@ -742,14 +742,280 @@ export default function SalespeoplePage() {
         <div
           style={{
             minWidth: 0,
-
-            overflowX: 'auto',
-
+            overflowX: 'visible',
             borderRight: '1px solid rgba(255,255,255,0.08)',
-
             paddingRight: '18px',
           }}
         >
+          <div style={{ overflowX: 'auto', maxWidth: '100%' }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>البائع</th>
+
+                  <th style={thStyle}>الحالة</th>
+
+                  <th style={thStyle}>التارجت</th>
+
+                  <th style={thStyle}>صافي المبيعات</th>
+
+                  <th style={thStyle}>الفواتير</th>
+
+                  <th style={thStyle}>المرتجعات</th>
+
+                  <th style={thStyle}>تحقيق التارجت</th>
+
+                  <th style={thStyle}>المتبقي</th>
+
+                  <th style={thStyle}>إجراءات</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {loading && filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={emptyCellStyle}>
+                      جاري تحميل البائعين...
+                    </td>
+                  </tr>
+                ) : filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} style={emptyCellStyle}>
+                      لا يوجد بائعين
+                    </td>
+                  </tr>
+                ) : (
+                  pagedSalespeopleRows.map((row) => (
+                    <tr
+                      key={row.id}
+                      style={{
+                        borderTop: '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      <td style={tdStyle}>
+                        <strong>{row.name}</strong>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <span
+                          style={
+                            row.is_active
+                              ? activeBadgeStyle
+                              : inactiveBadgeStyle
+                          }
+                        >
+                          {row.is_active ? 'مفعل' : 'متوقف'}
+                        </span>
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div
+                          style={{
+                            display: 'flex',
+
+                            gap: '6px',
+
+                            minWidth: '180px',
+                          }}
+                        >
+                          <input
+                            type="number"
+                            min={0}
+                            value={targetDrafts[row.id] ?? ''}
+                            onChange={(event) =>
+                              setTargetDrafts((current) => ({
+                                ...current,
+
+                                [row.id]: event.target.value,
+                              }))
+                            }
+                            style={{
+                              ...smallInputStyle,
+
+                              width: '105px',
+                            }}
+                          />
+
+                          <button
+                            type="button"
+                            disabled={savingTargetId === row.id}
+                            onClick={() => void saveTarget(row)}
+                            style={smallButtonStyle}
+                          >
+                            {savingTargetId === row.id ? '...' : 'حفظ'}
+                          </button>
+                        </div>
+                      </td>
+
+                      <td
+                        style={{
+                          ...tdStyle,
+
+                          color: '#6ee7b7',
+
+                          fontWeight: 900,
+                        }}
+                      >
+                        {formatMoney(row.net_sales)}
+                      </td>
+
+                      <td style={tdStyle}>{row.sales_count}</td>
+
+                      <td style={tdStyle}>
+                        <div
+                          style={{
+                            display: 'grid',
+
+                            gap: '3px',
+                          }}
+                        >
+                          <span>{row.returns_count} عملية</span>
+
+                          <span
+                            style={{
+                              color: '#fca5a5',
+
+                              fontSize: '12px',
+                            }}
+                          >
+                            {formatMoney(row.returns_total)}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td style={tdStyle}>
+                        {row.target_amount > 0 ? (
+                          <div
+                            style={{
+                              display: 'grid',
+
+                              gap: '5px',
+
+                              minWidth: '110px',
+                            }}
+                          >
+                            <strong
+                              style={{
+                                color:
+                                  row.achievement_percent >= 100
+                                    ? '#86efac'
+                                    : '#c4b5fd',
+                              }}
+                            >
+                              {row.achievement_percent}%
+                            </strong>
+
+                            <div
+                              style={{
+                                height: '6px',
+
+                                borderRadius: '999px',
+
+                                overflow: 'hidden',
+
+                                background: 'rgba(255,255,255,0.08)',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  height: '100%',
+
+                                  width: `${Math.min(
+                                    100,
+                                    Math.max(0, row.achievement_percent),
+                                  )}%`,
+
+                                  background:
+                                    row.achievement_percent >= 100
+                                      ? '#22c55e'
+                                      : '#7c3aed',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <span
+                            style={{
+                              color: '#64748b',
+                            }}
+                          >
+                            بدون تارجت
+                          </span>
+                        )}
+                      </td>
+
+                      <td style={tdStyle}>
+                        {row.target_amount <= 0 ? (
+                          '—'
+                        ) : row.exceeded_target > 0 ? (
+                          <strong
+                            style={{
+                              color: '#86efac',
+                            }}
+                          >
+                            +{formatMoney(row.exceeded_target)}
+                          </strong>
+                        ) : (
+                          formatMoney(row.remaining_target)
+                        )}
+                      </td>
+
+                      <td style={tdStyle}>
+                        <div
+                          style={{
+                            display: 'flex',
+
+                            gap: '6px',
+
+                            flexWrap: 'wrap',
+
+                            minWidth: '210px',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openInvoices(row)}
+                            style={smallButtonStyle}
+                          >
+                            الفواتير
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => startEdit(row)}
+                            style={smallButtonStyle}
+                          >
+                            تعديل
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={togglingId === row.id}
+                            onClick={() => void toggleSalesperson(row)}
+                            style={{
+                              ...smallButtonStyle,
+
+                              borderColor: row.is_active
+                                ? 'rgba(239,68,68,0.45)'
+                                : 'rgba(34,197,94,0.45)',
+
+                              color: row.is_active ? '#fca5a5' : '#86efac',
+                            }}
+                          >
+                            {togglingId === row.id
+                              ? '...'
+                              : row.is_active
+                                ? 'تعطيل'
+                                : 'تفعيل'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
           <PaginationBar
             page={salespeoplePage}
             totalItems={filteredRows.length}
@@ -758,272 +1024,6 @@ export default function SalespeoplePage() {
               setSalespeoplePage(page);
             }}
           />
-
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>البائع</th>
-
-                <th style={thStyle}>الحالة</th>
-
-                <th style={thStyle}>التارجت</th>
-
-                <th style={thStyle}>صافي المبيعات</th>
-
-                <th style={thStyle}>الفواتير</th>
-
-                <th style={thStyle}>المرتجعات</th>
-
-                <th style={thStyle}>تحقيق التارجت</th>
-
-                <th style={thStyle}>المتبقي</th>
-
-                <th style={thStyle}>إجراءات</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading && filteredRows.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={emptyCellStyle}>
-                    جاري تحميل البائعين...
-                  </td>
-                </tr>
-              ) : filteredRows.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={emptyCellStyle}>
-                    لا يوجد بائعين
-                  </td>
-                </tr>
-              ) : (
-                pagedSalespeopleRows.map((row) => (
-                  <tr
-                    key={row.id}
-                    style={{
-                      borderTop: '1px solid rgba(255,255,255,0.06)',
-                    }}
-                  >
-                    <td style={tdStyle}>
-                      <strong>{row.name}</strong>
-                    </td>
-
-                    <td style={tdStyle}>
-                      <span
-                        style={
-                          row.is_active ? activeBadgeStyle : inactiveBadgeStyle
-                        }
-                      >
-                        {row.is_active ? 'مفعل' : 'متوقف'}
-                      </span>
-                    </td>
-
-                    <td style={tdStyle}>
-                      <div
-                        style={{
-                          display: 'flex',
-
-                          gap: '6px',
-
-                          minWidth: '180px',
-                        }}
-                      >
-                        <input
-                          type="number"
-                          min={0}
-                          value={targetDrafts[row.id] ?? ''}
-                          onChange={(event) =>
-                            setTargetDrafts((current) => ({
-                              ...current,
-
-                              [row.id]: event.target.value,
-                            }))
-                          }
-                          style={{
-                            ...smallInputStyle,
-
-                            width: '105px',
-                          }}
-                        />
-
-                        <button
-                          type="button"
-                          disabled={savingTargetId === row.id}
-                          onClick={() => void saveTarget(row)}
-                          style={smallButtonStyle}
-                        >
-                          {savingTargetId === row.id ? '...' : 'حفظ'}
-                        </button>
-                      </div>
-                    </td>
-
-                    <td
-                      style={{
-                        ...tdStyle,
-
-                        color: '#6ee7b7',
-
-                        fontWeight: 900,
-                      }}
-                    >
-                      {formatMoney(row.net_sales)}
-                    </td>
-
-                    <td style={tdStyle}>{row.sales_count}</td>
-
-                    <td style={tdStyle}>
-                      <div
-                        style={{
-                          display: 'grid',
-
-                          gap: '3px',
-                        }}
-                      >
-                        <span>{row.returns_count} عملية</span>
-
-                        <span
-                          style={{
-                            color: '#fca5a5',
-
-                            fontSize: '12px',
-                          }}
-                        >
-                          {formatMoney(row.returns_total)}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td style={tdStyle}>
-                      {row.target_amount > 0 ? (
-                        <div
-                          style={{
-                            display: 'grid',
-
-                            gap: '5px',
-
-                            minWidth: '110px',
-                          }}
-                        >
-                          <strong
-                            style={{
-                              color:
-                                row.achievement_percent >= 100
-                                  ? '#86efac'
-                                  : '#c4b5fd',
-                            }}
-                          >
-                            {row.achievement_percent}%
-                          </strong>
-
-                          <div
-                            style={{
-                              height: '6px',
-
-                              borderRadius: '999px',
-
-                              overflow: 'hidden',
-
-                              background: 'rgba(255,255,255,0.08)',
-                            }}
-                          >
-                            <div
-                              style={{
-                                height: '100%',
-
-                                width: `${Math.min(
-                                  100,
-                                  Math.max(0, row.achievement_percent),
-                                )}%`,
-
-                                background:
-                                  row.achievement_percent >= 100
-                                    ? '#22c55e'
-                                    : '#7c3aed',
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ) : (
-                        <span
-                          style={{
-                            color: '#64748b',
-                          }}
-                        >
-                          بدون تارجت
-                        </span>
-                      )}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {row.target_amount <= 0 ? (
-                        '—'
-                      ) : row.exceeded_target > 0 ? (
-                        <strong
-                          style={{
-                            color: '#86efac',
-                          }}
-                        >
-                          +{formatMoney(row.exceeded_target)}
-                        </strong>
-                      ) : (
-                        formatMoney(row.remaining_target)
-                      )}
-                    </td>
-
-                    <td style={tdStyle}>
-                      <div
-                        style={{
-                          display: 'flex',
-
-                          gap: '6px',
-
-                          flexWrap: 'wrap',
-
-                          minWidth: '210px',
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => openInvoices(row)}
-                          style={smallButtonStyle}
-                        >
-                          الفواتير
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => startEdit(row)}
-                          style={smallButtonStyle}
-                        >
-                          تعديل
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={togglingId === row.id}
-                          onClick={() => void toggleSalesperson(row)}
-                          style={{
-                            ...smallButtonStyle,
-
-                            borderColor: row.is_active
-                              ? 'rgba(239,68,68,0.45)'
-                              : 'rgba(34,197,94,0.45)',
-
-                            color: row.is_active ? '#fca5a5' : '#86efac',
-                          }}
-                        >
-                          {togglingId === row.id
-                            ? '...'
-                            : row.is_active
-                              ? 'تعطيل'
-                              : 'تفعيل'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
         </div>
       </section>
 
@@ -1072,15 +1072,6 @@ export default function SalespeoplePage() {
               إغلاق
             </button>
           </div>
-
-          <PaginationBar
-            page={invoicesPage}
-            totalItems={invoicesTotal}
-            loading={loadingInvoices}
-            onPageChange={(page) => {
-              void loadSalespersonInvoices(selectedSalesperson.id, page);
-            }}
-          />
 
           <div
             style={{
@@ -1185,6 +1176,14 @@ export default function SalespeoplePage() {
               </tbody>
             </table>
           </div>
+          <PaginationBar
+            page={invoicesPage}
+            totalItems={invoicesTotal}
+            loading={loadingInvoices}
+            onPageChange={(page) => {
+              void loadSalespersonInvoices(selectedSalesperson.id, page);
+            }}
+          />
         </section>
       )}
     </div>

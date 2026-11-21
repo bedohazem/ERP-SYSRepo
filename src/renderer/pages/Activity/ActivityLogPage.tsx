@@ -617,19 +617,10 @@ export default function ActivityLogPage() {
           position: 'relative',
           zIndex: 1,
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gridTemplateRows: 'minmax(0, 1fr) auto',
           gap: '10px',
         }}
       >
-        <PaginationBar
-          page={page}
-          totalItems={total}
-          loading={loading}
-          onPageChange={(nextPage) => {
-            void loadLogs(nextPage);
-          }}
-        />
-
         <div
           className="activity-body-scroll"
           style={{
@@ -758,6 +749,14 @@ export default function ActivityLogPage() {
             </tbody>
           </table>
         </div>
+        <PaginationBar
+          page={page}
+          totalItems={total}
+          loading={loading}
+          onPageChange={(nextPage) => {
+            void loadLogs(nextPage);
+          }}
+        />
       </div>
     </div>
   );

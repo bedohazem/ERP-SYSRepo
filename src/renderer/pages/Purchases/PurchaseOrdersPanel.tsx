@@ -1344,15 +1344,6 @@ export default function PurchaseOrdersPanel({
               )}
             </div>
 
-            <PaginationBar
-              page={orderPage}
-              totalItems={ordersTotal}
-              loading={loading}
-              onPageChange={(page) => {
-                void loadOrders(page, orderStatus);
-              }}
-            />
-
             <div style={tableWrapStyle}>
               <table style={tableStyle}>
                 <thead>
@@ -1445,6 +1436,15 @@ export default function PurchaseOrdersPanel({
                 </tbody>
               </table>
             </div>
+
+            <PaginationBar
+              page={orderPage}
+              totalItems={ordersTotal}
+              loading={loading}
+              onPageChange={(page) => {
+                void loadOrders(page, orderStatus);
+              }}
+            />
           </>
         )}
 

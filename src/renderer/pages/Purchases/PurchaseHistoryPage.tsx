@@ -1179,15 +1179,6 @@ export default function PurchaseHistoryPage() {
             boxSizing: 'border-box',
           }}
         >
-          <PaginationBar
-            page={purchasePage}
-            totalItems={total}
-            loading={loading}
-            onPageChange={(page) => {
-              void loadPurchases(page);
-            }}
-          />
-
           <table
             style={{
               width: '100%',
@@ -1495,6 +1486,14 @@ export default function PurchaseHistoryPage() {
               )}
             </tbody>
           </table>
+          <PaginationBar
+            page={purchasePage}
+            totalItems={total}
+            loading={loading}
+            onPageChange={(page) => {
+              void loadPurchases(page);
+            }}
+          />
         </div>
       )}
 
@@ -1511,15 +1510,6 @@ export default function PurchaseHistoryPage() {
             boxSizing: 'border-box',
           }}
         >
-          <PaginationBar
-            page={returnPage}
-            totalItems={returnTotal}
-            loading={loading}
-            onPageChange={(page) => {
-              void loadReturns(page);
-            }}
-          />
-
           <table
             style={{
               width: '100%',
@@ -1692,6 +1682,14 @@ export default function PurchaseHistoryPage() {
               )}
             </tbody>
           </table>
+          <PaginationBar
+            page={returnPage}
+            totalItems={returnTotal}
+            loading={loading}
+            onPageChange={(page) => {
+              void loadReturns(page);
+            }}
+          />
         </div>
       )}
 

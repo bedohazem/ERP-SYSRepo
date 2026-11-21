@@ -1,6 +1,59 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, MouseEvent } from 'react';
 
 export const SYSTEM_PAGE_SIZE = 50;
+
+export function scrollPaginationToTableTop(event: MouseEvent<HTMLDivElement>) {
+  const target = event.target;
+
+  if (!(target instanceof Element)) return;
+
+  const button = target.closest('button');
+
+  if (!(button instanceof HTMLButtonElement) || button.disabled) {
+    return;
+  }
+
+  // بعض الشاشات بتحط الـ Pagination داخل div منفصل.
+  // نطلع للمستوى المناسب لحد ما نوصل للجدول السابق.
+  let current: HTMLElement | null = event.currentTarget;
+  let content: HTMLElement | null = null;
+
+  for (let depth = 0; current && depth < 5; depth += 1) {
+    const previous = current.previousElementSibling;
+
+    if (previous instanceof HTMLElement) {
+      content = previous;
+      break;
+    }
+
+    current = current.parentElement;
+  }
+
+  if (!content) return;
+
+  window.requestAnimationFrame(() => {
+    if (!content.isConnected) return;
+
+    const scrollables = [
+      content,
+      ...content.querySelectorAll<HTMLElement>(
+        '[style*="overflow"], .table-scroll, .list-scroll, .invoice-list-scroll',
+      ),
+    ];
+
+    for (const element of scrollables) {
+      if (element.scrollHeight > element.clientHeight + 1) {
+        element.scrollTop = 0;
+      }
+    }
+
+    content.scrollIntoView({
+      behavior: 'auto',
+      block: 'start',
+      inline: 'nearest',
+    });
+  });
+}
 
 type PaginationBarProps = {
   page: number;
@@ -42,14 +95,15 @@ export default function PaginationBar({
 
   return (
     <div
+      onClickCapture={scrollPaginationToTableTop}
       style={{
         display: 'grid',
         justifyItems: 'center',
         gap: '8px',
         direction: 'rtl',
-        marginBottom: '12px',
-        paddingBottom: '12px',
-        borderBottom: '1px solid rgba(255,255,255,0.10)',
+        marginTop: '12px',
+        paddingTop: '12px',
+        borderTop: '1px solid rgba(255,255,255,0.10)',
         flexShrink: 0,
       }}
     >
