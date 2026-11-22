@@ -5,6 +5,17 @@ import { getPaymentMethodLabel } from '../../utils/payment-method';
 import { useAuthStore } from '../../store/auth.store';
 import { formatMoney, roundCost, roundFinancial } from '../../../shared/money';
 import { useCatalogVersion } from '../../utils/use-catalog-version';
+import {
+  filterDailyProducts,
+  paginateDailyProducts,
+  summarizeDailyProducts,
+} from './daily-products-model';
+import type { DailyProductRow } from './daily-products-model';
+import { DailyProductsTable } from './DailyProductsTable';
+
+import PaginationBar, {
+  SYSTEM_PAGE_SIZE,
+} from '../../components/PaginationBar';
 
 type ReportsData = {
   summary: {
@@ -289,6 +300,8 @@ export default function DashboardPage() {
   const [message, setMessage] = useState('');
   const [lastUpdated, setLastUpdated] = useState('');
 
+  const [showDailyProducts, setShowDailyProducts] = useState(false);
+
   const [cashierSummary, setCashierSummary] = useState<CashierDashboardSummary>(
     emptyCashierDashboard,
   );
@@ -460,6 +473,10 @@ export default function DashboardPage() {
     <div className="fade-slide-in" style={{ display: 'grid', gap: '18px' }}>
       {message ? <Toast>{message}</Toast> : null}
 
+      {showDailyProducts && (
+        <DailyProductsModal onClose={() => setShowDailyProducts(false)} />
+      )}
+
       <section className="glass-card" style={heroStyle}>
         <div style={{ display: 'grid', gap: '8px' }}>
           <div style={{ color: '#93c5fd', fontWeight: 900 }}>نظرة عامة</div>
@@ -496,6 +513,14 @@ export default function DashboardPage() {
             style={primaryButtonStyle}
           >
             {loading ? 'جاري التحديث...' : 'تحديث البيانات'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowDailyProducts(true)}
+            style={secondaryButtonStyle}
+          >
+            📦 ملخص منتجات اليوم
           </button>
 
           <button
@@ -813,6 +838,215 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function DailyProductsModal({ onClose }: { onClose: () => void }) {
+  const [date, setDate] = useState(() => getLocalDateKey(new Date()));
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [rows, setRows] = useState<DailyProductRow[]>([]);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError('');
+
+    void window.api
+      .getDailyProductSummary({ business_date: date })
+      .then((result) => {
+        if (!active) return;
+        setRows(result);
+        setPage(1);
+        tableRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error('Failed to load daily products:', err);
+        setRows([]);
+        setError('تعذر تحميل ملخص منتجات اليوم');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [date, refreshKey]);
+
+  const filteredRows = filterDailyProducts(rows, search);
+  const visibleRows = paginateDailyProducts(
+    filteredRows,
+    page,
+    SYSTEM_PAGE_SIZE,
+  );
+  const totals = summarizeDailyProducts(rows);
+
+  function refresh() {
+    setDate(getLocalDateKey(new Date()));
+    setRefreshKey((value) => value + 1);
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(0,0,0,0.7)',
+        padding: '16px',
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="ملخص منتجات اليوم"
+        style={{
+          width: '1100px',
+          maxWidth: '100%',
+          height: '82vh',
+          maxHeight: '800px',
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '14px',
+          overflow: 'hidden',
+          padding: '20px',
+          boxSizing: 'border-box',
+          borderRadius: '20px',
+          background: '#111827',
+          border: '1px solid rgba(255,255,255,0.12)',
+          color: '#fff',
+          direction: 'rtl',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexShrink: 0,
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0 }}>📦 ملخص منتجات اليوم</h3>
+            <p style={{ color: '#94a3b8', margin: '6px 0 0' }}>
+              اليوم المالي: {date}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={loading}
+              style={secondaryButtonStyle}
+            >
+              {loading ? 'جاري التحميل...' : 'تحديث'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="إغلاق ملخص المنتجات"
+              style={secondaryButtonStyle}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
+            gap: '10px',
+            flexShrink: 0,
+          }}
+        >
+          {(
+            [
+              ['مباع', totals.sold],
+              ['مرتجع', totals.returned],
+              ['صافي الاستبدال', totals.exchanged],
+              ['تأثير الإلغاءات', totals.cancelled],
+              ['صافي القطع', totals.net],
+            ] as const
+          ).map(([label, value]) => (
+            <div
+              key={label}
+              style={{
+                background: 'rgba(59,130,246,0.08)',
+                border: '1px solid rgba(59,130,246,0.20)',
+                padding: '12px',
+                borderRadius: '12px',
+                textAlign: 'center',
+              }}
+            >
+              <div style={{ color: '#94a3b8', fontSize: '12px' }}>{label}</div>
+              <strong style={{ fontSize: '22px' }}>{value}</strong>
+            </div>
+          ))}
+        </div>
+
+        <input
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+            tableRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+          }}
+          placeholder="بحث باسم المنتج أو المقاس أو اللون أو رقم الصنف"
+          aria-label="بحث في ملخص منتجات اليوم"
+          style={{
+            width: '100%',
+            minHeight: '44px',
+            flexShrink: 0,
+            boxSizing: 'border-box',
+            padding: '0 14px',
+            borderRadius: '12px',
+            border: '1px solid rgba(148,163,184,0.3)',
+            background: 'rgba(255,255,255,0.06)',
+            color: '#fff',
+          }}
+        />
+
+        <div
+          ref={tableRef}
+          style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto' }}
+        >
+          <DailyProductsTable
+            rows={visibleRows}
+            empty={!loading && !error && visibleRows.length === 0}
+          />
+          {loading && (
+            <p style={{ textAlign: 'center' }}>جاري تحميل المنتجات...</p>
+          )}
+          {error && (
+            <p style={{ textAlign: 'center', color: '#fca5a5' }}>{error}</p>
+          )}
+        </div>
+
+        <div style={{ flexShrink: 0 }}>
+          <PaginationBar
+            page={page}
+            totalItems={filteredRows.length}
+            loading={loading}
+            onPageChange={(nextPage) => {
+              setPage(nextPage);
+              tableRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+            }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

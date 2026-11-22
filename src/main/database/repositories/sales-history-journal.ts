@@ -201,48 +201,85 @@ export function buildSalesFinancialJournalSql(dates: FinancialJournalDates) {
 
 export function buildSalesProductJournalSql(dates: FinancialJournalDates) {
   const sale = (reverse: boolean) => `
-    SELECT si.variant_id, si.product_name, si.size, si.color,
+    SELECT
+      si.variant_id,
+      si.product_name,
+      si.size,
+      si.color,
       (${reverse ? -1 : 1}) * si.quantity AS quantity,
       (${reverse ? -1 : 1}) * si.line_total AS total,
       ${reverse ? dates.saleCancel : dates.sale} AS business_date,
-      s.user_id AS user_id
-    FROM sale_items si JOIN sales s ON s.id = si.sale_id
+      s.user_id AS user_id,
+      '${reverse ? 'sale_cancel' : 'sale'}' AS event_kind
+    FROM sale_items si
+    JOIN sales s ON s.id = si.sale_id
     WHERE COALESCE(s.type, 'sale') = 'sale'
-      AND (${reverse ? saleCancelledLater('s') : originalSaleVisible('s')})
+      AND (
+        ${reverse ? saleCancelledLater('s') : originalSaleVisible('s')}
+      )
   `;
+
   const returned = (reverse: boolean) => `
-    SELECT sri.variant_id, sri.product_name, sri.size, sri.color,
+    SELECT
+      sri.variant_id,
+      sri.product_name,
+      sri.size,
+      sri.color,
       (${reverse ? 1 : -1}) * sri.quantity AS quantity,
       (${reverse ? 1 : -1}) * sri.line_total AS total,
       ${reverse ? dates.saleReturnCancel : dates.saleReturn} AS business_date,
-      sr.user_id AS user_id
+      sr.user_id AS user_id,
+      '${reverse ? 'return_cancel' : 'return'}' AS event_kind
     FROM sale_return_items sri
     JOIN sale_returns sr ON sr.id = sri.return_id
     JOIN sales os ON os.id = sr.original_sale_id
     WHERE COALESCE(os.type, 'sale') = 'sale'
       AND (${originalSaleVisible('os')})
-      AND (${reverse ? returnCancelledLater('sr') : originalReturnVisible('sr')})
+      AND (
+        ${reverse ? returnCancelledLater('sr') : originalReturnVisible('sr')}
+      )
   `;
+
   const exchanged = (old: boolean, reverse: boolean) => {
     const variant = old ? 'old' : 'new';
     const sign = (old ? -1 : 1) * (reverse ? -1 : 1);
+
+    const eventKind = reverse
+      ? old
+        ? 'exchange_cancel_old'
+        : 'exchange_cancel_new'
+      : old
+        ? 'exchange_old'
+        : 'exchange_new';
+
     return `
-      SELECT sei.${variant}_variant_id AS variant_id,
-        p.name AS product_name, pv.size, pv.color,
+      SELECT
+        sei.${variant}_variant_id AS variant_id,
+        p.name AS product_name,
+        pv.size,
+        pv.color,
         (${sign}) * sei.quantity AS quantity,
         (${sign}) * sei.${variant}_unit_price * sei.quantity AS total,
         ${reverse ? dates.exchangeCancel : dates.exchange} AS business_date,
-        se.user_id AS user_id
+        se.user_id AS user_id,
+        '${eventKind}' AS event_kind
       FROM sale_exchange_items sei
-      JOIN sale_exchanges se ON se.id = sei.exchange_id
-      JOIN sales os ON os.id = se.original_sale_id
-      JOIN product_variants pv ON pv.id = sei.${variant}_variant_id
-      JOIN products p ON p.id = pv.product_id
+      JOIN sale_exchanges se
+        ON se.id = sei.exchange_id
+      JOIN sales os
+        ON os.id = se.original_sale_id
+      JOIN product_variants pv
+        ON pv.id = sei.${variant}_variant_id
+      JOIN products p
+        ON p.id = pv.product_id
       WHERE COALESCE(os.type, 'sale') = 'sale'
         AND (${originalSaleVisible('os')})
-        AND (${reverse ? exchangeCancelledLater('se') : originalExchangeVisible('se')})
+        AND (
+          ${reverse ? exchangeCancelledLater('se') : originalExchangeVisible('se')}
+        )
     `;
   };
+
   return [
     sale(false),
     sale(true),

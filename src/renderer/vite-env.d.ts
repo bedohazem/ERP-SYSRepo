@@ -1929,6 +1929,20 @@ declare global {
       // Reports
       // =========================
 
+      getDailyProductSummary: (input: { business_date: string }) => Promise<
+        Array<{
+          variant_id: number;
+          product_name: string;
+          size: string;
+          color: string;
+          sold_quantity: number;
+          returned_quantity: number;
+          exchange_quantity: number;
+          cancellation_quantity: number;
+          net_quantity: number;
+        }>
+      >;
+
       getAdminDashboardTodaySummary: (input: {
         business_date: string;
       }) => Promise<{

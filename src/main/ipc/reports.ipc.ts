@@ -13,6 +13,8 @@ import {
 } from './input-validation';
 import { requireAuthenticatedAdmin, requirePermission } from '../auth-session';
 
+import { getDailyProductSummary } from '../database/repositories/sales-history-report.repo';
+
 export function registerReportsIpc(): void {
   ipcMain.handle('reports:summary', (event, input) => {
     requirePermission(event, 'reports.view');
@@ -29,6 +31,23 @@ export function registerReportsIpc(): void {
       user_id:
         optionalPositiveInteger(payload.user_id, 'رقم المستخدم') ?? undefined,
     });
+  });
+
+  ipcMain.handle('reports:daily-products', (event, input) => {
+    requireAuthenticatedAdmin(event);
+
+    const payload = requireObjectInput(input, 'بيانات ملخص منتجات اليوم');
+
+    const businessDate = optionalDateOnly(
+      payload.business_date,
+      'تاريخ ملخص منتجات اليوم',
+    );
+
+    if (!businessDate) {
+      throw new Error('تاريخ ملخص منتجات اليوم مطلوب');
+    }
+
+    return getDailyProductSummary(businessDate);
   });
 
   ipcMain.handle('reports:admin-cash-flow-alerts', (event) => {

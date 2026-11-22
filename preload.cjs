@@ -274,6 +274,9 @@ contextBridge.exposeInMainWorld('api', {
 
   getReportsSummary: (input) => invokeMain('reports:summary', input),
 
+  getDailyProductSummary: (input) =>
+    invokeMain('reports:daily-products', input),
+
   getAdminCashFlowAlerts: () => invokeMain('reports:admin-cash-flow-alerts'),
   getAdminDashboardTodaySummary: (input) =>
     invokeMain('reports:admin-dashboard-today', input),

@@ -286,3 +286,95 @@ export function getSalesTodaySummary(businessDate: string) {
     .get(businessDate) as { sales_count: number; net_sales: number };
   return { sales_count: n(result.sales_count), net_sales: n(result.net_sales) };
 }
+
+export function getDailyProductSummary(businessDate: string) {
+  const db = getDb();
+  const journal = buildSalesProductJournalSql(dates());
+
+  const rows = db
+    .prepare(
+      `
+      SELECT
+        x.variant_id,
+        COALESCE(p.name, MAX(x.product_name)) AS product_name,
+        COALESCE(v.size, MAX(x.size)) AS size,
+        COALESCE(v.color, MAX(x.color)) AS color,
+
+        SUM(
+          CASE WHEN x.event_kind = 'sale'
+          THEN x.quantity ELSE 0 END
+        ) AS sold_quantity,
+
+        SUM(
+          CASE WHEN x.event_kind = 'return'
+          THEN -x.quantity ELSE 0 END
+        ) AS returned_quantity,
+
+        SUM(
+          CASE WHEN x.event_kind IN (
+            'exchange_old', 'exchange_new'
+          )
+          THEN x.quantity ELSE 0 END
+        ) AS exchange_quantity,
+
+        SUM(
+          CASE WHEN x.event_kind IN (
+            'sale_cancel',
+            'return_cancel',
+            'exchange_cancel_old',
+            'exchange_cancel_new'
+          )
+          THEN x.quantity ELSE 0 END
+        ) AS cancellation_quantity,
+
+        SUM(x.quantity) AS net_quantity
+
+      FROM (${journal}) x
+
+      LEFT JOIN product_variants v
+        ON v.id = x.variant_id
+
+      LEFT JOIN products p
+        ON p.id = v.product_id
+
+      WHERE x.business_date = ?
+
+      GROUP BY
+        x.variant_id,
+        CASE WHEN x.variant_id IS NULL OR x.variant_id <= 0
+          THEN x.product_name END,
+        CASE WHEN x.variant_id IS NULL OR x.variant_id <= 0
+          THEN x.size END,
+        CASE WHEN x.variant_id IS NULL OR x.variant_id <= 0
+          THEN x.color END
+
+      ORDER BY
+        ABS(net_quantity) DESC,
+        sold_quantity DESC,
+        product_name ASC
+      `,
+    )
+    .all(businessDate) as Array<{
+    variant_id: number | null;
+    product_name: string | null;
+    size: string | null;
+    color: string | null;
+    sold_quantity: number;
+    returned_quantity: number;
+    exchange_quantity: number;
+    cancellation_quantity: number;
+    net_quantity: number;
+  }>;
+
+  return rows.map((row) => ({
+    variant_id: Number(row.variant_id || 0),
+    product_name: row.product_name || 'منتج غير معروف',
+    size: row.size || '',
+    color: row.color || '',
+    sold_quantity: n(row.sold_quantity),
+    returned_quantity: n(row.returned_quantity),
+    exchange_quantity: n(row.exchange_quantity),
+    cancellation_quantity: n(row.cancellation_quantity),
+    net_quantity: n(row.net_quantity),
+  }));
+}
