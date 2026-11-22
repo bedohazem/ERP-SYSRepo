@@ -296,6 +296,8 @@ export function getDailyProductSummary(businessDate: string) {
       `
       SELECT
         x.variant_id,
+        COALESCE(NULLIF(v.barcode, ''), MAX(NULLIF(x.barcode, ''))) AS barcode,
+        v.sell_price AS sell_price,
         COALESCE(p.name, MAX(x.product_name)) AS product_name,
         COALESCE(v.size, MAX(x.size)) AS size,
         COALESCE(v.color, MAX(x.color)) AS color,
@@ -356,6 +358,8 @@ export function getDailyProductSummary(businessDate: string) {
     )
     .all(businessDate) as Array<{
     variant_id: number | null;
+    barcode: string | null;
+    sell_price: number | null;
     product_name: string | null;
     size: string | null;
     color: string | null;
@@ -368,6 +372,8 @@ export function getDailyProductSummary(businessDate: string) {
 
   return rows.map((row) => ({
     variant_id: Number(row.variant_id || 0),
+    barcode: row.barcode || '',
+    sell_price: row.sell_price === null ? null : n(row.sell_price),
     product_name: row.product_name || 'منتج غير معروف',
     size: row.size || '',
     color: row.color || '',

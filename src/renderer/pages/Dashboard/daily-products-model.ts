@@ -1,6 +1,8 @@
 export type DailyProductRow = {
   variant_id: number;
   product_name: string;
+  barcode: string;
+  sell_price: number | null;
   size: string;
   color: string;
   sold_quantity: number;
@@ -18,7 +20,14 @@ export function filterDailyProducts(
   if (!query) return [...rows];
 
   return rows.filter((item) =>
-    [item.product_name, item.size, item.color, String(item.variant_id)]
+    [
+      item.product_name,
+      item.barcode,
+      item.size,
+      item.color,
+      String(item.sell_price ?? ''),
+      String(item.variant_id),
+    ]
       .join(' ')
       .toLocaleLowerCase()
       .includes(query),

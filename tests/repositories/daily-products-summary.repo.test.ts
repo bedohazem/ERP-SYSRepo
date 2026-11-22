@@ -672,4 +672,35 @@ describe('daily product movement breakdown', () => {
       net_quantity: -1,
     });
   });
+  it('returns the current barcode and catalog sale price for a selected historical date', () => {
+    const { m } = seedVariants();
+    const sale = sell(m, 2);
+    const date = getLocalBusinessDate();
+    const first = getDailyProductSummary(date).find(
+      (row) => row.variant_id === m.variant_id,
+    );
+    expect(first).toMatchObject({
+      barcode: 'DAILY-SUMMARY-M',
+      sell_price: 100,
+      net_quantity: 2,
+    });
+
+    getDb()
+      .prepare('UPDATE product_variants SET sell_price = ? WHERE id = ?')
+      .run(175, m.variant_id);
+
+    const second = getDailyProductSummary(date).find(
+      (row) => row.variant_id === m.variant_id,
+    );
+    expect(second).toMatchObject({
+      barcode: 'DAILY-SUMMARY-M',
+      sell_price: 175,
+      net_quantity: 2,
+    });
+    // Catalog updates must not rewrite historical invoice values.
+    expect(
+      getReportsSummary({ date_from: date, date_to: date }).summary.sales_count,
+    ).toBe(1);
+    expect(sale.saleId).toBeGreaterThan(0);
+  });
 });

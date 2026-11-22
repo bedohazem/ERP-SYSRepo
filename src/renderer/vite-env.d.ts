@@ -1933,6 +1933,8 @@ declare global {
         Array<{
           variant_id: number;
           product_name: string;
+          barcode: string;
+          sell_price: number | null;
           size: string;
           color: string;
           sold_quantity: number;

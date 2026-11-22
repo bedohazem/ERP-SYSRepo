@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { formatMoney } from '../../../shared/money';
 import type { DailyProductRow } from './daily-products-model';
 
 const thStyle: CSSProperties = {
@@ -29,11 +30,13 @@ export function DailyProductsTable({
       style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}
     >
       <thead>
-        <tr style={{ textAlign: 'right' }}>
+        <tr style={{ textAlign: 'center' }}>
           {[
             'المنتج',
+            'الباركود',
             'المقاس',
             'اللون',
+            'البيع',
             'مباع',
             'مرتجع',
             'استبدال',
@@ -50,11 +53,18 @@ export function DailyProductsTable({
         {rows.map((item, index) => (
           <tr
             key={`${item.variant_id}-${item.product_name}-${index}`}
-            style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}
+            style={{
+              borderTop: '1px solid rgba(255,255,255,0.07)',
+              textAlign: 'center',
+            }}
           >
             <td style={tdStyle}>{item.product_name}</td>
+            <td style={tdStyle}>{item.barcode || '—'}</td>
             <td style={tdStyle}>{item.size || '—'}</td>
             <td style={tdStyle}>{item.color || '—'}</td>
+            <td style={tdStyle}>
+              {item.sell_price === null ? '—' : formatMoney(item.sell_price)}
+            </td>
             <td style={tdStyle}>{item.sold_quantity}</td>
             <td style={tdStyle}>{item.returned_quantity}</td>
             <td style={tdStyle}>{item.exchange_quantity}</td>
@@ -73,7 +83,7 @@ export function DailyProductsTable({
         {empty && rows.length === 0 && (
           <tr>
             <td
-              colSpan={8}
+              colSpan={10}
               style={{
                 padding: '30px',
                 textAlign: 'center',

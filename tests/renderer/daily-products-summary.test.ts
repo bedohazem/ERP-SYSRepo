@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -12,6 +14,8 @@ import {
 const row = (overrides: Partial<DailyProductRow> = {}): DailyProductRow => ({
   variant_id: 1,
   product_name: 'تيشيرت',
+  barcode: 'TEST-BARCODE-001',
+  sell_price: 100,
   size: 'L',
   color: 'أسود',
   sold_quantity: 3,
@@ -23,13 +27,39 @@ const row = (overrides: Partial<DailyProductRow> = {}): DailyProductRow => ({
 });
 
 describe('daily products modal data and rendering', () => {
+  it('wires a controlled date picker to automatic loading and has no refresh button', () => {
+    const source = readFileSync(
+      join(process.cwd(), 'src/renderer/pages/Dashboard/DashboardPage.tsx'),
+      'utf8',
+    );
+    const start = source.indexOf('function DailyProductsModal(');
+    const end = source.indexOf('function StatCard(', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const modal = source.slice(start, end);
+    expect(modal).toContain('type="date"');
+    expect(modal).toContain('value={date}');
+    expect(modal).toContain('setDate(nextDate)');
+    expect(modal).toContain('getDailyProductSummary({ business_date: date })');
+    expect(modal).not.toContain('onClick={refresh}');
+    expect(modal).not.toContain('setRefreshKey');
+  });
   it('searches Arabic name, size, color and variant id, ignoring case and outer spaces', () => {
     const rows = [
       row(),
-      row({ variant_id: 2, product_name: 'HOODIE', size: 'XL', color: 'Blue' }),
+      row({
+        variant_id: 2,
+        product_name: 'HOODIE',
+        barcode: 'TEST-BARCODE-002',
+        size: 'XL',
+        color: 'Blue',
+        sell_price: 120,
+      }),
     ];
 
     expect(filterDailyProducts(rows, ' تيشيرت ')).toEqual([rows[0]]);
+    expect(filterDailyProducts(rows, 'barcode-001')).toEqual([rows[0]]);
+    expect(filterDailyProducts(rows, '100')).toEqual([rows[0]]);
     expect(filterDailyProducts(rows, 'hoodie')).toEqual([rows[1]]);
     expect(filterDailyProducts(rows, ' xl ')).toEqual([rows[1]]);
     expect(filterDailyProducts(rows, 'Blue')).toEqual([rows[1]]);
@@ -105,14 +135,16 @@ describe('daily products modal data and rendering', () => {
     });
   });
 
-  it('renders all eight column headers, even for an empty result', () => {
+  it('renders ten column headers including barcode and current sell price', () => {
     const html = renderToStaticMarkup(
       createElement(DailyProductsTable, { rows: [], empty: true }),
     );
     for (const title of [
       'المنتج',
+      'الباركود',
       'المقاس',
       'اللون',
+      'سعر البيع الحالي',
       'مباع',
       'مرتجع',
       'استبدال',
@@ -121,7 +153,7 @@ describe('daily products modal data and rendering', () => {
     ]) {
       expect(html).toContain(title);
     }
-    expect(html.match(/<th /g) || []).toHaveLength(8);
+    expect(html.match(/<th /g) || []).toHaveLength(10);
     expect(html).toContain('لا توجد حركات منتجات مطابقة');
   });
 
@@ -145,6 +177,8 @@ describe('daily products modal data and rendering', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('مرتجع قديم');
+    expect(html).toContain('TEST-BARCODE-001');
+    expect(html).toContain('100 ج.م');
     expect(html).toContain('>0</td>');
     expect(html).toContain('>-1</td>');
     expect(html.match(/<tr /g) || []).toHaveLength(3);

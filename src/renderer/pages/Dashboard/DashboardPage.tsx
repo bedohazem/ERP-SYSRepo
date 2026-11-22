@@ -520,7 +520,7 @@ export default function DashboardPage() {
             onClick={() => setShowDailyProducts(true)}
             style={secondaryButtonStyle}
           >
-            📦 ملخص منتجات اليوم
+            📦 ملخص حركة المنتجات
           </button>
 
           <button
@@ -844,7 +844,7 @@ export default function DashboardPage() {
 
 function DailyProductsModal({ onClose }: { onClose: () => void }) {
   const [date, setDate] = useState(() => getLocalDateKey(new Date()));
-  const [refreshKey, setRefreshKey] = useState(0);
+  const catalogVersion = useCatalogVersion();
   const [rows, setRows] = useState<DailyProductRow[]>([]);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -878,7 +878,7 @@ function DailyProductsModal({ onClose }: { onClose: () => void }) {
     return () => {
       active = false;
     };
-  }, [date, refreshKey]);
+  }, [date, catalogVersion]);
 
   const filteredRows = filterDailyProducts(rows, search);
   const visibleRows = paginateDailyProducts(
@@ -887,11 +887,6 @@ function DailyProductsModal({ onClose }: { onClose: () => void }) {
     SYSTEM_PAGE_SIZE,
   );
   const totals = summarizeDailyProducts(rows);
-
-  function refresh() {
-    setDate(getLocalDateKey(new Date()));
-    setRefreshKey((value) => value + 1);
-  }
 
   return (
     <div
@@ -909,7 +904,7 @@ function DailyProductsModal({ onClose }: { onClose: () => void }) {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="ملخص منتجات اليوم"
+        aria-label="ملخص حركة المنتجات حسب التاريخ"
         style={{
           width: '1100px',
           maxWidth: '100%',
@@ -939,20 +934,57 @@ function DailyProductsModal({ onClose }: { onClose: () => void }) {
           }}
         >
           <div>
-            <h3 style={{ margin: 0 }}>📦 ملخص منتجات اليوم</h3>
-            <p style={{ color: '#94a3b8', margin: '6px 0 0' }}>
-              اليوم المالي: {date}
+            <h3 style={{ margin: 0 }}>📦 ملخص حركة المنتجات</h3>
+            <p
+              style={{ color: '#94a3b8', margin: '6px 0 0', fontSize: '13px' }}
+            >
+              اختر أي تاريخ مالي لعرض حركات المنتجات فيه
+            </p>
+            <p
+              style={{ color: '#94a3b8', margin: '4px 0 0', fontSize: '12px' }}
+            >
+              الباركود وسعر البيع من بيانات الصنف الحالية، وليسا سعر الفاتورة
+              القديمة
             </p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              onClick={refresh}
-              disabled={loading}
-              style={secondaryButtonStyle}
+          <div
+            style={{
+              display: 'flex',
+              gap: '10px',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <label
+              htmlFor="daily-products-business-date"
+              style={{ fontWeight: 800 }}
             >
-              {loading ? 'جاري التحميل...' : 'تحديث'}
-            </button>
+              التاريخ المالي
+            </label>
+            <input
+              id="daily-products-business-date"
+              aria-label="تاريخ ملخص حركة المنتجات"
+              type="date"
+              value={date}
+              onChange={(event) => {
+                const nextDate = event.target.value;
+                if (!nextDate || nextDate === date) return;
+                setRows([]);
+                setDate(nextDate);
+                setPage(1);
+                tableRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+              }}
+              style={{
+                background: '#1e293b',
+                color: '#fff',
+                colorScheme: 'dark',
+                border: '1px solid rgba(148,163,184,0.4)',
+                borderRadius: '10px',
+                padding: '10px 12px',
+                minHeight: '42px',
+                boxSizing: 'border-box',
+              }}
+            />
             <button
               type="button"
               onClick={onClose}
@@ -1004,7 +1036,7 @@ function DailyProductsModal({ onClose }: { onClose: () => void }) {
             setPage(1);
             tableRef.current?.scrollTo({ top: 0, behavior: 'auto' });
           }}
-          placeholder="بحث باسم المنتج أو المقاس أو اللون أو رقم الصنف"
+          placeholder="بحث باسم المنتج أو الباركود أو المقاس أو اللون أو سعر البيع"
           aria-label="بحث في ملخص منتجات اليوم"
           style={{
             width: '100%',
