@@ -390,6 +390,50 @@ describe('product repository', () => {
     expect(variant?.stock).toBe(4);
   });
 
+  it('returns the same category when scanning or searching a sale variant', () => {
+    const category = createCategory({
+      name: 'تصنيف اختبار البيع',
+    });
+
+    createProduct({
+      name: 'منتج اختبار التصنيف',
+      category_id: category.id,
+      variants: [
+        {
+          barcode: 'SALE-CATEGORY-001',
+          size: 'M',
+          color: 'أسود',
+          buy_price: 50,
+          sell_price: 120,
+          min_stock: 2,
+          opening_qty: 5,
+        },
+      ],
+    });
+
+    const scanned = getVariantByBarcode('SALE-CATEGORY-001');
+
+    const searched = searchSaleVariants('منتج اختبار التصنيف');
+
+    expect(scanned).toBeDefined();
+    expect(searched).toHaveLength(1);
+
+    expect(scanned).toMatchObject({
+      category_id: category.id,
+      category_name: 'تصنيف اختبار البيع',
+      barcode: 'SALE-CATEGORY-001',
+      size: 'M',
+      color: 'أسود',
+      sell_price: 120,
+      stock: 5,
+    });
+
+    expect(scanned?.category_id).toBe(searched[0].category_id);
+    expect(scanned?.category_name).toBe(searched[0].category_name);
+    expect(scanned?.sell_price).toBe(searched[0].sell_price);
+    expect(scanned?.stock).toBe(searched[0].stock);
+  });
+
   it('rejects negative buy price', () => {
     expect(() =>
       createProduct({

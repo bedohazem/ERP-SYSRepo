@@ -1278,6 +1278,8 @@ export function getVariantByBarcode(
         v.id as variant_id,
         p.id as product_id,
         p.name as product_name,
+        p.category_id as category_id,
+        c.name as category_name,
         v.barcode,
         v.size,
         v.color,
@@ -1298,6 +1300,7 @@ export function getVariantByBarcode(
         ${STOCK_SUM_SQL} as stock
       FROM product_variants v
       INNER JOIN products p ON p.id = v.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
       LEFT JOIN stock_movements sm ON sm.variant_id = v.id
       WHERE p.is_active = 1
         AND v.is_active = 1
@@ -1310,6 +1313,8 @@ export function getVariantByBarcode(
         v.id,
         p.id,
         p.name,
+        p.category_id,
+        c.name,
         v.barcode,
         v.size,
         v.color,
