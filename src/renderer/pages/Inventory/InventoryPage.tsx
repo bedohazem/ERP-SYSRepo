@@ -328,7 +328,7 @@ export default function InventoryPage() {
 
   function getStatusFilterLabel() {
     if (statusFilters.length === 0) {
-      return 'كل الحالات';
+      return 'كل الحالات النشطة';
     }
 
     const labels: Record<InventoryStatusFilter, string> = {
@@ -740,7 +740,7 @@ export default function InventoryPage() {
                     direction: 'rtl',
                   }}
                 >
-                  <span>كل الحالات</span>
+                  <span>كل الحالات النشطة</span>
 
                   <span
                     style={{

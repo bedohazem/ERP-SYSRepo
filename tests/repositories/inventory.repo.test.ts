@@ -352,9 +352,23 @@ describe('inventory repository', () => {
       offset: 0,
     });
 
-    expect(page.summary.inactive).toBe(2);
+    expect(page.total).toBe(0);
+    expect(page.summary.inactive).toBe(0);
+    expect(page.summary.totalBuyValue).toBe(0);
 
-    expect(page.summary.totalBuyValue).toBe(1000);
+    const inactivePage = listInventoryPage({
+      statuses: ['inactive'],
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(inactivePage.total).toBe(2);
+    expect(inactivePage.summary.inactive).toBe(2);
+    expect(inactivePage.summary.totalBuyValue).toBe(1000);
+
+    expect(inactivePage.rows.map((row) => row.barcode)).toEqual(
+      expect.arrayContaining(['INV-DISABLED-VARIANT', 'INV-DISABLED-PRODUCT']),
+    );
   });
 
   it('filters inventory by multiple selected statuses', () => {

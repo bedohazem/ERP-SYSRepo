@@ -238,7 +238,9 @@ export function listInventoryPage(input?: InventoryPageInput) {
   }
 
   const statusSql =
-    statusConditions.length > 0 ? `WHERE ${statusConditions.join(' OR ')}` : '';
+    statusConditions.length > 0
+      ? `WHERE ${statusConditions.join(' OR ')}`
+      : `WHERE product_is_active = 1 AND is_active = 1`;
 
   const queryRows = db
     .prepare(
