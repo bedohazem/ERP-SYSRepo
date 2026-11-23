@@ -16,6 +16,7 @@ const tdStyle: CSSProperties = {
   padding: '12px',
   color: '#e5e7eb',
   whiteSpace: 'nowrap',
+  borderTop: '1px solid rgba(255,255,255,0.07)',
 };
 
 export function DailyProductsTable({
@@ -27,9 +28,22 @@ export function DailyProductsTable({
 }) {
   return (
     <table
-      style={{ width: '100%', borderCollapse: 'collapse', direction: 'rtl' }}
+      style={{
+        width: '100%',
+        borderCollapse: 'separate',
+        borderSpacing: 0,
+        direction: 'rtl',
+      }}
     >
-      <thead>
+      <thead
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          background: '#1e293b',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.35)',
+        }}
+      >
         <tr style={{ textAlign: 'center' }}>
           {[
             'المنتج',
