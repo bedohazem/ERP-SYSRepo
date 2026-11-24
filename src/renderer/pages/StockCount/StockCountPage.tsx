@@ -7,6 +7,13 @@ import { hasUserPermission } from '../../utils/permissions';
 import { formatMoney } from '../../../shared/money';
 
 import { useCatalogVersion } from '../../utils/use-catalog-version';
+import {
+  clearStockCountDrafts,
+  getStockCountDraftKey,
+  normalizeActualDraft,
+  readStockCountDrafts,
+  writeStockCountDrafts,
+} from '../../utils/stock-count-drafts';
 
 type StockCountSession = {
   id: number;
@@ -93,6 +100,9 @@ export default function StockCountPage() {
 
   // نخزن الرقم أثناء الكتابة بدون اعتبار المنتج مجرودًا قبل الحفظ.
   const [actualDrafts, setActualDrafts] = useState<Record<number, string>>({});
+  const [noteDrafts, setNoteDrafts] = useState<Record<number, string>>({});
+  const [draftScope, setDraftScope] = useState<string | null>(null);
+  const [draftStorageFailed, setDraftStorageFailed] = useState(false);
 
   const [message, setMessage] = useState('');
   const [confirmAction, setConfirmAction] = useState<
@@ -302,6 +312,35 @@ export default function StockCountPage() {
     };
   }, []);
 
+  // Persistent drafts are separate from saved stock-count values.
+  useEffect(() => {
+    if (
+      !selected ||
+      !currentUser?.id ||
+      !canCountStock ||
+      selected.session.status !== 'open'
+    )
+      return;
+
+    const scope = getStockCountDraftKey(currentUser.id, selected.session.id);
+    if (draftScope !== scope) return;
+
+    setDraftStorageFailed(
+      !writeStockCountDrafts(scope, {
+        actual: actualDrafts,
+        notes: noteDrafts,
+      }),
+    );
+  }, [
+    actualDrafts,
+    noteDrafts,
+    draftScope,
+    currentUser?.id,
+    canCountStock,
+    selected?.session.id,
+    selected?.session.status,
+  ]);
+
   function showMessage(text: string, duration = 1800) {
     setMessage(text);
 
@@ -323,10 +362,28 @@ export default function StockCountPage() {
 
     try {
       const data = await window.api.getStockCountSession(sessionId);
+      const scope = currentUser?.id
+        ? getStockCountDraftKey(currentUser.id, sessionId)
+        : null;
+
+      if (scope && data.session.status !== 'open') {
+        clearStockCountDrafts(scope);
+      }
+
+      if (resetView || draftScope !== scope) {
+        const restored =
+          scope && data.session.status === 'open' && canCountStock
+            ? readStockCountDrafts(scope, data.items)
+            : { actual: {}, notes: {} };
+
+        setActualDrafts(restored.actual);
+        setNoteDrafts(restored.notes);
+        setDraftScope(scope);
+      }
+
       setSelected(data);
 
       if (resetView) {
-        setActualDrafts({});
         setSearch('');
         setFilter('all');
         setCountCategoryFilter('all');
@@ -387,27 +444,42 @@ export default function StockCountPage() {
 
   function updateLocalActual(itemId: number, value: string) {
     const item = selected?.items.find((row) => row.id === itemId);
-    const savedValue = item?.actual_stock;
+    if (!item) return;
 
-    setActualDrafts((prev) => {
-      const next = { ...prev };
+    const draft = normalizeActualDraft(value, item.actual_stock);
+    const next = { ...actualDrafts };
+    if (draft === null) delete next[itemId];
+    else next[itemId] = draft;
+    setActualDrafts(next);
 
-      const returnedToSavedValue =
-        savedValue !== null &&
-        savedValue !== undefined &&
-        value !== '' &&
-        Number(value) === Number(savedValue);
+    // Synchronous write so even an immediate window close keeps the last edit.
+    if (draftScope) {
+      setDraftStorageFailed(
+        !writeStockCountDrafts(draftScope, {
+          actual: next,
+          notes: noteDrafts,
+        }),
+      );
+    }
+  }
 
-      // لو المستخدم رجع لنفس القيمة المحفوظة،
-      // نشيل الصنف من قائمة التعديلات.
-      if (returnedToSavedValue) {
-        delete next[itemId];
-      } else {
-        next[itemId] = value;
-      }
+  function updateLocalNotes(itemId: number, value: string) {
+    const item = selected?.items.find((row) => row.id === itemId);
+    if (!item) return;
 
-      return next;
-    });
+    const next = { ...noteDrafts };
+    if (value === (item.notes ?? '')) delete next[itemId];
+    else next[itemId] = value;
+    setNoteDrafts(next);
+
+    if (draftScope) {
+      setDraftStorageFailed(
+        !writeStockCountDrafts(draftScope, {
+          actual: actualDrafts,
+          notes: next,
+        }),
+      );
+    }
   }
 
   async function saveItem(item: StockCountItem) {
@@ -446,7 +518,7 @@ export default function StockCountPage() {
 
         actual_stock: actualStock,
 
-        notes: item.notes || null,
+        notes: (noteDrafts[item.id] ?? item.notes ?? '').trim() || null,
       });
 
       if (result?.success === false) {
@@ -457,9 +529,12 @@ export default function StockCountPage() {
 
       setActualDrafts((prev) => {
         const next = { ...prev };
-
         delete next[item.id];
-
+        return next;
+      });
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
         return next;
       });
 
@@ -536,27 +611,31 @@ export default function StockCountPage() {
   async function saveAllItems() {
     if (!selected || savingAll) return;
 
-    const draftEntries = Object.entries(actualDrafts);
+    const draftIds = [
+      ...new Set([...Object.keys(actualDrafts), ...Object.keys(noteDrafts)]),
+    ];
 
-    if (draftEntries.length === 0) {
+    if (draftIds.length === 0) {
       showMessage('لا توجد كميات جديدة للحفظ');
       return;
     }
 
-    const itemsToSave = draftEntries.map(([itemId, rawValue]) => {
-      const item = selected.items.find((row) => row.id === Number(itemId));
+    const itemsToSave = draftIds.map((itemId) => {
+      const id = Number(itemId);
+      const item = selected.items.find((row) => row.id === id);
+      const rawValue = Object.prototype.hasOwnProperty.call(actualDrafts, id)
+        ? actualDrafts[id]
+        : item?.actual_stock;
 
-      return {
-        item,
-        rawValue,
-        actualStock: Number(rawValue),
-      };
+      return { item, rawValue, actualStock: Number(rawValue) };
     });
 
     const invalidItem = itemsToSave.find(
       ({ item, rawValue, actualStock }) =>
         !item ||
         rawValue === '' ||
+        rawValue === null ||
+        rawValue === undefined ||
         !Number.isFinite(actualStock) ||
         actualStock < 0,
     );
@@ -583,7 +662,8 @@ export default function StockCountPage() {
             session_id: selected.session.id,
             item_id: row.item.id,
             actual_stock: row.actualStock,
-            notes: row.item.notes || null,
+            notes:
+              (noteDrafts[row.item.id] ?? row.item.notes ?? '').trim() || null,
           });
 
           if (result?.success === false) {
@@ -602,14 +682,15 @@ export default function StockCountPage() {
         }
       }
 
-      // نحذف من المسودات الأصناف التي تم حفظها فقط.
+      // Keep failed items available for retry, including their notes.
       setActualDrafts((prev) => {
         const next = { ...prev };
-
-        for (const itemId of savedIds) {
-          delete next[itemId];
-        }
-
+        for (const itemId of savedIds) delete next[itemId];
+        return next;
+      });
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        for (const itemId of savedIds) delete next[itemId];
         return next;
       });
 
@@ -654,7 +735,7 @@ export default function StockCountPage() {
       );
 
       setBarcode('');
-      await openSession(selected.session.id);
+      await openSession(selected.session.id, false);
     } catch (error) {
       console.error('Failed to scan stock count barcode:', error);
       setScanMessage('حدث خطأ أثناء قراءة الباركود');
@@ -681,6 +762,13 @@ export default function StockCountPage() {
       }
 
       setConfirmAction(null);
+      if (currentUser?.id) {
+        clearStockCountDrafts(
+          getStockCountDraftKey(currentUser.id, selected.session.id),
+        );
+      }
+      setActualDrafts({});
+      setNoteDrafts({});
       showMessage('تم اعتماد الجرد وتحديث المخزون');
       await loadSessions();
       await openSession(selected.session.id);
@@ -713,6 +801,14 @@ export default function StockCountPage() {
       }
 
       setConfirmAction(null);
+      if (currentUser?.id) {
+        clearStockCountDrafts(
+          getStockCountDraftKey(currentUser.id, selected.session.id),
+        );
+      }
+      setActualDrafts({});
+      setNoteDrafts({});
+      setDraftScope(null);
       showMessage('تم إلغاء جلسة الجرد');
       setSelected(null);
       await loadSessions();
@@ -730,9 +826,19 @@ export default function StockCountPage() {
   const hasCountFilters =
     Boolean(search.trim()) || filter !== 'all' || countCategoryFilter !== 'all';
 
+  const pendingDraftCount = new Set([
+    ...Object.keys(actualDrafts),
+    ...Object.keys(noteDrafts),
+  ]).size;
+
   return (
     <div style={{ display: 'grid', gap: '18px' }}>
       {message && <div style={toastStyle}>{message}</div>}
+      {draftStorageFailed && (
+        <div role="alert" style={{ color: '#fca5a5', fontWeight: 800 }}>
+          تعذر حفظ مسودة الجرد على هذا الجهاز. لا تغلق البرنامج قبل حفظ الكميات.
+        </div>
+      )}
 
       <section className="glass-card" style={cardStyle}>
         <div
@@ -935,21 +1041,16 @@ export default function StockCountPage() {
                 <button
                   type="button"
                   onClick={saveAllItems}
-                  disabled={savingAll || Object.keys(actualDrafts).length === 0}
+                  disabled={savingAll || pendingDraftCount === 0}
                   style={{
                     ...primaryButtonStyle,
-                    opacity:
-                      savingAll || Object.keys(actualDrafts).length === 0
-                        ? 0.6
-                        : 1,
+                    opacity: savingAll || pendingDraftCount === 0 ? 0.6 : 1,
                   }}
                 >
                   {savingAll
                     ? 'جاري حفظ الكل...'
                     : `حفظ الكل${
-                        Object.keys(actualDrafts).length > 0
-                          ? ` (${Object.keys(actualDrafts).length})`
-                          : ''
+                        pendingDraftCount > 0 ? ` (${pendingDraftCount})` : ''
                       }`}
                 </button>
               )}
@@ -959,7 +1060,7 @@ export default function StockCountPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (Object.keys(actualDrafts).length > 0) {
+                      if (pendingDraftCount > 0) {
                         showMessage('اضغط حفظ الكل قبل اعتماد الجرد');
                         return;
                       }
@@ -986,12 +1087,26 @@ export default function StockCountPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (Object.keys(actualDrafts).length > 0) {
-                    showMessage('يوجد كميات غير محفوظة، اضغط حفظ الكل أولًا');
-                    return;
+                  if (pendingDraftCount > 0 && currentUser?.id) {
+                    const scope = getStockCountDraftKey(
+                      currentUser.id,
+                      selected.session.id,
+                    );
+                    if (
+                      !writeStockCountDrafts(scope, {
+                        actual: actualDrafts,
+                        notes: noteDrafts,
+                      })
+                    ) {
+                      showMessage('تعذر حفظ المسودة. احفظ الكميات أولًا.');
+                      return;
+                    }
                   }
 
                   setSelected(null);
+                  setDraftScope(null);
+                  setActualDrafts({});
+                  setNoteDrafts({});
                 }}
                 style={secondaryButtonStyle}
               >
@@ -1227,13 +1342,26 @@ export default function StockCountPage() {
                       Number.isFinite(draftNumber) &&
                       draftNumber >= 0;
 
+                    const hasNoteDraft = Object.prototype.hasOwnProperty.call(
+                      noteDrafts,
+                      item.id,
+                    );
+
                     const isSaved =
                       item.actual_stock !== null &&
                       item.actual_stock !== undefined &&
-                      !hasDraft;
+                      !hasDraft &&
+                      !hasNoteDraft;
+
+                    const canSaveNotes =
+                      hasNoteDraft &&
+                      item.actual_stock !== null &&
+                      item.actual_stock !== undefined;
 
                     const saveButtonDisabled =
-                      savingItemId === item.id || savingAll || !hasValidDraft;
+                      savingItemId === item.id ||
+                      savingAll ||
+                      !(hasValidDraft || canSaveNotes);
 
                     return (
                       <tr
@@ -1284,6 +1412,7 @@ export default function StockCountPage() {
                               onChange={(e) =>
                                 updateLocalActual(item.id, e.target.value)
                               }
+                              disabled={savingAll || savingItemId !== null}
 
                               onKeyDown={(e) => {
                                 if (e.key !== 'Enter') {
@@ -1343,22 +1472,11 @@ export default function StockCountPage() {
                         <td style={tdStyle}>
                           {isOpen && canCountStock ? (
                             <input
-                              value={item.notes || ''}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                setSelected((prev) => {
-                                  if (!prev) return prev;
-
-                                  return {
-                                    ...prev,
-                                    items: prev.items.map((row) =>
-                                      row.id === item.id
-                                        ? { ...row, notes: value }
-                                        : row,
-                                    ),
-                                  };
-                                });
-                              }}
+                              value={noteDrafts[item.id] ?? item.notes ?? ''}
+                              onChange={(e) =>
+                                updateLocalNotes(item.id, e.target.value)
+                              }
+                              disabled={savingAll || savingItemId !== null}
                               placeholder="ملاحظة"
                               style={{
                                 ...inputStyle,
@@ -1397,7 +1515,7 @@ export default function StockCountPage() {
                             >
                               {savingItemId === item.id
                                 ? 'حفظ...'
-                                : hasValidDraft
+                                : hasValidDraft || canSaveNotes
                                   ? 'حفظ'
                                   : isSaved
                                     ? '✓ محفوظ'
