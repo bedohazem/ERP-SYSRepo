@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { calculatePurchaseReturnLineValue } from '../../src/shared/purchase-return-financials';
 import {
   closeDb,
   getDb,
@@ -33,7 +34,19 @@ import {
   openCashShift,
 } from '../../src/main/database/repositories/cash-shifts.repo';
 
-import { createSale } from '../../src/main/database/repositories/sales.repo';
+import {
+  createSale,
+  createSaleReturn,
+  cancelSaleReturn,
+  getSaleReceipt,
+} from '../../src/main/database/repositories/sales.repo';
+
+import {
+  createSaleExchange,
+  cancelSaleExchange,
+  getSaleExchangeState,
+} from '../../src/main/database/repositories/sales-exchange.repo';
+import { getReportsSummary } from '../../src/main/database/repositories/reports.repo';
 import { calculatePurchasePaymentPreview } from '../../src/shared/purchase-payment-preview';
 import {
   hasUnsafeStoredPurchaseDiscount,
@@ -5821,6 +5834,438 @@ describe('purchases repository', () => {
     }>;
   }
 
+  it.each([
+    { sourcePrice: 200, adjustment: 500 },
+    { sourcePrice: 100, adjustment: -500 },
+  ])(
+    'reconciles mixed inventory purchase returns: $sourcePrice',
+    (scenario) => {
+      const supplierId = createTestSupplier();
+      const variant = seedPurchaseProduct();
+
+      const purchaseAt = (unitCost: number) =>
+        createPurchaseInvoice({
+          supplier_id: supplierId,
+          actor_id: 1,
+          paid_amount: 0,
+          items: [
+            {
+              variant_id: variant.variant_id,
+              quantity: 10,
+              unit_cost: unitCost,
+            },
+          ],
+        });
+
+      const first = purchaseAt(200);
+      const second = purchaseAt(100);
+
+      expect(getVariantCostState('PURCHASE001').inventory_value).toBe(3000);
+
+      for (let i = 0; i < 10; i += 1) {
+        sellPrecisionTestPiece(variant, 250);
+      }
+
+      const before = getVariantCostState('PURCHASE001');
+
+      expect(before.stock).toBe(10);
+      expect(before.inventory_value).toBe(1500);
+      expect(before.average_cost).toBe(150);
+
+      const historicalSales = getPrecisionTestSales(variant.variant_id);
+
+      const profitBefore = getReportsSummary().summary.final_net_profit;
+
+      const source = scenario.sourcePrice === 200 ? first : second;
+
+      const details = getPurchaseInvoice(source.purchaseId) as any;
+
+      const createReturn = () =>
+        createPurchaseReturn({
+          purchase_id: source.purchaseId,
+          actor_id: 1,
+          refund_mode: 'credit',
+          items: [
+            {
+              purchase_item_id: Number(details.items[0].id),
+              quantity: 10,
+            },
+          ],
+        });
+
+      const result = createReturn();
+
+      expect(result.total_amount).toBe(scenario.sourcePrice * 10);
+
+      expect(result.inventory_cost).toBe(1500);
+
+      expect(result.cost_adjustment).toBe(scenario.adjustment);
+
+      const stored = getPurchaseReturn(result.return_id) as any;
+
+      expect(stored.items[0].line_total).toBe(scenario.sourcePrice * 10);
+
+      expect(stored.items[0].inventory_cost).toBe(1500);
+
+      const empty = getVariantCostState('PURCHASE001');
+
+      expect(empty.stock).toBe(0);
+      expect(empty.inventory_value).toBe(0);
+
+      expect(getSupplierBalance(supplierId)).toBe(3000 - result.total_amount);
+
+      expect(getReportsSummary().summary.final_net_profit).toBeCloseTo(
+        profitBefore + scenario.adjustment,
+        8,
+      );
+
+      expectSupplierAccountingInvariant(supplierId);
+
+      cancelPurchaseReturn({
+        return_id: result.return_id,
+        actor_id: 1,
+        reason: 'Restore actual mixed inventory cost',
+      });
+
+      const restored = getVariantCostState('PURCHASE001');
+
+      expect(restored.stock).toBe(10);
+      expect(restored.inventory_value).toBe(1500);
+      expect(restored.average_cost).toBe(150);
+
+      expect(getSupplierBalance(supplierId)).toBe(3000);
+
+      expect(getReportsSummary().summary.final_net_profit).toBeCloseTo(
+        profitBefore,
+        8,
+      );
+
+      expect(getPrecisionTestSales(variant.variant_id)).toEqual(
+        historicalSales,
+      );
+
+      const replacement = createReturn();
+
+      expect(replacement.inventory_cost).toBe(1500);
+
+      expect(replacement.cost_adjustment).toBe(scenario.adjustment);
+
+      expectSupplierAccountingInvariant(supplierId);
+    },
+  );
+
+  it('reconciles the full mixed-cost financial lifecycle without changing historical sale costs', () => {
+    const db = getDb();
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchaseAt = (
+      variantId: number,
+      quantity: number,
+      unitCost: number,
+    ) =>
+      createPurchaseInvoice({
+        supplier_id: supplierId,
+        actor_id: 1,
+        paid_amount: 0,
+        items: [
+          {
+            variant_id: variantId,
+            quantity,
+            unit_cost: unitCost,
+          },
+        ],
+      });
+
+    const stock = () => getVariantCostState('PURCHASE001');
+
+    const expectStock = (quantity: number, value: number) => {
+      expect(stock().stock).toBe(quantity);
+      expect(stock().inventory_value).toBe(value);
+      expect(stock().average_cost).toBe(
+        quantity > 0 ? Number((value / quantity).toFixed(2)) : 0,
+      );
+    };
+
+    const expectProfit = (profit: number) => {
+      expect(getReportsSummary().summary.final_net_profit).toBeCloseTo(
+        profit,
+        8,
+      );
+    };
+
+    const adjustment = (referenceType: string, referenceId: number) =>
+      Number(
+        (
+          db
+            .prepare(
+              'SELECT ROUND(IFNULL(SUM(reversal_cost_adjustment), 0), 2) AS value FROM stock_movements WHERE reference_type = ? AND reference_id = ?',
+            )
+            .get(referenceType, referenceId) as { value: number }
+        ).value,
+      );
+
+    // A: Purchase and sell using weighted-average cost.
+
+    const first = purchaseAt(variant.variant_id, 10, 200);
+
+    const second = purchaseAt(variant.variant_id, 10, 100);
+
+    expectStock(20, 3000);
+
+    const originalSales = [];
+
+    for (let i = 0; i < 10; i += 1) {
+      originalSales.push(sellPrecisionTestPiece(variant, 250));
+    }
+
+    expectStock(10, 1500);
+    expectProfit(1000);
+
+    const originalSnapshots = getPrecisionTestSales(variant.variant_id);
+
+    // B: Mixed-cost supplier return and reversal.
+
+    const details = getPurchaseInvoice(second.purchaseId) as any;
+
+    const supplierReturn = createPurchaseReturn({
+      purchase_id: second.purchaseId,
+      actor_id: 1,
+      refund_mode: 'credit',
+      items: [
+        {
+          purchase_item_id: Number(details.items[0].id),
+          quantity: 10,
+        },
+      ],
+    });
+
+    expect(supplierReturn.total_amount).toBe(1000);
+    expect(supplierReturn.inventory_cost).toBe(1500);
+    expect(supplierReturn.cost_adjustment).toBe(-500);
+
+    expectStock(0, 0);
+    expectProfit(500);
+
+    cancelPurchaseReturn({
+      return_id: supplierReturn.return_id,
+      actor_id: 1,
+      reason: 'Undo mixed-cost purchase return',
+    });
+
+    expectStock(10, 1500);
+    expectProfit(1000);
+
+    // C: Edit purchase after part of its stock was sold.
+
+    updatePurchaseInvoice({
+      purchase_id: first.purchaseId,
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      reason: 'Correct mixed historical purchase cost',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 10,
+          unit_cost: 10,
+        },
+      ],
+    });
+
+    expectStock(10, 800);
+
+    expect(adjustment('purchase_edit_reversal', first.purchaseId)).toBe(1200);
+
+    expectProfit(2200);
+
+    // D: Cancel the corrected purchase.
+
+    cancelPurchaseInvoice({
+      purchase_id: first.purchaseId,
+      actor_id: 1,
+      reason: 'Cancel corrected mixed purchase',
+    });
+
+    expectStock(0, 0);
+
+    expect(adjustment('purchase_cancel', first.purchaseId)).toBe(-700);
+
+    expectProfit(1500);
+    expect(getSupplierBalance(supplierId)).toBe(1000);
+
+    // E: Sale return, sell returned item, buy cheaper stock,
+    // and cancel the original sale return.
+
+    const sale = originalSales[0];
+
+    const receipt = getSaleReceipt(sale.saleId) as any;
+
+    const saleReturn = createSaleReturn({
+      original_sale_id: sale.saleId,
+      user_id: 1,
+      reason: 'Return historical item',
+      items: [
+        {
+          sale_item_id: Number(receipt.items[0].id),
+          variant_id: variant.variant_id,
+          quantity: 1,
+        },
+      ],
+    });
+
+    expectStock(1, 150);
+
+    sellPrecisionTestPiece(variant, 250);
+
+    expectStock(0, 0);
+
+    purchaseAt(variant.variant_id, 1, 40);
+
+    cancelSaleReturn({
+      return_id: saleReturn.returnId,
+      actor_id: 1,
+      reason: 'Cancel return against cheaper inventory',
+    });
+
+    expectStock(0, 0);
+
+    expect(adjustment('sale_return_cancel', saleReturn.returnId)).toBe(110);
+
+    expectProfit(1710);
+
+    // F: Exchange another original sale.
+
+    createProduct({
+      name: 'Lifecycle Replacement Product',
+      category_id: null,
+      variants: [
+        {
+          barcode: 'LIFECYCLE-REPLACEMENT',
+          size: 'L',
+          color: 'Blue',
+          buy_price: 70,
+          sell_price: 300,
+          min_stock: 0,
+          opening_qty: 0,
+        },
+      ],
+    });
+
+    const replacement = getVariantByBarcode('LIFECYCLE-REPLACEMENT')!;
+
+    const replacementPurchase = purchaseAt(replacement.variant_id, 1, 70);
+
+    const exchangeSale = originalSales[1];
+
+    const exchangeState = getSaleExchangeState(exchangeSale.saleId);
+
+    const group = exchangeState.groups.find(
+      (item: any) => item.group_kind === 'regular',
+    );
+
+    if (!group) {
+      throw new Error('Regular exchange group missing');
+    }
+
+    const exchangeResult = createSaleExchange({
+      original_sale_id: exchangeSale.saleId,
+      user_id: 1,
+      payment_method: 'store_cash',
+      reason: 'Mixed-cost lifecycle exchange',
+      items: [
+        {
+          promotion_unit_id: Number(group.units[0].id),
+          new_variant_id: replacement.variant_id,
+        },
+      ],
+    });
+
+    expectStock(1, 150);
+
+    sellPrecisionTestPiece(variant, 250);
+
+    expectStock(0, 0);
+
+    purchaseAt(variant.variant_id, 1, 20);
+
+    cancelSaleExchange({
+      exchange_id: exchangeResult.exchangeId,
+      actor_id: 1,
+      reason: 'Cancel mixed-cost exchange',
+    });
+
+    expectStock(0, 0);
+
+    expect(adjustment('sale_exchange_cancel', exchangeResult.exchangeId)).toBe(
+      130,
+    );
+
+    expect(getVariantByBarcode('LIFECYCLE-REPLACEMENT')?.stock).toBe(1);
+
+    expectProfit(1940);
+
+    cancelPurchaseInvoice({
+      purchase_id: replacementPurchase.purchaseId,
+      actor_id: 1,
+      reason: 'Close complete lifecycle',
+    });
+
+    // G: Independent end-to-end reconciliation.
+
+    expect(getVariantByBarcode('LIFECYCLE-REPLACEMENT')?.stock).toBe(0);
+
+    expectStock(0, 0);
+
+    const report = getReportsSummary();
+
+    expect(report.summary.net_sales).toBeCloseTo(3000, 8);
+
+    expect(report.summary.purchase_return_cost_adjustment).toBeCloseTo(0, 8);
+
+    expect(report.summary.inventory_reversal_cost_adjustment).toBeCloseTo(
+      740,
+      8,
+    );
+
+    expect(report.summary.final_net_profit).toBeCloseTo(3000 - 1060, 8);
+
+    expect(getSupplierBalance(supplierId)).toBe(1060);
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(1060);
+
+    expectSupplierAccountingInvariant(supplierId);
+
+    expect(
+      getPrecisionTestSales(variant.variant_id).slice(
+        0,
+        originalSnapshots.length,
+      ),
+    ).toEqual(originalSnapshots);
+
+    const invalidInventory = db
+      .prepare(
+        'SELECT COUNT(*) AS count FROM product_variants WHERE inventory_value < -0.000000001 OR average_cost < -0.000000001',
+      )
+      .get() as { count: number };
+
+    expect(invalidInventory.count).toBe(0);
+
+    const undatedAdjustments = db
+      .prepare(
+        'SELECT COUNT(*) AS count FROM stock_movements WHERE reversal_cost_adjustment <> 0 AND reversal_business_date IS NULL',
+      )
+      .get() as { count: number };
+
+    expect(undatedAdjustments.count).toBe(0);
+
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+
+    expect(db.prepare('PRAGMA integrity_check').get()).toEqual({
+      integrity_check: 'ok',
+    });
+  });
+
   it('preserves total profit across individual sales of precise purchases', () => {
     const supplierId = createTestSupplier();
     const variant = seedPurchaseProduct();
@@ -5974,6 +6419,145 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBe(950);
   });
 
+  it.each(['cash', 'credit'] as const)(
+    'supports zero-value purchase return lifecycle using %s',
+    (refundMode) => {
+      const supplierId = createTestSupplier();
+      const variant = seedPurchaseProduct();
+
+      const cashMovementCount = () =>
+        Number(
+          (
+            getDb()
+              .prepare('SELECT COUNT(*) AS count FROM cash_movements')
+              .get() as { count: number }
+          ).count,
+        );
+
+      const purchase = createPurchaseInvoice({
+        supplier_id: supplierId,
+        actor_id: 1,
+        paid_amount: 0,
+        discount_type: 'percent',
+        discount_input: 100,
+        items: [
+          {
+            variant_id: variant.variant_id,
+            quantity: 5,
+            unit_cost: 100,
+          },
+        ],
+      });
+
+      expect(purchase.total_amount).toBe(0);
+
+      const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+      const purchaseItemId = Number(invoice.items[0].id);
+      const cashBefore = cashMovementCount();
+
+      const expectState = (quantity: number) => {
+        const stock = getVariantCostState('PURCHASE001');
+
+        expect(stock.stock).toBe(quantity);
+        expect(stock.inventory_value).toBe(0);
+        expect(stock.average_cost).toBe(0);
+
+        expect(getSupplierBalance(supplierId)).toBe(0);
+        expect(getSupplierTotalPurchased(supplierId)).toBe(0);
+        expect(cashMovementCount()).toBe(cashBefore);
+
+        expectSupplierAccountingInvariant(supplierId);
+      };
+
+      const createReturn = (quantity: number) =>
+        createPurchaseReturn({
+          purchase_id: purchase.purchaseId,
+          actor_id: 1,
+          refund_mode: refundMode,
+          cash_refund_amount: 0,
+          settle_cash_refund: refundMode === 'cash',
+          items: [
+            {
+              purchase_item_id: purchaseItemId,
+              quantity,
+            },
+          ],
+        });
+
+      expectState(5);
+
+      const first = createReturn(2);
+
+      expect(first.total_amount).toBe(0);
+      expect(first.debt_reduction_amount).toBe(0);
+      expect(first.cash_refund_amount).toBe(0);
+      expect(first.credit_amount).toBe(0);
+      expect(first.rounding_adjustment).toBe(0);
+      expect(first.settle_cash_refund).toBe(false);
+
+      expectState(3);
+
+      const edited = updatePurchaseReturn({
+        return_id: first.return_id,
+        actor_id: 1,
+        reason: 'Correct free-item return quantity',
+        refund_mode: refundMode,
+        cash_refund_amount: 0,
+        items: [
+          {
+            purchase_item_id: purchaseItemId,
+            quantity: 3,
+          },
+        ],
+      });
+
+      expect(edited.total_amount).toBe(0);
+      expect(edited.replaced_return_id).toBe(first.return_id);
+
+      expectState(2);
+
+      cancelPurchaseReturn({
+        return_id: edited.return_id,
+        actor_id: 1,
+        reason: 'Cancel free-item return',
+      });
+
+      expectState(5);
+
+      const fullReturn = createReturn(5);
+
+      expect(fullReturn.total_amount).toBe(0);
+
+      expectState(0);
+
+      cancelPurchaseReturn({
+        return_id: fullReturn.return_id,
+        actor_id: 1,
+        reason: 'Restore all free items',
+      });
+
+      expectState(5);
+
+      expect(() =>
+        createPurchaseReturn({
+          purchase_id: purchase.purchaseId,
+          actor_id: 1,
+          refund_mode: 'cash',
+          cash_refund_amount: 1,
+          items: [
+            {
+              purchase_item_id: purchaseItemId,
+              quantity: 1,
+            },
+          ],
+        }),
+      ).toThrow();
+
+      expectState(5);
+    },
+  );
+
   it('returns the full discounted purchase value without losing cents', () => {
     const supplierId = createTestSupplier();
     const variant = seedPurchaseProduct();
@@ -6060,6 +6644,88 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBe(0);
     expect(getSupplierTotalPurchased(supplierId)).toBe(0);
   });
+
+  it.each([
+    { total: 1012.5, quantity: 12, parts: [7, 5] },
+    { total: 54.02, quantity: 3, parts: [1, 1, 1] },
+    { total: 935, quantity: 6, parts: [1, 1, 1, 1, 1, 1] },
+    { total: 100.01, quantity: 3, parts: [2, 1] },
+    { total: 0.01, quantity: 3, parts: [1, 1, 1] },
+    { total: 0, quantity: 5, parts: [2, 3] },
+  ])(
+    'matches purchase return preview and backend for $total / $quantity',
+    (scenario) => {
+      const supplierId = createTestSupplier();
+      const variant = seedPurchaseProduct();
+
+      const purchase = createPurchaseInvoice({
+        supplier_id: supplierId,
+        actor_id: 1,
+        paid_amount: 0,
+        discount_type: 'percent',
+        discount_input: scenario.total === 0 ? 100 : 0,
+        items: [
+          {
+            variant_id: variant.variant_id,
+            quantity: scenario.quantity,
+            unit_cost:
+              scenario.total === 0 ? 100 : scenario.total / scenario.quantity,
+          },
+        ],
+      });
+
+      expect(purchase.total_amount).toBe(scenario.total);
+
+      const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+      const itemId = Number(invoice.items[0].id);
+
+      let returnedQuantity = 0;
+      let returnedCents = 0;
+
+      for (const quantity of scenario.parts) {
+        const preview = calculatePurchaseReturnLineValue({
+          originalLineTotal: scenario.total,
+          originalQuantity: scenario.quantity,
+          alreadyReturnedQuantity: returnedQuantity,
+          alreadyReturnedValue: returnedCents / 100,
+          requestedQuantity: quantity,
+        });
+
+        const result = createPurchaseReturn({
+          purchase_id: purchase.purchaseId,
+          actor_id: 1,
+          refund_mode: 'credit',
+          items: [
+            {
+              purchase_item_id: itemId,
+              quantity,
+            },
+          ],
+        });
+
+        expect(result.total_amount).toBe(preview);
+
+        returnedQuantity += quantity;
+        returnedCents += Math.round(preview * 100);
+
+        const stock = getVariantCostState('PURCHASE001');
+
+        expect(stock.stock).toBe(scenario.quantity - returnedQuantity);
+
+        expect(stock.inventory_value).toBe(
+          (Math.round(scenario.total * 100) - returnedCents) / 100,
+        );
+
+        expectSupplierAccountingInvariant(supplierId);
+      }
+
+      expect(returnedCents).toBe(Math.round(scenario.total * 100));
+
+      expect(getSupplierBalance(supplierId)).toBe(0);
+      expect(getSupplierTotalPurchased(supplierId)).toBe(0);
+    },
+  );
 
   it('allocates precise purchase returns cumulatively without losing cents', () => {
     const supplierId = createTestSupplier();

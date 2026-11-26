@@ -28,6 +28,14 @@ import {
 
 import { createSale } from '../../src/main/database/repositories/sales.repo';
 
+import {
+  createPurchaseInvoice,
+  createPurchaseReturn,
+  getPurchaseInvoice,
+} from '../../src/main/database/repositories/purchases.repo';
+
+import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
+
 import { openCashShift } from '../../src/main/database/repositories/cash-shifts.repo';
 
 import { getVariantStock } from '../../src/main/database/repositories/inventory.repo';
@@ -46,6 +54,172 @@ describe('database backup integrity', () => {
     getDb();
     resetDatabaseData();
   }, 30_000);
+
+  it.each([
+    { legacy: false, adjustment: -0.04 },
+    { legacy: true, adjustment: 0 },
+  ])(
+    'restores purchase return accounting with legacy schema: $legacy',
+    async (scenario) => {
+      const backupPath = tempPath(
+        'purchase-return-backup-' + scenario.legacy + '-' + Date.now() + '.db',
+      );
+
+      let safetyPath: string | null = null;
+
+      try {
+        createProduct({
+          name: 'Return Backup Product',
+          category_id: null,
+          variants: [
+            {
+              barcode: 'RETURN-BACKUP-001',
+              size: 'M',
+              color: 'Black',
+              buy_price: 100,
+              sell_price: 200,
+              min_stock: 0,
+              opening_qty: 0,
+            },
+          ],
+        });
+
+        const variant = getVariantByBarcode('RETURN-BACKUP-001')!;
+
+        const supplier = createSupplier({
+          name: 'Return Backup Supplier',
+        });
+
+        const purchase = createPurchaseInvoice({
+          supplier_id: supplier.id,
+          actor_id: 1,
+          paid_amount: 0,
+          items: [
+            {
+              variant_id: variant.variant_id,
+              quantity: 2,
+              unit_cost: 50.02,
+            },
+          ],
+        });
+
+        if (!scenario.legacy) {
+          getDb()
+            .prepare(
+              'UPDATE purchase_invoices SET total_amount = 100, exact_total_amount = 100, remaining_amount = 100 WHERE id = ?',
+            )
+            .run(purchase.purchaseId);
+
+          getDb()
+            .prepare(
+              'UPDATE suppliers SET balance = 100, total_purchased = 100 WHERE id = ?',
+            )
+            .run(supplier.id);
+        }
+
+        const details = getPurchaseInvoice(purchase.purchaseId) as any;
+
+        const result = createPurchaseReturn({
+          purchase_id: purchase.purchaseId,
+          actor_id: 1,
+          refund_mode: 'credit',
+          items: [
+            {
+              purchase_item_id: Number(details.items[0].id),
+              quantity: 2,
+            },
+          ],
+        });
+
+        expect(result.cost_adjustment).toBe(scenario.adjustment);
+
+        const readReturn = () =>
+          getDb()
+            .prepare('SELECT * FROM purchase_returns WHERE id = ?')
+            .get(result.return_id);
+
+        const before = readReturn();
+
+        const itemsBefore = getDb()
+          .prepare(
+            'SELECT * FROM purchase_return_items WHERE return_id = ? ORDER BY id',
+          )
+          .all(result.return_id);
+
+        await createVerifiedDatabaseBackup(backupPath);
+
+        if (scenario.legacy) {
+          const oldDb = new Database(backupPath);
+
+          try {
+            oldDb.exec(
+              'ALTER TABLE purchase_returns DROP COLUMN cost_adjustment; ALTER TABLE purchase_return_items DROP COLUMN inventory_cost',
+            );
+
+            oldDb.exec(
+              'DROP INDEX IF EXISTS idx_stock_reversal_business_date; ' +
+                'ALTER TABLE stock_movements DROP COLUMN reversal_cost_adjustment; ' +
+                'ALTER TABLE stock_movements DROP COLUMN reversal_business_date',
+            );
+
+            oldDb
+              .prepare('DELETE FROM schema_migrations WHERE version >= 43')
+              .run();
+          } finally {
+            oldDb.close();
+          }
+        }
+
+        getDb()
+          .prepare(
+            'UPDATE purchase_returns SET cost_adjustment = 9 WHERE id = ?',
+          )
+          .run(result.return_id);
+
+        const restored = await restoreVerifiedDatabase(backupPath);
+
+        safetyPath = restored.safetyBackupPath;
+
+        expect(readReturn()).toEqual(before);
+
+        expect(
+          getDb()
+            .prepare(
+              'SELECT * FROM purchase_return_items WHERE return_id = ? ORDER BY id',
+            )
+            .all(result.return_id),
+        ).toEqual(
+          scenario.legacy
+            ? itemsBefore.map((item) => ({
+                ...(item as Record<string, unknown>),
+                inventory_cost: null,
+              }))
+            : itemsBefore,
+        );
+
+        expect(
+          getDb()
+            .prepare('SELECT version FROM schema_migrations WHERE version = 43')
+            .get(),
+        ).toBeTruthy();
+
+        expect(getVariantByBarcode('RETURN-BACKUP-001')?.stock).toBe(0);
+
+        expect(getDb().prepare('PRAGMA integrity_check').get()).toEqual({
+          integrity_check: 'ok',
+        });
+
+        expect(getDb().prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+      } finally {
+        fs.rmSync(backupPath, { force: true });
+
+        if (safetyPath) {
+          fs.rmSync(safetyPath, { force: true });
+        }
+      }
+    },
+    30000,
+  );
 
   it('creates a verified ERP backup', async () => {
     const backupPath = tempPath(`verified-${Date.now()}.db`);

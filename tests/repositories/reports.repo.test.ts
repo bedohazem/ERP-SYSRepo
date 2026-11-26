@@ -32,6 +32,7 @@ import {
 import {
   createPurchaseInvoice,
   createPurchaseReturn,
+  cancelPurchaseReturn,
   getPurchaseInvoice,
   getSupplierStatement,
 } from '../../src/main/database/repositories/purchases.repo';
@@ -1016,6 +1017,144 @@ describe('reports repository', () => {
     expect(futureReport.topProducts).toHaveLength(0);
     expect(futureReport.dailySales).toHaveLength(0);
   });
+
+  it.each([
+    { invoiceTotal: 100, inventoryCost: 100.04, adjustment: -0.04 },
+    { invoiceTotal: 100.04, inventoryCost: 100, adjustment: 0.04 },
+  ])(
+    'reconciles legacy return cost differences: $invoiceTotal / $inventoryCost',
+    (scenario) => {
+      const variant = seedReportProduct({
+        name: 'Legacy Return Product',
+        barcode: 'LEGACY-RETURN-COST',
+        openingQty: 0,
+        buyPrice: scenario.inventoryCost,
+        sellPrice: 200,
+      });
+
+      const supplier = createSupplier({
+        name: 'Legacy Return Supplier',
+      }) as any;
+
+      const purchase = createPurchaseInvoice({
+        supplier_id: supplier.id,
+        actor_id: 1,
+        paid_amount: 0,
+        items: [
+          {
+            variant_id: variant.variant_id,
+            quantity: 2,
+            unit_cost: scenario.inventoryCost / 2,
+          },
+        ],
+      });
+
+      const db = getDb();
+
+      // Simulate a historical header/line discrepancy.
+      db.prepare(
+        'UPDATE purchase_invoices SET total_amount = ?, exact_total_amount = ?, remaining_amount = ? WHERE id = ?',
+      ).run(
+        scenario.invoiceTotal,
+        scenario.invoiceTotal,
+        scenario.invoiceTotal,
+        purchase.purchaseId,
+      );
+
+      db.prepare(
+        'UPDATE suppliers SET balance = ?, total_purchased = ? WHERE id = ?',
+      ).run(scenario.invoiceTotal, scenario.invoiceTotal, supplier.id);
+
+      const details = getPurchaseInvoice(purchase.purchaseId) as any;
+
+      const itemId = Number(details.items[0].id);
+
+      const stockValue = () =>
+        Number(
+          (
+            db
+              .prepare(
+                'SELECT inventory_value FROM product_variants WHERE id = ?',
+              )
+              .get(variant.variant_id) as { inventory_value: number }
+          ).inventory_value,
+        );
+
+      const profitBefore = getReportsSummary().summary.final_net_profit;
+
+      const createReturn = (quantity: number) =>
+        createPurchaseReturn({
+          purchase_id: purchase.purchaseId,
+          actor_id: 1,
+          refund_mode: 'credit',
+          items: [
+            {
+              purchase_item_id: itemId,
+              quantity,
+            },
+          ],
+        });
+
+      const first = createReturn(1);
+
+      expect(first.cost_adjustment).toBe(0);
+
+      const second = createReturn(1);
+
+      expect(second.cost_adjustment).toBe(scenario.adjustment);
+
+      expect(first.total_amount + second.total_amount).toBeCloseTo(
+        scenario.invoiceTotal,
+        8,
+      );
+
+      expect(first.inventory_cost + second.inventory_cost).toBeCloseTo(
+        scenario.inventoryCost,
+        8,
+      );
+
+      expect(stockValue()).toBe(0);
+
+      const statement = getSupplierStatement(supplier.id, 1);
+
+      expect(statement.summary.balance).toBeCloseTo(0, 8);
+      expect(statement.summary.total_purchased).toBeCloseTo(0, 8);
+
+      const report = getReportsSummary();
+
+      expect(report.summary.purchase_return_cost_adjustment).toBe(
+        scenario.adjustment,
+      );
+
+      expect(report.summary.final_net_profit).toBeCloseTo(
+        profitBefore + scenario.adjustment,
+        8,
+      );
+
+      cancelPurchaseReturn({
+        return_id: second.return_id,
+        actor_id: 1,
+        reason: 'Restore legacy return adjustment',
+      });
+
+      expect(stockValue()).toBeCloseTo(second.inventory_cost, 8);
+
+      expect(
+        getReportsSummary().summary.purchase_return_cost_adjustment,
+      ).toBeCloseTo(0, 8);
+
+      expect(getReportsSummary().summary.final_net_profit).toBeCloseTo(
+        profitBefore,
+        8,
+      );
+
+      const replacement = createReturn(1);
+
+      expect(replacement.cost_adjustment).toBe(scenario.adjustment);
+
+      expect(stockValue()).toBe(0);
+    },
+  );
 
   it('reconciles precise purchases, returns, credit and supplier reports', () => {
     const variant = seedReportProduct({

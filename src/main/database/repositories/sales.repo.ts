@@ -13,7 +13,7 @@ import {
 } from './cash-shifts.repo';
 import {
   issueStockAtAverageCost,
-  issueStockAtCost,
+  issueStockForCostReversal,
   receiveStockAtCost,
 } from '../inventory-cost';
 import { roundCost, roundMoney } from '../../../shared/money';
@@ -5679,7 +5679,9 @@ export function cancelSaleReturn(input: {
     }
 
     for (const item of items) {
-      issueStockAtCost(db, {
+      issueStockForCostReversal(db, {
+        business_date: cancellationBusinessDate,
+
         variant_id: Number(item.variant_id),
 
         quantity: Number(item.quantity || 0),

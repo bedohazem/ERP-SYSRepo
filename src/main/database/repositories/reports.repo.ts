@@ -1576,6 +1576,67 @@ export function getReportsSummary(input?: ReportFilter) {
     purchase_rounding_net: number;
   };
 
+  const purchaseReturnCostAdjustmentRow = db
+    .prepare(
+      `
+      SELECT ROUND(IFNULL(SUM(x.amount), 0), 2) AS amount
+      FROM (
+        SELECT IFNULL(pr.cost_adjustment, 0) AS amount
+        FROM purchase_returns pr
+        JOIN purchase_invoices pi ON pi.id = pr.purchase_id
+        ${purchaseReturnsWhere.whereSql}
+
+        UNION ALL
+
+        SELECT -IFNULL(pr.cost_adjustment, 0) AS amount
+        FROM purchase_returns pr
+        JOIN purchase_invoices pi ON pi.id = pr.purchase_id
+        ${cancelledPurchaseReturnsWhere.whereSql}
+      ) x
+    `,
+    )
+    .get(
+      ...purchaseReturnsWhere.params,
+      ...cancelledPurchaseReturnsWhere.params,
+    ) as { amount: number };
+
+  const purchaseReturnCostAdjustment = preservePrecision(
+    purchaseReturnCostAdjustmentRow.amount,
+  );
+
+  const inventoryReversalWhere = buildWhere(
+    'sm',
+    input,
+    [
+      'sm.reversal_cost_adjustment <> 0',
+      'sm.reversal_business_date IS NOT NULL',
+    ],
+    undefined,
+    'sm.reversal_business_date',
+  );
+
+  const inventoryReversalRow = db
+    .prepare(
+      `
+      SELECT
+        ROUND(
+          IFNULL(SUM(sm.reversal_cost_adjustment), 0),
+          2
+        ) AS amount
+
+      FROM stock_movements sm
+
+      ${inventoryReversalWhere.whereSql}
+    `,
+    )
+    .get(...inventoryReversalWhere.params) as {
+    amount: number;
+  };
+
+  const inventoryReversalCostAdjustment = preservePrecision(
+    inventoryReversalRow.amount,
+  );
+
   const manualCashRow = db
     .prepare(
       `
@@ -1750,6 +1811,8 @@ export function getReportsSummary(input?: ReportFilter) {
       ),
       approvedClosingSurplus,
       approvedOpeningSurplus,
+      purchaseReturnCostAdjustment,
+      inventoryReversalCostAdjustment,
     ),
     preciseAdd(approvedClosingShortage, approvedOpeningShortage),
   );
@@ -3101,6 +3164,8 @@ export function getReportsSummary(input?: ReportFilter) {
       purchase_rounding_increase: purchaseRoundingIncrease,
       purchase_rounding_decrease: purchaseRoundingDecrease,
       purchase_rounding_net: purchaseRoundingNet,
+      purchase_return_cost_adjustment: purchaseReturnCostAdjustment,
+      inventory_reversal_cost_adjustment: inventoryReversalCostAdjustment,
       total_manual_deposits: totalManualDeposits,
       total_manual_withdrawals: totalManualWithdrawals,
       final_net_profit: finalNetProfit,

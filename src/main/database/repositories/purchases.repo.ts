@@ -1,4 +1,10 @@
 import { getDb } from '../db';
+import { issueStockForCostReversal } from '../inventory-cost';
+import { calculateInventoryCostReversal } from '../../../shared/inventory-reversal-financials';
+import {
+  calculatePurchaseReturnLineValue,
+  calculatePurchaseReturnInvoiceSettlement,
+} from '../../../shared/purchase-return-financials';
 import {
   hasUnsafeStoredPurchaseDiscount,
   UNSAFE_LEGACY_PURCHASE_MESSAGE,
@@ -11,7 +17,6 @@ import {
 } from './suppliers.repo';
 import { createCashMovement, resolveCashAccount } from './cash.repo';
 import {
-  allocateMoneyValueByQuantity,
   roundFinancial,
   allocatePreciseTotalAcrossWeights,
   hasPositivePreciseAmount,
@@ -36,7 +41,11 @@ import {
 } from './cash-shifts.repo';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 import { getShiftBusinessDate } from '../shift-business-date';
-import { issueStockAtCost, receiveStockAtCost } from '../inventory-cost';
+import {
+  getInventoryCostState,
+  issueStockAtCost,
+  receiveStockAtCost,
+} from '../inventory-cost';
 import {
   getSupplierAccountAvailableCredit,
   getSupplierAccountCreditAllocatedToPurchase,
@@ -2381,7 +2390,15 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       }
 
       for (const oldItem of oldVariantItems) {
-        issueStockAtCost(db, {
+        issueStockForCostReversal(db, {
+          business_date: resolveFinancialBusinessDate(
+            (
+              newFinancialShift ??
+              oldFinancialShift ??
+              getAttributableOpenCashShift(actorId)
+            )?.id ?? null,
+          ),
+
           variant_id: variantId,
 
           quantity: Number(oldItem.quantity || 0),
@@ -2917,23 +2934,6 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
       }
     }
 
-    for (const item of items) {
-      issueStockAtCost(db, {
-        variant_id: Number(item.variant_id),
-
-        quantity: Number(item.quantity || 0),
-
-        unit_cost: getEffectivePurchaseUnitCost(item),
-        cost_value: Number(item.line_total || 0),
-        created_by: actorId || null,
-        reference_id: purchaseId,
-
-        reference_type: 'purchase_cancel',
-
-        notes: `خروج مخزون بسبب إلغاء فاتورة شراء رقم ${purchaseId}`,
-      });
-    }
-
     const totalAmount = preservePrecision(Number(purchase.total_amount || 0));
 
     const paidAmount = preservePrecision(Number(purchase.paid_amount || 0));
@@ -2959,6 +2959,24 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
     const cancellationBusinessDate = resolveFinancialBusinessDate(
       openShift?.id ?? null,
     );
+
+    for (const item of items) {
+      issueStockForCostReversal(db, {
+        business_date: cancellationBusinessDate,
+        variant_id: Number(item.variant_id),
+
+        quantity: Number(item.quantity || 0),
+
+        unit_cost: getEffectivePurchaseUnitCost(item),
+        cost_value: Number(item.line_total || 0),
+        created_by: actorId || null,
+        reference_id: purchaseId,
+
+        reference_type: 'purchase_cancel',
+
+        notes: `خروج مخزون بسبب إلغاء فاتورة شراء رقم ${purchaseId}`,
+      });
+    }
 
     const remainingAmount = preservePrecision(
       Number(purchase.remaining_amount || 0),
@@ -3279,27 +3297,15 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
           }
         | undefined;
 
-      const alreadyReturnedValue = truncateMoney(
-        previousReturnedValueRow?.returned_value || 0,
-      );
-
-      const cumulativeReturnedQuantity = alreadyReturned + quantity;
-
-      const cumulativeReturnedValue =
-        cumulativeReturnedQuantity >= originalQuantity - 0.000001
-          ? originalLineTotal
-          : allocateMoneyValueByQuantity(
-              originalLineTotal,
-              cumulativeReturnedQuantity,
-              originalQuantity,
-            );
-
-      const lineTotal = truncateMoney(
-        Math.max(
-          0,
-          preciseSubtract(cumulativeReturnedValue, alreadyReturnedValue),
+      const lineTotal = calculatePurchaseReturnLineValue({
+        originalLineTotal,
+        originalQuantity,
+        alreadyReturnedQuantity: alreadyReturned,
+        alreadyReturnedValue: Number(
+          previousReturnedValueRow?.returned_value || 0,
         ),
-      );
+        requestedQuantity: quantity,
+      });
 
       const unitCost = roundFinancial(preciseDivide(lineTotal, quantity));
 
@@ -3314,11 +3320,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       };
     });
 
-    const exactReturnAmount = preciseSum(
+    const requestedCost = preciseSum(
       preparedItems.map((item) => Number(item.lineTotal || 0)),
     );
 
-    if (exactReturnAmount <= 0) {
+    if (!Number.isFinite(requestedCost) || requestedCost < 0) {
       throw new Error('قيمة المرتجع غير صحيحة');
     }
 
@@ -3327,7 +3333,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
      * للفاتورة قبل التقريب.
      */
     const originalExactTotal = preservePrecision(
-      Number(purchase.exact_total_amount ?? purchase.total_amount ?? 0),
+      Number(purchase.exact_total_amount || purchase.total_amount || 0),
     );
 
     /*
@@ -3369,13 +3375,50 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       previousReturnsRow?.exact_returned || 0,
     );
 
-    const exactBeforeReturn = normalizePreciseZero(
-      Math.max(0, preciseSubtract(originalExactTotal, previousExactReturned)),
+    const invoiceDetails = getPurchaseInvoice(purchaseId);
+
+    const requestedByItem = new Map(
+      preparedItems.map((item) => [
+        Number(item.purchaseItem.id),
+        item.quantity,
+      ]),
     );
 
-    if (exceedsPreciseAmount(exactReturnAmount, exactBeforeReturn)) {
-      throw new Error('قيمة المرتجع أكبر من القيمة المتبقية في فاتورة الشراء');
+    const settlementInput = {
+      invoiceTotal: originalExactTotal,
+
+      previouslyReturnedFinancial: previousExactReturned,
+
+      requestedCost,
+
+      items: invoiceDetails.items.map((item) => ({
+        quantity: Number(item.quantity || 0),
+
+        lineTotal:
+          item.line_total == null
+            ? preciseMultiply(
+                Number(item.quantity || 0),
+                Number(item.unit_cost || 0),
+              )
+            : Number(item.line_total),
+
+        returnedQuantity: Number(item.returned_quantity || 0),
+
+        returnedValue: Number(item.returned_value || 0),
+
+        requestedQuantity: requestedByItem.get(Number(item.id)) || 0,
+      })),
+    };
+
+    let settlement: ReturnType<typeof calculatePurchaseReturnInvoiceSettlement>;
+
+    try {
+      settlement = calculatePurchaseReturnInvoiceSettlement(settlementInput);
+    } catch {
+      throw new Error('فرق قيمة الفاتورة يحتاج مراجعة محاسبية قبل حفظ المرتجع');
     }
+
+    const exactReturnAmount = settlement.financialAmount;
 
     const totalAmount = exactReturnAmount;
 
@@ -3393,8 +3436,17 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
     const refundMode = input.refund_mode === 'credit' ? 'credit' : 'cash';
 
+    if (
+      exactReturnAmount === 0 &&
+      Number(input.cash_refund_amount ?? 0) !== 0
+    ) {
+      throw new Error('لا يمكن استلام مبلغ نقدي لمرتجع قيمته صفر');
+    }
+
     const settleCashRefund =
-      refundMode === 'cash' && Boolean(input.settle_cash_refund);
+      exactReturnAmount > 0 &&
+      refundMode === 'cash' &&
+      Boolean(input.settle_cash_refund);
 
     let cashRefundAmount = 0;
 
@@ -3571,6 +3623,8 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
     const returnId = Number(returnResult.lastInsertRowid);
 
+    let actualInventoryCost = 0;
+
     const insertReturnItem = db.prepare(`
       INSERT INTO purchase_return_items (
         return_id,
@@ -3587,8 +3641,24 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    for (const item of preparedItems) {
-      insertReturnItem.run(
+    const orderedReturnItems = [...preparedItems].sort(
+      (a, b) => Number(a.purchaseItem.id) - Number(b.purchaseItem.id),
+    );
+
+    for (const item of orderedReturnItems) {
+      const state = getInventoryCostState(
+        db,
+        Number(item.purchaseItem.variant_id),
+      );
+
+      const reversal = calculateInventoryCostReversal({
+        stock: state.stock,
+        inventoryValue: state.inventory_value,
+        quantity: item.quantity,
+        requestedCost: item.lineTotal,
+      });
+
+      const returnItemResult = insertReturnItem.run(
         returnId,
         Number(item.purchaseItem.id),
         Number(item.purchaseItem.variant_id),
@@ -3601,7 +3671,11 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
         item.lineTotal,
       );
 
-      issueStockAtCost(db, {
+      db.prepare(
+        'UPDATE purchase_return_items SET inventory_cost = ? WHERE id = ?',
+      ).run(reversal.actualCost, Number(returnItemResult.lastInsertRowid));
+
+      const issued = issueStockAtCost(db, {
         variant_id: Number(item.purchaseItem.variant_id),
 
         quantity: item.quantity,
@@ -3613,7 +3687,7 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
          * للكمية المرتجعة، وليس
          * quantity × unit_cost المقرب.
          */
-        cost_value: item.lineTotal,
+        cost_value: reversal.actualCost,
 
         created_by: actorId || null,
 
@@ -3621,9 +3695,20 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
         reference_type: 'purchase_return',
 
-        notes: `خروج مخزون بسبب مرتجع شراء رقم ${returnId} من فاتورة ${purchaseId}`,
+        notes: 'Purchase return #' + returnId,
       });
+
+      actualInventoryCost = preciseAdd(actualInventoryCost, issued.cost_value);
     }
+
+    const actualCostAdjustment = preciseSubtract(
+      totalAmount,
+      actualInventoryCost,
+    );
+
+    db.prepare(
+      'UPDATE purchase_returns SET cost_adjustment = ? WHERE id = ?',
+    ).run(actualCostAdjustment, returnId);
 
     const oldPaid = preservePrecision(Number(purchase.paid_amount || 0));
 
@@ -3745,6 +3830,10 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
       total_amount: totalAmount,
 
       exact_total_amount: exactReturnAmount,
+
+      inventory_cost: actualInventoryCost,
+
+      cost_adjustment: actualCostAdjustment,
 
       /*
        * cash - قيمة الحق
@@ -4013,7 +4102,9 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
         unit_cost: preservePrecision(Number(item.unit_cost || 0)),
 
-        cost_value: preservePrecision(Number(item.line_total || 0)),
+        cost_value: preservePrecision(
+          Number(item.inventory_cost ?? item.line_total ?? 0),
+        ),
 
         created_by: actorId,
 
@@ -4730,6 +4821,7 @@ export function getPurchaseInvoice(purchaseId: number) {
         pv.size AS current_size,
         pv.color AS current_color,
         pv.buy_price AS current_buy_price,
+        pv.inventory_value AS current_inventory_value,
         pv.sell_price AS sell_price,
         pv.discount_price AS discount_price,
 

@@ -131,6 +131,16 @@ function buildSections(data: ReportsExportData): ExportSection[] {
           preciseNumberValue(summary.purchase_rounding_net),
         ],
 
+        [
+          'صافي فرق تكلفة مرتجعات الشراء',
+          preciseNumberValue(summary.purchase_return_cost_adjustment ?? 0),
+        ],
+
+        [
+          'صافي فروق عكس تكلفة المخزون',
+          preciseNumberValue(summary.inventory_reversal_cost_adjustment ?? 0),
+        ],
+
         ['إجمالي الخصومات', numberValue(summary.total_discounts)],
 
         ['خصومات المنتجات', numberValue(summary.product_discounts)],

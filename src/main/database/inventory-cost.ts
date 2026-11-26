@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { calculateInventoryCostReversal } from '../../shared/inventory-reversal-financials';
 import {
   allocateMoneyValueByQuantity,
   roundFinancial,
@@ -194,7 +195,7 @@ function insertCostedMovement(
     notes?: string | null;
   },
 ) {
-  database
+  const result = database
     .prepare(
       `
       INSERT INTO stock_movements (
@@ -239,6 +240,8 @@ function insertCostedMovement(
       input.created_by ? Number(input.created_by) : null,
       input.notes?.trim() || null,
     );
+
+  return Number(result.lastInsertRowid);
 }
 
 export function receiveStockAtCost(
@@ -498,7 +501,7 @@ export function issueStockAtCost(
       ? roundFinancial(preciseDivide(nextInventoryValue, nextStock))
       : 0;
 
-  insertCostedMovement(database, {
+  const movementId = insertCostedMovement(database, {
     variant_id: variantId,
 
     type: 'out',
@@ -521,6 +524,7 @@ export function issueStockAtCost(
   updateCostState(database, variantId, nextAverageCost, nextInventoryValue);
 
   return {
+    movement_id: movementId,
     unit_cost: movementUnitCost,
 
     cost_value: movementValue,
@@ -530,5 +534,60 @@ export function issueStockAtCost(
     average_cost: nextAverageCost,
 
     inventory_value: nextInventoryValue,
+  };
+}
+
+export function issueStockForCostReversal(
+  database: Db,
+  input: SpecificCostOutboundInput & {
+    business_date: string;
+  },
+) {
+  if (!database.inTransaction) {
+    throw new Error('Inventory cost reversals require a transaction');
+  }
+
+  const rawUnitCost = Number(input.unit_cost);
+
+  if (!Number.isFinite(rawUnitCost) || rawUnitCost < 0) {
+    throw new Error('Invalid reversal unit cost');
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.business_date)) {
+    throw new Error('Invalid reversal business date');
+  }
+
+  const requestedCost =
+    input.cost_value ?? preciseMultiply(input.quantity, rawUnitCost);
+
+  const state = getInventoryCostState(database, input.variant_id);
+
+  const reversal = calculateInventoryCostReversal({
+    stock: state.stock,
+    inventoryValue: state.inventory_value,
+    quantity: input.quantity,
+    requestedCost,
+  });
+
+  const issued = issueStockAtCost(database, {
+    ...input,
+    cost_value: reversal.actualCost,
+  });
+
+  const adjustment = preciseSubtract(reversal.requestedCost, issued.cost_value);
+
+  if (adjustment !== 0) {
+    database
+      .prepare(
+        'UPDATE stock_movements SET reversal_cost_adjustment = ?, reversal_business_date = ? WHERE id = ?',
+      )
+      .run(adjustment, input.business_date, issued.movement_id);
+  }
+
+  return {
+    ...issued,
+    requested_cost: reversal.requestedCost,
+    cost_adjustment: adjustment,
+    used_average_fallback: reversal.usedAverageFallback,
   };
 }

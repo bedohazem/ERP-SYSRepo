@@ -15,7 +15,7 @@ import { resolveFinancialBusinessDate } from '../financial-business-date';
 import {
   getInventoryCostState,
   issueStockAtAverageCost,
-  issueStockAtCost,
+  issueStockForCostReversal,
   receiveStockAtCost,
 } from '../inventory-cost';
 import { calculateExchangeDiscount } from '../../../shared/exchange-discount';
@@ -2844,7 +2844,9 @@ export function cancelSaleExchange(input: CancelSaleExchangeInput) {
           ? getInventoryCostState(db, Number(item.old_variant_id)).average_cost
           : Number(rawOldCost);
 
-      issueStockAtCost(db, {
+      issueStockForCostReversal(db, {
+        business_date: cancelBusinessDate,
+
         variant_id: Number(item.old_variant_id),
 
         quantity: Number(item.quantity || 0),

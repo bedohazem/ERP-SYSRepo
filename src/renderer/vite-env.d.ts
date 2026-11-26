@@ -2071,6 +2071,8 @@ declare global {
           purchase_rounding_increase: number;
           purchase_rounding_decrease: number;
           purchase_rounding_net: number;
+          purchase_return_cost_adjustment: number;
+          inventory_reversal_cost_adjustment: number;
           total_manual_deposits: number;
           total_manual_withdrawals: number;
           final_net_profit: number;
@@ -2849,6 +2851,7 @@ declare global {
           line_total: number;
           line_total: number;
           current_buy_price?: number;
+          current_inventory_value?: number;
           sell_price?: number;
           discount_price?: number | null;
           stock?: number;

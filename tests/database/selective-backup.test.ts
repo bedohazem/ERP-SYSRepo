@@ -27,6 +27,90 @@ describe('selective backup exporter', () => {
     resetDatabaseData();
   }, 30_000);
 
+  it.each([
+    { quantity: 6, value: 935 },
+    { quantity: 3, value: 0.01 },
+    { quantity: 5, value: 0 },
+  ])(
+    'preserves exact inventory value on selective restore: $value',
+    (scenario) => {
+      createProduct({
+        name: 'Precise Backup Product',
+        category_id: null,
+        variants: [
+          {
+            barcode: 'PRECISE-BACKUP-001',
+            size: 'M',
+            color: 'Black',
+            buy_price: 100,
+            sell_price: 200,
+            min_stock: 0,
+            opening_qty: 0,
+          },
+        ],
+      });
+
+      const variant = getVariantByBarcode('PRECISE-BACKUP-001')!;
+
+      receiveStockAtCost(getDb(), {
+        variant_id: variant.variant_id,
+        quantity: scenario.quantity,
+        unit_cost: scenario.value / scenario.quantity,
+        cost_value: scenario.value,
+        reference_type: 'precision_backup_test',
+        created_by: null,
+      });
+
+      const backup = buildSelectiveBackupPackage({
+        sections: ['catalog_stock'],
+        appVersion: 'precision-test',
+      });
+
+      const saved = backup.data.catalog_stock!.products[0].variants[0];
+
+      expect(saved.inventory_value).toBe(scenario.value);
+
+      expect(saved.current_stock).toBe(scenario.quantity);
+
+      resetDatabaseData();
+
+      const admin = getDb()
+        .prepare(
+          "SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1",
+        )
+        .get() as { id: number };
+
+      restoreSelectiveBackupPackage(backup, ['catalog_stock'], admin.id);
+
+      const restored = getVariantByBarcode('PRECISE-BACKUP-001')!;
+
+      const state = getDb()
+        .prepare(
+          'SELECT inventory_value, average_cost FROM product_variants WHERE id = ?',
+        )
+        .get(restored.variant_id) as {
+        inventory_value: number;
+        average_cost: number;
+      };
+
+      expect(restored.stock).toBe(scenario.quantity);
+
+      expect(state.inventory_value).toBe(scenario.value);
+
+      expect(state.average_cost).toBe(
+        Number((scenario.value / scenario.quantity).toFixed(2)),
+      );
+
+      const movement = getDb()
+        .prepare(
+          "SELECT cost_value FROM stock_movements WHERE variant_id = ? AND reference_type = 'selective_restore_opening_stock'",
+        )
+        .get(restored.variant_id) as { cost_value: number };
+
+      expect(movement.cost_value).toBe(scenario.value);
+    },
+  );
+
   it('exports current catalog stock and weighted-average cost', () => {
     const category = createCategory({
       name: 'Selective Backup Category',

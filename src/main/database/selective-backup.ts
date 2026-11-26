@@ -309,7 +309,7 @@ export function buildCatalogStockBackupSection(): CatalogStockBackupSectionV1 {
       throw new Error(`متوسط تكلفة الصنف ${barcode} غير صحيح`);
     }
 
-    if (!Number.isFinite(inventoryValue) || inventoryValue < -0.01) {
+    if (!Number.isFinite(inventoryValue) || inventoryValue < -0.000000001) {
       throw new Error(`قيمة مخزون الصنف ${barcode} غير صحيحة`);
     }
 
@@ -341,7 +341,8 @@ export function buildCatalogStockBackupSection(): CatalogStockBackupSectionV1 {
 
       average_cost: averageCost,
 
-      inventory_value: Math.abs(inventoryValue) <= 0.01 ? 0 : inventoryValue,
+      inventory_value:
+        Math.abs(inventoryValue) <= 0.000000001 ? 0 : inventoryValue,
 
       created_at: row.created_at ?? null,
     };

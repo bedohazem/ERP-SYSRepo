@@ -32,7 +32,19 @@ function captureData(db: Database.Database) {
   return Object.fromEntries(
     protectedTables.map((table) => [
       table,
-      db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
+      db
+        .prepare(`SELECT * FROM ${table} ORDER BY id`)
+        .all()
+        .map((row) => {
+          const record = { ...(row as Record<string, unknown>) };
+
+          if (table === 'stock_movements') {
+            delete record.reversal_cost_adjustment;
+            delete record.reversal_business_date;
+          }
+
+          return record;
+        }),
     ]),
   );
 }
@@ -193,8 +205,23 @@ describe('barcode migration 42 data safety', () => {
         DROP TABLE IF EXISTS
           product_variant_barcode_history;
 
+        DROP INDEX IF EXISTS
+          idx_stock_reversal_business_date;
+
+        ALTER TABLE stock_movements
+        DROP COLUMN reversal_cost_adjustment;
+
+        ALTER TABLE stock_movements
+        DROP COLUMN reversal_business_date;
+
+        ALTER TABLE purchase_return_items
+        DROP COLUMN inventory_cost;
+
+        ALTER TABLE purchase_returns
+        DROP COLUMN cost_adjustment;
+
         DELETE FROM schema_migrations
-        WHERE version = 42;
+        WHERE version >= 42;
       `);
 
       const version = legacyDb
@@ -221,7 +248,22 @@ describe('barcode migration 42 data safety', () => {
       .prepare('SELECT MAX(version) AS version FROM schema_migrations')
       .get() as { version: number };
 
-    expect(version.version).toBe(42);
+    expect(version.version).toBe(45);
+
+    const movementAdjustments = upgradedDb
+      .prepare(
+        'SELECT reversal_cost_adjustment, reversal_business_date FROM stock_movements',
+      )
+      .all();
+
+    expect(movementAdjustments.length).toBeGreaterThan(0);
+
+    for (const movement of movementAdjustments) {
+      expect(movement).toEqual({
+        reversal_cost_adjustment: 0,
+        reversal_business_date: null,
+      });
+    }
 
     const history = upgradedDb
       .prepare(

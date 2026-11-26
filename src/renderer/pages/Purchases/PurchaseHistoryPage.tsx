@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react';
+import { calculateInventoryCostReversal } from '../../../shared/inventory-reversal-financials';
+import {
+  calculatePurchaseReturnLineValue,
+  calculatePurchaseReturnInvoiceSettlement,
+} from '../../../shared/purchase-return-financials';
 import { useAuthStore } from '../../store/auth.store';
 import {
   CASH_ACCOUNT_OPTIONS,
@@ -464,6 +469,7 @@ export default function PurchaseHistoryPage() {
 
       const originalQuantities: Record<number, number> = {};
       const originalValues: Record<number, number> = {};
+      const originalInventoryValues: Record<number, number> = {};
       for (const item of returnData.items ?? []) {
         const purchaseItemId = Number(item.purchase_item_id);
 
@@ -475,9 +481,16 @@ export default function PurchaseHistoryPage() {
         originalValues[purchaseItemId] = preservePrecision(
           Number(item.line_total || 0),
         );
+
+        originalInventoryValues[purchaseItemId] = preservePrecision(
+          Number(item.inventory_cost ?? item.line_total ?? 0),
+        );
       }
 
-      setReturnPurchase(purchaseData);
+      setReturnPurchase({
+        ...purchaseData,
+        editingInventoryByItem: originalInventoryValues,
+      });
 
       setReturnQuantities(quantities);
 
@@ -721,6 +734,11 @@ export default function PurchaseHistoryPage() {
   async function savePurchaseReturn() {
     if (!returnPurchase || savingReturn) return;
 
+    if (purchaseReturnPreview.invalid) {
+      showMessage('فرق قيمة الفاتورة يحتاج مراجعة محاسبية قبل حفظ المرتجع');
+      return;
+    }
+
     if (editingReturnId && !returnEditReason.trim()) {
       showMessage('اكتب سبب تعديل المرتجع');
       return;
@@ -858,7 +876,10 @@ export default function PurchaseHistoryPage() {
 
     const originalQuantity = Number(item.quantity || 0);
 
-    const originalLineTotal = preservePrecision(Number(item.line_total || 0));
+    const originalLineTotal =
+      item.line_total == null
+        ? preciseMultiply(originalQuantity, Number(item.unit_cost || 0))
+        : Number(item.line_total);
 
     if (originalQuantity <= 0 || originalLineTotal <= 0) {
       return 0;
@@ -890,26 +911,165 @@ export default function PurchaseHistoryPage() {
       preciseSubtract(Number(item.returned_value || 0), editingValue),
     );
 
-    const cumulativeQuantity = alreadyReturnedQuantity + requestedQuantity;
-
-    const cumulativeValue =
-      cumulativeQuantity >= originalQuantity - 0.000001
-        ? originalLineTotal
-        : preciseDivide(
-            preciseMultiply(originalLineTotal, cumulativeQuantity),
-            originalQuantity,
-          );
-
-    return Math.max(0, preciseSubtract(cumulativeValue, alreadyReturnedValue));
+    return calculatePurchaseReturnLineValue({
+      originalLineTotal,
+      originalQuantity,
+      alreadyReturnedQuantity,
+      alreadyReturnedValue,
+      requestedQuantity,
+    });
   }
 
-  const purchaseReturnExactTotal = returnPurchase
+  const purchaseReturnInventoryCost = returnPurchase
     ? preciseSum(
         (returnPurchase.items ?? []).map((item: any) =>
           getPurchaseReturnLineTotal(item),
         ),
       )
     : 0;
+
+  const purchaseReturnPreview = (() => {
+    if (!returnPurchase) {
+      return { settlement: null, invalid: false };
+    }
+
+    const selected = (returnPurchase.items ?? []).some(
+      (item: any) => Number(returnQuantities[item.id] || 0) > 0,
+    );
+
+    if (!selected) {
+      return { settlement: null, invalid: false };
+    }
+
+    try {
+      const previousReturns = (returnPurchase.returns ?? []).filter(
+        (row: any) => !row.cancelled_at && Number(row.id) !== editingReturnId,
+      );
+
+      const settlement = calculatePurchaseReturnInvoiceSettlement({
+        invoiceTotal: Number(
+          returnPurchase.purchase?.exact_total_amount ||
+            returnPurchase.purchase?.total_amount ||
+            0,
+        ),
+
+        previouslyReturnedFinancial: preciseSum(
+          previousReturns.map((row: any) =>
+            Number(row.exact_total_amount ?? row.total_amount ?? 0),
+          ),
+        ),
+
+        requestedCost: purchaseReturnInventoryCost,
+
+        items: (returnPurchase.items ?? []).map((item: any) => ({
+          quantity: Number(item.quantity || 0),
+
+          lineTotal:
+            item.line_total == null
+              ? preciseMultiply(
+                  Number(item.quantity || 0),
+                  Number(item.unit_cost || 0),
+                )
+              : Number(item.line_total),
+
+          returnedQuantity: Math.max(
+            0,
+            Number(item.returned_quantity || 0) -
+              Number(editingReturnOriginalQuantities[item.id] || 0),
+          ),
+
+          returnedValue: Math.max(
+            0,
+            preciseSubtract(
+              Number(item.returned_value || 0),
+              Number(editingReturnOriginalValues[item.id] || 0),
+            ),
+          ),
+
+          requestedQuantity: Number(returnQuantities[item.id] || 0),
+        })),
+      });
+
+      const states = new Map<
+        number,
+        { stock: number; inventoryValue: number }
+      >();
+
+      const sortedItems = [...(returnPurchase.items ?? [])].sort(
+        (a: any, b: any) => Number(a.id) - Number(b.id),
+      );
+
+      for (const item of sortedItems) {
+        const variantId = Number(item.variant_id);
+
+        if (!states.has(variantId)) {
+          states.set(variantId, {
+            stock: Number(item.stock || 0),
+            inventoryValue: Number(item.current_inventory_value ?? 0),
+          });
+        }
+      }
+
+      // Editing first restores the cancelled return's actual cost.
+      if (editingReturnId) {
+        for (const item of sortedItems) {
+          const state = states.get(Number(item.variant_id))!;
+
+          state.stock += Number(editingReturnOriginalQuantities[item.id] || 0);
+
+          state.inventoryValue = preciseAdd(
+            state.inventoryValue,
+            Number(returnPurchase.editingInventoryByItem?.[item.id] ?? 0),
+          );
+        }
+      }
+
+      let actualInventoryCost = 0;
+
+      for (const item of sortedItems) {
+        const quantity = Number(returnQuantities[item.id] || 0);
+
+        if (quantity <= 0) continue;
+
+        const state = states.get(Number(item.variant_id))!;
+
+        const reversal = calculateInventoryCostReversal({
+          stock: state.stock,
+          inventoryValue: state.inventoryValue,
+          quantity,
+          requestedCost: getPurchaseReturnLineTotal(item),
+        });
+
+        state.stock = reversal.remainingStock;
+        state.inventoryValue = reversal.remainingValue;
+
+        actualInventoryCost = preciseAdd(
+          actualInventoryCost,
+          reversal.actualCost,
+        );
+      }
+
+      return {
+        settlement: {
+          ...settlement,
+          inventoryCost: actualInventoryCost,
+          costAdjustment: preciseSubtract(
+            settlement.financialAmount,
+            actualInventoryCost,
+          ),
+        },
+        invalid: false,
+      };
+    } catch {
+      return { settlement: null, invalid: true };
+    }
+  })();
+
+  const purchaseReturnExactTotal =
+    purchaseReturnPreview.settlement?.financialAmount ?? 0;
+
+  const purchaseReturnCostAdjustment =
+    purchaseReturnPreview.settlement?.costAdjustment ?? 0;
 
   const purchaseReturnDebtBase = returnPurchase
     ? preservePrecision(
@@ -2804,13 +2964,40 @@ export default function PurchaseHistoryPage() {
               >
                 <InfoCard
                   title="قيمة المرتجع"
-                  value={money(purchaseReturnExactTotal)}
+                  value={
+                    purchaseReturnPreview.invalid
+                      ? '---'
+                      : money(purchaseReturnExactTotal)
+                  }
                 />
 
                 <InfoCard
                   title="يخصم من مديونية المورد"
                   value={money(purchaseReturnDebtReduction)}
                 />
+
+                {purchaseReturnCostAdjustment !== 0 && (
+                  <>
+                    <InfoCard
+                      title="تكلفة المخزون المرتجع"
+                      value={money(
+                        purchaseReturnPreview.settlement?.inventoryCost ?? 0,
+                      )}
+                    />
+                    <InfoCard
+                      title="صافي فرق تكلفة مرتجعات الشراء"
+                      value={formatSignedPreciseMoney(
+                        purchaseReturnCostAdjustment,
+                      )}
+                    />
+                  </>
+                )}
+
+                {purchaseReturnPreview.invalid && (
+                  <div style={{ color: '#fbbf24' }}>
+                    فرق قيمة الفاتورة يحتاج مراجعة محاسبية قبل حفظ المرتجع
+                  </div>
+                )}
 
                 <InfoCard
                   title="المستحق من المورد"
@@ -3022,7 +3209,7 @@ export default function PurchaseHistoryPage() {
                 <button
                   type="button"
                   onClick={savePurchaseReturn}
-                  disabled={savingReturn}
+                  disabled={savingReturn || purchaseReturnPreview.invalid}
                   style={{
                     ...primaryButtonStyle,
                     opacity: savingReturn ? 0.6 : 1,

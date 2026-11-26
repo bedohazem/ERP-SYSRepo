@@ -4685,6 +4685,48 @@ export function getDb(): Database.Database {
           `);
         },
       },
+      {
+        version: 43,
+        name: 'purchase-return-cost-adjustments',
+        up: () => {
+          safeAddColumn(
+            db,
+            'purchase_returns',
+            'cost_adjustment',
+            'REAL NOT NULL DEFAULT 0',
+          );
+        },
+      },
+      {
+        version: 44,
+        name: 'purchase-return-actual-inventory-cost',
+        up: () => {
+          safeAddColumn(db, 'purchase_return_items', 'inventory_cost', 'REAL');
+        },
+      },
+      {
+        version: 45,
+        name: 'track-inventory-reversal-cost-adjustments',
+        up: () => {
+          safeAddColumn(
+            db,
+            'stock_movements',
+            'reversal_cost_adjustment',
+            'REAL NOT NULL DEFAULT 0',
+          );
+
+          safeAddColumn(
+            db,
+            'stock_movements',
+            'reversal_business_date',
+            'TEXT',
+          );
+
+          db.exec(
+            'CREATE INDEX IF NOT EXISTS idx_stock_reversal_business_date ON stock_movements(reversal_business_date) WHERE reversal_cost_adjustment <> 0',
+          );
+        },
+      },
     ]);
 
     seedTestAdminUser(db);

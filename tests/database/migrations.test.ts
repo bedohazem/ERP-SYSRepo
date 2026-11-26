@@ -484,7 +484,34 @@ describe('database migrations', () => {
         name: 'reserve-product-variant-barcode-history',
         version: 42,
       },
+      {
+        name: 'purchase-return-cost-adjustments',
+        version: 43,
+      },
+      {
+        name: 'purchase-return-actual-inventory-cost',
+        version: 44,
+      },
+      {
+        name: 'track-inventory-reversal-cost-adjustments',
+        version: 45,
+      },
     ]);
+
+    const expectedColumns = [
+      ['purchase_returns', 'cost_adjustment'],
+      ['purchase_return_items', 'inventory_cost'],
+      ['stock_movements', 'reversal_cost_adjustment'],
+      ['stock_movements', 'reversal_business_date'],
+    ] as const;
+
+    for (const [table, column] of expectedColumns) {
+      const columns = database
+        .prepare(`PRAGMA table_info(${table})`)
+        .all() as Array<{ name: string }>;
+
+      expect(columns.map((item) => item.name)).toContain(column);
+    }
 
     const performanceIndexes = database
       .prepare(
@@ -505,6 +532,7 @@ describe('database migrations', () => {
     expect(performanceIndexNames).toEqual(
       expect.arrayContaining([
         'idx_product_variants_product_active',
+        'idx_stock_reversal_business_date',
 
         'idx_sale_items_sale_id',
         'idx_sales_customer_active_created',

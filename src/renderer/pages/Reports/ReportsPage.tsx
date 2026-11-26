@@ -28,6 +28,8 @@ type ReportsData = {
     purchase_rounding_increase: number;
     purchase_rounding_decrease: number;
     purchase_rounding_net: number;
+    purchase_return_cost_adjustment: number;
+    inventory_reversal_cost_adjustment: number;
     total_manual_deposits: number;
     total_manual_withdrawals: number;
     final_net_profit: number;
@@ -112,6 +114,8 @@ const emptyReports: ReportsData = {
     purchase_rounding_increase: 0,
     purchase_rounding_decrease: 0,
     purchase_rounding_net: 0,
+    purchase_return_cost_adjustment: 0,
+    inventory_reversal_cost_adjustment: 0,
     total_manual_deposits: 0,
     total_manual_withdrawals: 0,
     final_net_profit: 0,
@@ -704,6 +708,24 @@ export default function ReportsPage() {
           value={formatSignedPreciseMoney(data.summary.purchase_rounding_net)}
           danger={Number(data.summary.purchase_rounding_net) > 0}
           success={Number(data.summary.purchase_rounding_net) < 0}
+        />
+
+        <StatCard
+          title="صافي فرق تكلفة مرتجعات الشراء"
+          value={formatSignedPreciseMoney(
+            data.summary.purchase_return_cost_adjustment,
+          )}
+          danger={data.summary.purchase_return_cost_adjustment < 0}
+          success={data.summary.purchase_return_cost_adjustment > 0}
+        />
+
+        <StatCard
+          title="صافي فروق عكس تكلفة المخزون"
+          value={formatSignedPreciseMoney(
+            data.summary.inventory_reversal_cost_adjustment,
+          )}
+          danger={data.summary.inventory_reversal_cost_adjustment < 0}
+          success={data.summary.inventory_reversal_cost_adjustment > 0}
         />
 
         <StatCard

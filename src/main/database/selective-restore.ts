@@ -374,12 +374,19 @@ function restoreCatalogStock(
         `متوسط تكلفة ${barcode}`,
       );
 
+      const inventoryValue = finiteNumber(
+        variant.inventory_value,
+        'Inventory value ' + barcode,
+      );
+
       if (
         buyPrice < 0 ||
         sellPrice < 0 ||
         minStock < 0 ||
         currentStock < 0 ||
-        averageCost < 0
+        averageCost < 0 ||
+        inventoryValue < 0 ||
+        (currentStock === 0 && inventoryValue > 0)
       ) {
         throw new Error(`يوجد قيمة سالبة غير صالحة في الصنف ${barcode}`);
       }
@@ -460,6 +467,8 @@ function restoreCatalogStock(
           quantity: currentStock,
 
           unit_cost: averageCost,
+
+          cost_value: inventoryValue,
 
           created_by: actorId,
 
