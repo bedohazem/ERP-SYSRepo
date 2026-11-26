@@ -679,13 +679,18 @@ export default function SuppliersPage() {
 
           <div class="summary">
             <div class="summary-card">
-              <span>إجمالي المشتريات</span>
+              <span>صافي المشتريات بعد المرتجعات</span>
               <strong>${safeText(money(summary?.total_purchased || 0))}</strong>
             </div>
 
             <div class="summary-card">
-              <span>إجمالي المدفوع</span>
+              <span>المسدد بالدفعات (محاسبيًا)</span>
               <strong>${safeText(money(summary?.total_paid || 0))}</strong>
+            </div>
+
+            <div class="summary-card">
+                <span>إجمالي مرتجعات الشراء</span>
+              <strong>${safeText(money(summary?.total_returns || 0))}</strong>
             </div>
 
             <div class="summary-card">
@@ -1666,7 +1671,9 @@ export default function SuppliersPage() {
                       ...tdStyle,
                       color: hasPositivePreciseAmount(supplier.balance)
                         ? '#fca5a5'
-                        : '#6ee7b7',
+                        : hasPositivePreciseAmount(-supplier.balance)
+                          ? '#fbbf24'
+                          : '#6ee7b7',
                       fontWeight: 900,
                     }}
                   >
@@ -1862,12 +1869,16 @@ export default function SuppliersPage() {
               }}
             >
               <InfoCard
-                title="إجمالي المشتريات"
+                title="صافي المشتريات بعد المرتجعات"
                 value={money(statementData.summary.total_purchased)}
               />
               <InfoCard
-                title="إجمالي المدفوع"
+                title="المسدد بالدفعات (محاسبيًا)"
                 value={money(statementData.summary.total_paid)}
+              />
+              <InfoCard
+                title="إجمالي مرتجعات الشراء"
+                value={money(statementData.summary.total_returns)}
               />
               <InfoCard
                 title="الرصيد الحالي"

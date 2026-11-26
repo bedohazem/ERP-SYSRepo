@@ -678,12 +678,12 @@ export default function ReportsPage() {
           value={money(data.summary.total_discounts)}
         />
         <StatCard
-          title="إجمالي فواتير الشراء المستحقة"
+          title="إجمالي فواتير الشراء (قبل المرتجعات)"
           value={money(data.summary.total_purchase_invoices)}
         />
 
         <StatCard
-          title="تكلفة المشتريات الدقيقة"
+          title="تكلفة المشتريات الدقيقة (قبل المرتجعات)"
           value={money(data.summary.total_purchase_exact_amount)}
         />
 

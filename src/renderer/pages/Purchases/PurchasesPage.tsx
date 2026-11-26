@@ -5,19 +5,20 @@ import { hasUserPermission } from '../../utils/permissions';
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import PurchaseOrdersPanel from './PurchaseOrdersPanel';
+import { calculatePurchaseFinancials } from '../../../shared/purchase-financials';
+import { calculatePurchasePaymentPreview } from '../../../shared/purchase-payment-preview';
+import {
+  hasUnsafeStoredPurchaseDiscount,
+  UNSAFE_LEGACY_PURCHASE_MESSAGE,
+} from '../../../shared/purchase-legacy-guard';
 import { printPurchaseInvoiceBarcodes } from '../../utils/purchase-barcode-print';
 import {
-  allocateTruncatedMoneyAcrossWeights,
-  truncateMoney,
   formatPreciseMoney,
+  truncateForDisplay,
   preservePrecision,
   roundMoney,
   formatSignedPreciseMoney,
   preciseAdd,
-  preciseDivide,
-  preciseMultiply,
-  preciseSubtract,
-  preciseSum,
 } from '../../../shared/money';
 import {
   getUserScopedDraftKey,
@@ -116,6 +117,77 @@ export default function PurchasesPage() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [supplierId, setSupplierId] = useState<number | ''>('');
   const [supplierSearch, setSupplierSearch] = useState('');
+
+  const [supplierCreditSnapshot, setSupplierCreditSnapshot] = useState<{
+    supplierId: number;
+    availableCredit: number;
+    earlierDebt: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    setSupplierCreditSnapshot(null);
+
+    if (!supplierId) {
+      return;
+    }
+
+    const selectedId = Number(supplierId);
+
+    async function refreshSupplierCredit() {
+      try {
+        const statement = await window.api.getSupplierStatement(selectedId);
+
+        if (!active) return;
+
+        const availableCredit = Number(
+          statement.summary?.aging?.supplier_credit,
+        );
+
+        if (!Number.isFinite(availableCredit)) {
+          throw new Error('Invalid supplier credit snapshot');
+        }
+
+        // Invoice edits allocate credit to older debt first.
+        const earlierDebt = isEditing
+          ? (statement.purchases || [])
+              .filter(
+                (purchase: any) =>
+                  Number(purchase.id) < editPurchaseId &&
+                  purchase.status !== 'cancelled' &&
+                  Number(purchase.remaining_amount || 0) > 0,
+              )
+              .reduce(
+                (total: number, purchase: any) =>
+                  preciseAdd(total, Number(purchase.remaining_amount || 0)),
+                0,
+              )
+          : 0;
+
+        setSupplierCreditSnapshot({
+          supplierId: selectedId,
+          availableCredit: Math.max(0, availableCredit),
+          earlierDebt,
+        });
+      } catch (error) {
+        if (active) {
+          setSupplierCreditSnapshot(null);
+        }
+
+        console.error('Supplier credit preview failed:', error);
+      }
+    }
+
+    void refreshSupplierCredit();
+
+    window.addEventListener('focus', refreshSupplierCredit);
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refreshSupplierCredit);
+    };
+  }, [supplierId, isEditing, editPurchaseId]);
 
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState<VariantRow[]>([]);
@@ -236,119 +308,69 @@ export default function PurchasesPage() {
     };
   }, [catalogVersion, draftHydrated, editLoading, isEditing, currentUser?.id]);
 
-  function getPurchaseLineTotal(line: PurchaseLine) {
-    const quantity = Number(line.quantity || 0);
-
-    const unitCost = Number(line.unit_cost || 0);
-
-    if (
-      !Number.isFinite(quantity) ||
-      quantity <= 0 ||
-      !Number.isFinite(unitCost) ||
-      unitCost <= 0
-    ) {
-      return 0;
-    }
-
-    return truncateMoney(preciseMultiply(quantity, unitCost));
-  }
-
-  const subTotal = useMemo(
-    () => preciseSum(lines.map(getPurchaseLineTotal)),
-    [lines],
-  );
-
-  const discountValue = useMemo(() => {
-    const raw = Number(discountDraft || 0);
-
-    const value = Number.isFinite(raw) ? Math.max(0, raw) : 0;
-
-    if (discountType === 'percent') {
-      const percentage = Math.min(value, 100);
-
-      return truncateMoney(
-        Math.min(
-          subTotal,
-          preciseDivide(preciseMultiply(subTotal, percentage), 100),
-        ),
+  const purchaseFinancials = useMemo(() => {
+    try {
+      return calculatePurchaseFinancials(
+        lines.map((line) => ({
+          variantId: Number(line.variant_id),
+          quantity: Number(line.quantity || 0),
+          unitCost: Number(line.unit_cost || 0),
+        })),
+        discountType,
+        Number(discountDraft || 0),
       );
+    } catch {
+      return null;
     }
+  }, [lines, discountType, discountDraft]);
 
-    return truncateMoney(Math.min(subTotal, value));
-  }, [discountDraft, discountType, subTotal]);
-
-  const exactTotalAmount = truncateMoney(
-    Math.max(0, preciseSubtract(subTotal, discountValue)),
-  );
+  const subTotal = purchaseFinancials?.subTotal ?? 0;
+  const discountValue = purchaseFinancials?.discountValue ?? 0;
+  const exactTotalAmount = purchaseFinancials?.totalAmount ?? 0;
 
   const totalAmount = exactTotalAmount;
 
-  const cashPaidAmount = settleFullInvoice
-    ? roundMoney(totalAmount)
-    : roundMoney(Math.max(0, Number(paidAmount || 0)));
+  const selectedCreditSnapshot =
+    supplierCreditSnapshot?.supplierId === Number(supplierId)
+      ? supplierCreditSnapshot
+      : null;
 
-  const purchaseOverpayment =
-    !isEditing && !settleFullInvoice && cashPaidAmount > totalAmount
-      ? preciseSubtract(cashPaidAmount, totalAmount)
-      : 0;
+  const paymentPreview = calculatePurchasePaymentPreview({
+    totalAmount,
+    paidAmount: Number(paidAmount || 0),
+    availableCredit: selectedCreditSnapshot?.availableCredit ?? null,
+    earlierDebt: selectedCreditSnapshot?.earlierDebt ?? 0,
+    settleFullInvoice,
+    isEditing,
+  });
 
-  const paid = settleFullInvoice
-    ? totalAmount
-    : Math.min(cashPaidAmount, totalAmount);
+  const {
+    creditPreviewReady,
+    paymentPreviewReady,
+    availableSupplierCredit,
+    supplierCreditApplied,
+    cashPaidAmount,
+    purchaseOverpayment,
+    paid,
+    remaining,
+    roundingAdjustment,
+  } = paymentPreview;
 
-  const remaining = settleFullInvoice
-    ? 0
-    : Math.max(0, preciseSubtract(totalAmount, paid));
-
-  const roundingAdjustment = settleFullInvoice
-    ? preciseSubtract(cashPaidAmount, totalAmount)
-    : 0;
-
-  const purchaseLineFinancials = useMemo(() => {
-    const grossTotals = lines.map(getPurchaseLineTotal);
-
-    const lineDiscounts = allocateTruncatedMoneyAcrossWeights(
-      discountValue,
-      grossTotals,
-    );
-
-    const result = new Map<
-      number,
-      {
-        grossTotal: number;
-
-        discount: number;
-
-        netTotal: number;
-
-        unitCost: number;
-      }
-    >();
-
-    lines.forEach((line, index) => {
-      const quantity = Number(line.quantity || 0);
-
-      const grossTotal = truncateMoney(grossTotals[index] || 0);
-
-      const lineDiscount = truncateMoney(lineDiscounts[index] || 0);
-
-      const netTotal = truncateMoney(
-        Math.max(0, preciseSubtract(grossTotal, lineDiscount)),
-      );
-
-      result.set(line.variant_id, {
-        grossTotal,
-
-        discount: lineDiscount,
-
-        netTotal,
-
-        unitCost: quantity > 0 ? preciseDivide(netTotal, quantity) : 0,
-      });
-    });
-
-    return result;
-  }, [lines, discountValue, subTotal]);
+  const purchaseLineFinancials = useMemo(
+    () =>
+      new Map(
+        (purchaseFinancials?.lines ?? []).map((line) => [
+          line.variantId,
+          {
+            grossTotal: line.grossTotal,
+            discount: line.discount,
+            netTotal: line.netTotal,
+            unitCost: line.effectiveUnitCost,
+          },
+        ]),
+      ),
+    [purchaseFinancials],
+  );
 
   function getPurchaseLineFinancial(line: PurchaseLine) {
     return (
@@ -556,6 +578,10 @@ export default function PurchasesPage() {
           purchase.payment_status === 'cancelled'
         ) {
           throw new Error('لا يمكن تعديل فاتورة شراء ملغاة');
+        }
+
+        if (hasUnsafeStoredPurchaseDiscount(purchase, data.items ?? [])) {
+          throw new Error(UNSAFE_LEGACY_PURCHASE_MESSAGE);
         }
 
         const nextLines: PurchaseLine[] = (data.items ?? []).map((item) => {
@@ -1071,6 +1097,13 @@ export default function PurchasesPage() {
   async function savePurchase() {
     if (saving) return;
 
+    if (!purchaseFinancials) {
+      showMessage(
+        '\u0631\u0627\u062c\u0639 \u0642\u064a\u0645 \u0627\u0644\u0641\u0627\u062a\u0648\u0631\u0629',
+      );
+      return;
+    }
+
     if (!supplierId) {
       showMessage('اختار المورد');
       return;
@@ -1533,7 +1566,7 @@ export default function PurchasesPage() {
                   <th style={thStyle}>الصنف</th>
                   <th style={thStyle}>الكمية</th>
                   <th style={thStyle}>سعر الشراء</th>
-                  <th style={thStyle}>بعد الخصم</th>
+                  <th style={thStyle}>تكلفة الوحدة</th>
                   <th style={thStyle}>الإجمالي</th>
                   <th style={thStyle}>حذف</th>
                 </tr>
@@ -1629,7 +1662,16 @@ export default function PurchasesPage() {
                     <td
                       style={{ ...tdStyle, fontWeight: 900, color: '#6ee7b7' }}
                     >
-                      {money(getPurchaseLineFinancial(line).unitCost)}
+                      <span
+                        title={String(getPurchaseLineFinancial(line).unitCost)}
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        {truncateForDisplay(
+                          getPurchaseLineFinancial(line).unitCost,
+                          6,
+                        )}
+                        {' ج.م'}
+                      </span>
                     </td>
 
                     <td style={{ ...tdStyle, fontWeight: 900 }}>
@@ -1718,9 +1760,15 @@ export default function PurchasesPage() {
             </div>
 
             <div style={fieldStyle}>
-              <label style={labelStyle}>قيمة الخصم</label>
+              <label style={labelStyle}>قيمة الخصم المحاسبي</label>
               <input
                 value={money(discountValue)}
+                title={
+                  purchaseFinancials
+                    ? '\u0627\u0644\u062e\u0635\u0645 \u0642\u0628\u0644 \u0642\u0635 \u0627\u0644\u0643\u0633\u0648\u0631: ' +
+                      purchaseFinancials.rawDiscount
+                    : undefined
+                }
                 readOnly
                 style={{ ...inputStyle, opacity: 0.7 }}
               />
@@ -1863,9 +1911,54 @@ export default function PurchasesPage() {
             <div style={fieldStyle}>
               <label style={labelStyle}>المتبقي للمورد</label>
               <input
-                value={money(remaining)}
+                value={paymentPreviewReady ? money(remaining) : '---'}
                 readOnly
                 style={{ ...inputStyle, opacity: 0.7 }}
+              />
+
+              {supplierId && !paymentPreviewReady && (
+                <small style={{ color: '#fbbf24' }}>
+                  {'لم يتم تحديث الرصيد الدائن بعد'}
+                </small>
+              )}
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{'الرصيد الدائن المتاح'}</label>
+              <input
+                value={
+                  creditPreviewReady ? money(availableSupplierCredit) : '---'
+                }
+                readOnly
+                style={{ ...inputStyle, opacity: 0.7 }}
+              />
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{'المسدد من الرصيد الدائن'}</label>
+              <input
+                value={
+                  paymentPreviewReady ? money(supplierCreditApplied) : '---'
+                }
+                readOnly
+                style={{
+                  ...inputStyle,
+                  color: '#6ee7b7',
+                  opacity: 0.85,
+                }}
+              />
+            </div>
+
+            <div style={fieldStyle}>
+              <label style={labelStyle}>{'إجمالي المسدد'}</label>
+              <input
+                value={paymentPreviewReady ? money(paid) : '---'}
+                readOnly
+                style={{
+                  ...inputStyle,
+                  color: '#6ee7b7',
+                  opacity: 0.85,
+                }}
               />
             </div>
 

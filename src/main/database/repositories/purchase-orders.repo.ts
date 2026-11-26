@@ -1,8 +1,8 @@
 import { getDb } from '../db';
+import { calculatePurchaseFinancials } from '../../../shared/purchase-financials';
 
 import { createPurchaseInvoice } from './purchases.repo';
 import {
-  truncateMoney,
   preservePrecision,
   preciseMultiply,
   preciseSum,
@@ -408,7 +408,7 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
 
   const seen = new Set<number>();
 
-  return input.map((item) => {
+  const items = input.map((item) => {
     const variantId = Number(item.variant_id);
 
     if (!variantId || seen.has(variantId)) {
@@ -447,8 +447,6 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
 
     const unitCost = preservePrecision(inputCost);
 
-    const lineTotal = truncateMoney(preciseMultiply(quantity, unitCost));
-
     return {
       variant_id: variantId,
 
@@ -463,10 +461,21 @@ function preparePurchaseOrderItems(input: PurchaseOrderItemInput[]) {
       quantity,
 
       unit_cost: unitCost,
-
-      line_total: lineTotal,
     };
   });
+
+  const financials = calculatePurchaseFinancials(
+    items.map((item) => ({
+      variantId: item.variant_id,
+      quantity: item.quantity,
+      unitCost: item.unit_cost,
+    })),
+  );
+
+  return items.map((item, index) => ({
+    ...item,
+    line_total: financials.lines[index].netTotal,
+  }));
 }
 
 export function createPurchaseOrder(input: CreatePurchaseOrderInput) {
@@ -1069,20 +1078,13 @@ export function receivePurchaseOrder(input: {
   const items = snapshot.items.map((item: any) => {
     const quantity = Number(item.quantity || 0);
 
-    const lineTotal = preservePrecision(Number(item.line_total || 0));
-
-    if (!Number.isFinite(quantity) || quantity <= 0 || lineTotal <= 0) {
-      throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`);
-    }
-
     const unitCost = preservePrecision(Number(item.unit_cost || 0));
 
     if (
       !Number.isFinite(quantity) ||
       quantity <= 0 ||
       !Number.isFinite(unitCost) ||
-      unitCost <= 0 ||
-      lineTotal <= 0
+      unitCost <= 0
     ) {
       throw new Error(`حدد تكلفة شراء صحيحة للصنف ${item.product_name}`);
     }

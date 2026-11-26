@@ -10,6 +10,11 @@ import {
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
 
 import { createSale } from '../../src/main/database/repositories/sales.repo';
+import {
+  createPurchaseInvoice,
+  getSupplierStatement,
+} from '../../src/main/database/repositories/purchases.repo';
+import { calculatePurchasePaymentPreview } from '../../src/shared/purchase-payment-preview';
 
 import { getVariantStock } from '../../src/main/database/repositories/inventory.repo';
 
@@ -445,6 +450,185 @@ describe('purchase orders repository', () => {
     expect(received.total_amount).toBe(590.62);
 
     expect(getVariantStock(variant.variant_id)).toBe(7);
+  });
+
+  it('preserves invoice precision throughout the purchase order lifecycle', () => {
+    const supplier = createSupplier({
+      name: 'Precise Order Supplier',
+    }) as any;
+
+    const first = seedVariant({
+      name: 'Precise Order First',
+      barcode: 'PO-PRECISION-FIRST',
+      openingQty: 0,
+      minStock: 1,
+    });
+
+    const second = seedVariant({
+      name: 'Precise Order Second',
+      barcode: 'PO-PRECISION-SECOND',
+      openingQty: 0,
+      minStock: 1,
+    });
+
+    const items = [
+      {
+        variant_id: first.variant_id,
+        quantity: 3,
+        unit_cost: 10.005,
+      },
+      {
+        variant_id: second.variant_id,
+        quantity: 3,
+        unit_cost: 10.005,
+      },
+    ];
+
+    const order = createPurchaseOrder({
+      supplier_id: supplier.id,
+      actor_id: 1,
+      items,
+    });
+
+    expect(order.total_amount).toBe(60.03);
+
+    const snapshot = getPurchaseOrder(order.purchase_order_id) as any;
+
+    expect(snapshot.items.map((item: any) => Number(item.line_total))).toEqual([
+      30.02, 30.01,
+    ]);
+
+    expect(snapshot.items.map((item: any) => Number(item.unit_cost))).toEqual([
+      10.005, 10.005,
+    ]);
+
+    const updated = updatePurchaseOrder({
+      purchase_order_id: order.purchase_order_id,
+      supplier_id: supplier.id,
+      items: [...items].reverse(),
+    }) as any;
+
+    expect(Number(updated.order.total_amount)).toBeCloseTo(60.03, 2);
+
+    expect(updated.items.map((item: any) => Number(item.line_total))).toEqual([
+      30.01, 30.02,
+    ]);
+
+    expect(getVariantStock(first.variant_id)).toBe(0);
+    expect(getVariantStock(second.variant_id)).toBe(0);
+
+    markPurchaseOrderOrdered({
+      purchase_order_id: order.purchase_order_id,
+      actor_id: 1,
+    });
+
+    const received = receivePurchaseOrder({
+      purchase_order_id: order.purchase_order_id,
+      actor_id: 1,
+      paid_amount: 0,
+    });
+
+    expect(received.total_amount).toBe(60.03);
+
+    expect(getVariantStock(first.variant_id)).toBe(3);
+    expect(getVariantStock(second.variant_id)).toBe(3);
+
+    const db = getDb();
+
+    const stock = db
+      .prepare(
+        'SELECT SUM(inventory_value) AS total FROM product_variants WHERE id IN (?, ?)',
+      )
+      .get(first.variant_id, second.variant_id) as any;
+
+    const balance = db
+      .prepare('SELECT balance FROM suppliers WHERE id = ?')
+      .get(supplier.id) as any;
+
+    expect(Number(stock.total)).toBeCloseTo(60.03, 2);
+    expect(Number(balance.balance)).toBe(60.03);
+  });
+
+  it('matches order receipt payment preview with actual supplier credit allocation', () => {
+    const db = getDb();
+
+    db.prepare(
+      "INSERT INTO cash_movements (type, amount, direction, payment_method, reference_type, created_by) VALUES ('deposit', 5000, 'in', 'store_cash', 'test_seed', 1)",
+    ).run();
+
+    const supplier = createSupplier({
+      name: 'Order Credit Preview Supplier',
+    }) as any;
+
+    const variant = seedVariant({
+      name: 'Order Credit Preview Product',
+      barcode: 'PO-CREDIT-PREVIEW',
+      openingQty: 0,
+      minStock: 1,
+    });
+
+    createPurchaseInvoice({
+      supplier_id: supplier.id,
+      actor_id: 1,
+      paid_amount: 1000,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 800,
+        },
+      ],
+    });
+
+    const order = createPurchaseOrder({
+      supplier_id: supplier.id,
+      actor_id: 1,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 1000.03,
+        },
+      ],
+    });
+
+    markPurchaseOrderOrdered({
+      purchase_order_id: order.purchase_order_id,
+      actor_id: 1,
+    });
+
+    const statement = getSupplierStatement(supplier.id, 1) as any;
+
+    const preview = calculatePurchasePaymentPreview({
+      totalAmount: order.total_amount,
+      paidAmount: 500,
+      availableCredit: Number(statement.summary.aging.supplier_credit),
+    });
+
+    expect(preview.supplierCreditApplied).toBe(200);
+    expect(preview.paid).toBe(700);
+    expect(preview.remaining).toBe(300.03);
+
+    const received = receivePurchaseOrder({
+      purchase_order_id: order.purchase_order_id,
+      actor_id: 1,
+      paid_amount: preview.cashPaidAmount,
+      payment_method: 'store_cash',
+    });
+
+    expect(received.cash_amount).toBe(preview.cashPaidAmount);
+
+    expect(received.supplier_credit_applied).toBe(
+      preview.supplierCreditApplied,
+    );
+
+    expect(received.paid_amount).toBe(preview.paid);
+
+    expect(received.remaining_amount).toBe(preview.remaining);
+
+    expect(received.total_amount).toBe(1000.03);
   });
 
   it('settles purchase order reception with whole cash and exact invoice value', () => {

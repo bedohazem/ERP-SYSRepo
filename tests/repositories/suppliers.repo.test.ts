@@ -315,6 +315,50 @@ describe('suppliers repository', () => {
     expect(results).toHaveLength(0);
   });
 
+  it('sorts payable suppliers before credit suppliers and settled suppliers', () => {
+    const balances = [0, -300, 2000, -1500, 5000, 0, 0.00000000000001];
+
+    const suppliers = balances.map((balance, index) => {
+      const supplier = createSupplier({
+        name: 'Sorted Supplier ' + index,
+      }) as SupplierTestRow;
+
+      getDb()
+        .prepare('UPDATE suppliers SET balance = ? WHERE id = ?')
+        .run(balance, supplier.id);
+
+      return supplier;
+    });
+
+    const expectedIds = [4, 2, 3, 1, 6, 5, 0].map(
+      (index) => suppliers[index].id,
+    );
+
+    const all = getSuppliers() as SupplierTestRow[];
+
+    expect(all.map((row) => row.id)).toEqual(expectedIds);
+
+    const searched = getSuppliers('Sorted Supplier') as SupplierTestRow[];
+
+    expect(searched.map((row) => row.id)).toEqual(expectedIds);
+
+    const pagedIds: number[] = [];
+
+    for (let offset = 0; offset < balances.length; offset += 2) {
+      const page = listSuppliers({
+        search: 'Sorted Supplier',
+        limit: 2,
+        offset,
+      });
+
+      expect(page.total).toBe(balances.length);
+
+      pagedIds.push(...(page.rows as SupplierTestRow[]).map((row) => row.id));
+    }
+
+    expect(pagedIds).toEqual(expectedIds);
+  });
+
   it('paginates suppliers without hiding old records', () => {
     for (let index = 1; index <= 5; index += 1) {
       createSupplier({

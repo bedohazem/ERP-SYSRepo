@@ -596,11 +596,16 @@ export function getSuppliers(search = '') {
         WHERE is_active = 1
         ORDER BY
         CASE
-          WHEN IFNULL(balance, 0) > 0 THEN 0
-          ELSE 1
-        END ASC,
-        IFNULL(balance, 0) DESC,
-        id DESC
+        WHEN IFNULL(balance, 0) > ${PRECISE_MONEY_EPSILON} THEN 0
+        WHEN IFNULL(balance, 0) < -${PRECISE_MONEY_EPSILON} THEN 1
+        ELSE 2
+      END ASC,
+      CASE
+        WHEN ABS(IFNULL(balance, 0)) > ${PRECISE_MONEY_EPSILON}
+        THEN ABS(IFNULL(balance, 0))
+        ELSE 0
+      END DESC,
+      id DESC
       `,
       )
       .all();
@@ -620,10 +625,15 @@ export function getSuppliers(search = '') {
         )
       ORDER BY
       CASE
-        WHEN IFNULL(balance, 0) > 0 THEN 0
-        ELSE 1
+        WHEN IFNULL(balance, 0) > ${PRECISE_MONEY_EPSILON} THEN 0
+        WHEN IFNULL(balance, 0) < -${PRECISE_MONEY_EPSILON} THEN 1
+        ELSE 2
       END ASC,
-      IFNULL(balance, 0) DESC,
+      CASE
+        WHEN ABS(IFNULL(balance, 0)) > ${PRECISE_MONEY_EPSILON}
+        THEN ABS(IFNULL(balance, 0))
+        ELSE 0
+      END DESC,
       id DESC
     `,
     )
@@ -717,10 +727,15 @@ export function listSuppliers(input?: {
 
       ORDER BY
       CASE
-        WHEN IFNULL(balance, 0) > 0 THEN 0
-        ELSE 1
+        WHEN IFNULL(balance, 0) > ${PRECISE_MONEY_EPSILON} THEN 0
+        WHEN IFNULL(balance, 0) < -${PRECISE_MONEY_EPSILON} THEN 1
+        ELSE 2
       END ASC,
-      IFNULL(balance, 0) DESC,
+      CASE
+        WHEN ABS(IFNULL(balance, 0)) > ${PRECISE_MONEY_EPSILON}
+        THEN ABS(IFNULL(balance, 0))
+        ELSE 0
+      END DESC,
       id DESC
 
       LIMIT ?

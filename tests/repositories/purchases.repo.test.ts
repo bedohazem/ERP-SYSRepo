@@ -8,6 +8,7 @@ import {
 import {
   createProduct,
   getVariantByBarcode,
+  updateVariant,
 } from '../../src/main/database/repositories/product.repo';
 import {
   createPurchaseInvoice,
@@ -33,6 +34,11 @@ import {
 } from '../../src/main/database/repositories/cash-shifts.repo';
 
 import { createSale } from '../../src/main/database/repositories/sales.repo';
+import { calculatePurchasePaymentPreview } from '../../src/shared/purchase-payment-preview';
+import {
+  hasUnsafeStoredPurchaseDiscount,
+  UNSAFE_LEGACY_PURCHASE_MESSAGE,
+} from '../../src/shared/purchase-legacy-guard';
 
 type PurchaseVariantTestRow = {
   variant_id: number;
@@ -222,7 +228,39 @@ function expectSupplierAccountingInvariant(supplierId: number) {
 
   const openDebt = Number(state.open_debt || 0);
 
-  const availableCredit = Number(state.available_credit || 0);
+  const accountCredit = db
+    .prepare(
+      `
+      SELECT
+        IFNULL(
+          SUM(
+            MAX(
+              0,
+              c.amount - IFNULL(
+                (
+                  SELECT SUM(a.amount)
+                  FROM supplier_account_credit_allocations a
+                  WHERE a.credit_id = c.id
+                    AND a.cancelled_at IS NULL
+                ),
+                0
+              )
+            )
+          ),
+          0
+        ) AS available_credit
+      FROM supplier_account_credits c
+      WHERE c.supplier_id = ?
+        AND c.cancelled_at IS NULL
+      `,
+    )
+    .get(supplierId) as {
+    available_credit: number;
+  };
+
+  const availableCredit =
+    Number(state.available_credit || 0) +
+    Number(accountCredit.available_credit || 0);
 
   const expectedBalance = openDebt - availableCredit;
 
@@ -336,6 +374,50 @@ function expectSupplierAccountingInvariant(supplierId: number) {
   };
 
   expect(Number(invalidAllocations.count || 0)).toBe(0);
+
+  const overAllocatedAccountCredits = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS count
+      FROM (
+        SELECT c.id
+        FROM supplier_account_credits c
+        LEFT JOIN supplier_account_credit_allocations a
+          ON a.credit_id = c.id
+          AND a.cancelled_at IS NULL
+        WHERE c.supplier_id = ?
+          AND c.cancelled_at IS NULL
+        GROUP BY c.id
+        HAVING IFNULL(SUM(a.amount), 0)
+          > c.amount + 0.000000001
+      )
+      `,
+    )
+    .get(supplierId) as { count: number };
+
+  expect(Number(overAllocatedAccountCredits.count || 0)).toBe(0);
+
+  const invalidAccountAllocations = db
+    .prepare(
+      `
+      SELECT COUNT(*) AS count
+      FROM supplier_account_credit_allocations a
+      JOIN supplier_account_credits c
+        ON c.id = a.credit_id
+      JOIN purchase_invoices pi
+        ON pi.id = a.purchase_id
+      WHERE c.supplier_id = ?
+        AND a.cancelled_at IS NULL
+        AND (
+          c.cancelled_at IS NOT NULL
+          OR IFNULL(pi.status, 'active') = 'cancelled'
+          OR pi.supplier_id != c.supplier_id
+        )
+      `,
+    )
+    .get(supplierId) as { count: number };
+
+  expect(Number(invalidAccountAllocations.count || 0)).toBe(0);
 
   /*
    * معادلة كل فاتورة فعالة:
@@ -881,6 +963,534 @@ describe('purchases repository', () => {
 
     expect(Number(state.stock)).toBe(0);
     expect(Number(state.inventory_value)).toBe(0);
+  });
+
+  it('preserves discounted invoice cents through payment and settlement cancellation', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 50,
+      payment_method: 'store_cash',
+      discount_type: 'percent',
+      discount_input: 10,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 3,
+          unit_cost: 20.01,
+        },
+      ],
+    });
+
+    expect(purchase.total_amount).toBe(54.02);
+    expect(purchase.cash_amount).toBe(50);
+    expect(purchase.paid_amount).toBe(50);
+    expect(purchase.remaining_amount).toBe(4.02);
+    expect(purchase.rounding_adjustment).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBe(4.02);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      54.02,
+    );
+
+    const settlement = recordSupplierPayment({
+      supplier_id: supplierId,
+      purchase_id: purchase.purchaseId,
+      actor_id: 1,
+      amount: 4,
+      payment_method: 'store_cash',
+      settle_full_balance: true,
+    });
+
+    expect(settlement.cash_amount).toBe(4);
+    expect(settlement.paid_amount).toBe(4.02);
+    expect(settlement.rounding_adjustment).toBe(-0.02);
+
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    let invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.total_amount)).toBe(54.02);
+    expect(Number(invoice.purchase.paid_amount)).toBe(54.02);
+    expect(Number(invoice.purchase.remaining_amount)).toBe(0);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      54.02,
+    );
+
+    const cancelled = cancelSupplierPaymentBatch({
+      batch_id: settlement.payment_batch_id,
+      actor_id: 1,
+      reason: 'Cancel precise settlement',
+    });
+
+    expect(cancelled.success).toBe(true);
+    expect(cancelled.cancelled_cash_amount).toBe(4);
+
+    invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(invoice.purchase.total_amount)).toBe(54.02);
+    expect(Number(invoice.purchase.paid_amount)).toBe(50);
+    expect(Number(invoice.purchase.remaining_amount)).toBe(4.02);
+
+    expect(getSupplierBalance(supplierId)).toBe(4.02);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      54.02,
+    );
+
+    expect(Number(getVariantCostState('PURCHASE001').buy_price)).toBe(20.01);
+  });
+
+  it('preserves precise overpayment credit across purchase creation and cancellation', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const first = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 55,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+      discount_type: 'percent',
+      discount_input: 10,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 3,
+          unit_cost: 20.01,
+        },
+      ],
+    });
+
+    expect(first.total_amount).toBe(54.02);
+    expect(first.paid_amount).toBe(54.02);
+    expect(first.cash_amount).toBe(55);
+    expect(first.remaining_amount).toBe(0);
+    expect(first.rounding_adjustment).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(-0.98, 8);
+
+    const firstInvoice = getPurchaseInvoice(first.purchaseId) as any;
+
+    expect(firstInvoice.original_cash_out).toBe(55);
+
+    expect(firstInvoice.purchase_overpayment_credit).toBeCloseTo(0.98, 8);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      54.02,
+    );
+
+    const second = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 3,
+          unit_cost: 20.01,
+        },
+      ],
+    });
+
+    expect(second.total_amount).toBe(60.03);
+    expect(second.cash_amount).toBe(0);
+    expect(second.supplier_credit_applied).toBeCloseTo(0.98, 8);
+    expect(second.paid_amount).toBeCloseTo(0.98, 8);
+    expect(second.remaining_amount).toBeCloseTo(59.05, 8);
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(59.05, 8);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      114.05,
+    );
+
+    expect(getCashMovementTotal('out')).toBe(55);
+
+    expect(() =>
+      cancelPurchaseInvoice({
+        purchase_id: first.purchaseId,
+        actor_id: 1,
+        reason: 'Credit already consumed',
+      }),
+    ).toThrow();
+
+    cancelPurchaseInvoice({
+      purchase_id: second.purchaseId,
+      actor_id: 1,
+      reason: 'Release precise supplier credit',
+    });
+
+    expect(getSupplierBalance(supplierId)).toBeCloseTo(-0.98, 8);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      54.02,
+    );
+
+    const cancelled = cancelPurchaseInvoice({
+      purchase_id: first.purchaseId,
+      actor_id: 1,
+      reason: 'Cancel original precise purchase',
+    });
+
+    expect(cancelled.reversed_cash).toBe(55);
+    expect(getSupplierBalance(supplierId)).toBe(0);
+
+    const finalStock = getVariantCostState('PURCHASE001');
+
+    expect(Number(finalStock.stock)).toBe(0);
+    expect(Number(finalStock.inventory_value)).toBe(0);
+
+    expect(getCashMovementTotal('out')).toBe(55);
+    expect(getCashMovementTotal('in')).toBe(1000055);
+  });
+
+  it.each([
+    {
+      total: 1000,
+      cash: 0,
+      credit: 200,
+      full: false,
+      applied: 200,
+      paid: 200,
+      remaining: 800,
+      extra: 0,
+      adjustment: 0,
+    },
+    {
+      total: 1000,
+      cash: 500,
+      credit: 200,
+      full: false,
+      applied: 200,
+      paid: 700,
+      remaining: 300,
+      extra: 0,
+      adjustment: 0,
+    },
+    {
+      total: 1000,
+      cash: 900,
+      credit: 200,
+      full: false,
+      applied: 100,
+      paid: 1000,
+      remaining: 0,
+      extra: 0,
+      adjustment: 0,
+    },
+    {
+      total: 1000,
+      cash: 1000,
+      credit: 200,
+      full: false,
+      applied: 0,
+      paid: 1000,
+      remaining: 0,
+      extra: 0,
+      adjustment: 0,
+    },
+    {
+      total: 1000,
+      cash: 1100,
+      credit: 200,
+      full: false,
+      applied: 0,
+      paid: 1000,
+      remaining: 0,
+      extra: 100,
+      adjustment: 0,
+    },
+    {
+      total: 54.02,
+      cash: 50,
+      credit: 0.98,
+      full: false,
+      applied: 0.98,
+      paid: 50.98,
+      remaining: 3.04,
+      extra: 0,
+      adjustment: 0,
+    },
+    {
+      total: 54.02,
+      cash: 54,
+      credit: 200,
+      full: true,
+      applied: 0,
+      paid: 54.02,
+      remaining: 0,
+      extra: 0,
+      adjustment: -0.02,
+    },
+    {
+      total: 981.75,
+      cash: 982,
+      credit: 200,
+      full: true,
+      applied: 0,
+      paid: 981.75,
+      remaining: 0,
+      extra: 0,
+      adjustment: 0.25,
+    },
+    {
+      total: 0.4,
+      cash: 0,
+      credit: 0,
+      full: true,
+      applied: 0,
+      paid: 0.4,
+      remaining: 0,
+      extra: 0,
+      adjustment: -0.4,
+    },
+    {
+      total: 1000,
+      cash: 0,
+      credit: 0,
+      full: false,
+      applied: 0,
+      paid: 0,
+      remaining: 1000,
+      extra: 0,
+      adjustment: 0,
+    },
+  ])(
+    'matches payment preview with saved invoice: $total / $cash / $credit / $full',
+    (scenario) => {
+      const supplierId = createTestSupplier();
+      const variant = seedPurchaseProduct();
+
+      if (scenario.credit > 0) {
+        createPurchaseInvoice({
+          supplier_id: supplierId,
+          actor_id: 1,
+          paid_amount: 1000,
+          payment_method: 'store_cash',
+          overpayment_to_credit: true,
+          items: [
+            {
+              variant_id: variant.variant_id,
+              quantity: 1,
+              unit_cost: 1000 - scenario.credit,
+            },
+          ],
+        });
+      }
+
+      const statement = getSupplierStatement(supplierId, 1) as any;
+
+      const availableCredit = Number(statement.summary.aging.supplier_credit);
+
+      expect(availableCredit).toBeCloseTo(scenario.credit, 8);
+
+      const preview = calculatePurchasePaymentPreview({
+        totalAmount: scenario.total,
+        paidAmount: scenario.cash,
+        availableCredit,
+        settleFullInvoice: scenario.full,
+      });
+
+      expect(preview.valid).toBe(true);
+      expect(preview.paymentPreviewReady).toBe(true);
+
+      expect(preview.cashPaidAmount).toBe(scenario.cash);
+      expect(preview.supplierCreditApplied).toBeCloseTo(scenario.applied, 8);
+
+      expect(preview.paid).toBeCloseTo(scenario.paid, 8);
+
+      expect(preview.remaining).toBeCloseTo(scenario.remaining, 8);
+
+      expect(preview.purchaseOverpayment).toBeCloseTo(scenario.extra, 8);
+
+      expect(preview.roundingAdjustment).toBeCloseTo(scenario.adjustment, 8);
+
+      const saved = createPurchaseInvoice({
+        supplier_id: supplierId,
+        actor_id: 1,
+        paid_amount: preview.cashPaidAmount,
+        payment_method: 'store_cash',
+        settle_full_balance: scenario.full,
+        overpayment_to_credit: preview.purchaseOverpayment > 0,
+        items: [
+          {
+            variant_id: variant.variant_id,
+            quantity: 1,
+            unit_cost: scenario.total,
+          },
+        ],
+      });
+
+      expect(saved.total_amount).toBeCloseTo(scenario.total, 8);
+
+      expect(saved.cash_amount).toBe(preview.cashPaidAmount);
+
+      expect(saved.supplier_credit_applied).toBeCloseTo(
+        preview.supplierCreditApplied,
+        8,
+      );
+
+      expect(saved.paid_amount).toBeCloseTo(preview.paid, 8);
+
+      expect(saved.remaining_amount).toBeCloseTo(preview.remaining, 8);
+
+      expect(saved.rounding_adjustment).toBeCloseTo(
+        preview.roundingAdjustment,
+        8,
+      );
+
+      const invoice = getPurchaseInvoice(saved.purchaseId) as any;
+
+      expect(Number(invoice.purchase.paid_amount)).toBeCloseTo(preview.paid, 8);
+
+      expect(Number(invoice.purchase.remaining_amount)).toBeCloseTo(
+        preview.remaining,
+        8,
+      );
+
+      expect(Number(invoice.purchase_overpayment_credit || 0)).toBeCloseTo(
+        preview.purchaseOverpayment,
+        8,
+      );
+
+      expectSupplierAccountingInvariant(supplierId);
+    },
+  );
+
+  it('matches edit payment preview with final credit allocation', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const target = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 500,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 5,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 500,
+      payment_method: 'store_cash',
+      overpayment_to_credit: true,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 2,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    const statement = getSupplierStatement(supplierId, 1) as any;
+
+    const preview = calculatePurchasePaymentPreview({
+      totalAmount: 900,
+      paidAmount: 500,
+      availableCredit: Number(statement.summary.aging.supplier_credit),
+      earlierDebt: 0,
+      isEditing: true,
+    });
+
+    expect(preview.supplierCreditApplied).toBe(300);
+    expect(preview.paid).toBe(800);
+    expect(preview.remaining).toBe(100);
+
+    const updated = updatePurchaseInvoice({
+      purchase_id: target.purchaseId,
+      actor_id: 1,
+      reason: 'Verify payment preview during edit',
+      supplier_id: supplierId,
+      paid_amount: preview.cashPaidAmount,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 9,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(updated.supplier_credit_applied).toBe(preview.supplierCreditApplied);
+
+    expect(updated.paid_amount).toBe(preview.paid);
+    expect(updated.remaining_amount).toBe(preview.remaining);
+    expect(updated.cash_amount).toBe(preview.cashPaidAmount);
+
+    expectSupplierAccountingInvariant(supplierId);
+  });
+
+  it('respects earlier invoice debt in edit preview', () => {
+    const preview = calculatePurchasePaymentPreview({
+      totalAmount: 1000,
+      paidAmount: 500,
+      availableCredit: 300,
+      earlierDebt: 200,
+      isEditing: true,
+    });
+
+    expect(preview.supplierCreditApplied).toBe(100);
+    expect(preview.paid).toBe(600);
+    expect(preview.remaining).toBe(400);
+  });
+
+  it('does not present unknown supplier credit as confirmed zero', () => {
+    const preview = calculatePurchasePaymentPreview({
+      totalAmount: 1000,
+      paidAmount: 500,
+      availableCredit: null,
+    });
+
+    expect(preview.creditPreviewReady).toBe(false);
+    expect(preview.paymentPreviewReady).toBe(false);
+  });
+
+  it('allows full cash settlement without a credit snapshot', () => {
+    const preview = calculatePurchasePaymentPreview({
+      totalAmount: 981.75,
+      paidAmount: 0,
+      availableCredit: null,
+      settleFullInvoice: true,
+    });
+
+    expect(preview.paymentPreviewReady).toBe(true);
+    expect(preview.cashPaidAmount).toBe(982);
+    expect(preview.remaining).toBe(0);
+    expect(preview.roundingAdjustment).toBe(0.25);
+  });
+
+  it('rejects unsupported overpayment previews', () => {
+    expect(
+      calculatePurchasePaymentPreview({
+        totalAmount: 100,
+        paidAmount: 200,
+        availableCredit: 0,
+        isEditing: true,
+      }).valid,
+    ).toBe(false);
+
+    expect(
+      calculatePurchasePaymentPreview({
+        totalAmount: 0,
+        paidAmount: 100,
+        availableCredit: 0,
+      }).valid,
+    ).toBe(false);
   });
 
   it('keeps supplier cents open until full settlement is explicit', () => {
@@ -4943,6 +5553,144 @@ describe('purchases repository', () => {
     expect(getSupplierBalance(supplierId)).toBe(506.25);
   });
 
+  it.each([
+    {
+      type: 'percent',
+      input: 15,
+      discount: 1480.2,
+      subtotal: 9868,
+      total: 8387.8,
+      unitCost: 8387.8,
+      unsafe: true,
+    },
+    {
+      type: 'amount',
+      input: 540,
+      discount: 540,
+      subtotal: 9510,
+      total: 8970,
+      unitCost: 8970,
+      unsafe: true,
+    },
+    {
+      type: 'percent',
+      input: 10,
+      discount: 100,
+      subtotal: 1000,
+      total: 900,
+      unitCost: 1000,
+      unsafe: false,
+    },
+    {
+      type: 'amount',
+      input: 50,
+      discount: 50,
+      subtotal: 1000,
+      total: 950,
+      unitCost: 1000,
+      unsafe: false,
+    },
+    {
+      type: 'amount',
+      input: 0,
+      discount: 0,
+      subtotal: 24710.54,
+      total: 24710.54,
+      unitCost: 24710.6145,
+      unsafe: false,
+    },
+  ])(
+    'checks stored purchase discount compatibility: $type / $total',
+    (scenario) => {
+      expect(
+        hasUnsafeStoredPurchaseDiscount(
+          {
+            sub_total: scenario.subtotal,
+            total_amount: scenario.total,
+            discount_type: scenario.type,
+            discount_input: scenario.input,
+            discount_value: scenario.discount,
+          },
+          [
+            {
+              variant_id: 1,
+              quantity: 1,
+              unit_cost: scenario.unitCost,
+            },
+          ],
+        ),
+      ).toBe(scenario.unsafe);
+    },
+  );
+
+  it('blocks legacy double-discount edits without changing financial data', () => {
+    const supplierId = createTestSupplier();
+
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      discount_type: 'percent',
+      discount_input: 10,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 2,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(purchase.total_amount).toBe(180);
+
+    // Simulate legacy storage of already-discounted unit cost.
+    getDb()
+      .prepare('UPDATE purchase_items SET unit_cost = ? WHERE purchase_id = ?')
+      .run(90, purchase.purchaseId);
+
+    const before = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const inventoryBefore = getVariantCostState('PURCHASE001');
+
+    const supplierBalanceBefore = getSupplierBalance(supplierId);
+
+    const totalPurchasedBefore = getSupplierTotalPurchased(supplierId);
+
+    expect(() =>
+      updatePurchaseInvoice({
+        purchase_id: purchase.purchaseId,
+        actor_id: 1,
+        reason: 'Attempt to edit legacy discounted purchase',
+        supplier_id: supplierId,
+        paid_amount: 0,
+        discount_type: 'percent',
+        discount_input: 10,
+        items: [
+          {
+            variant_id: variant.variant_id,
+            quantity: 2,
+            unit_cost: 90,
+          },
+        ],
+      }),
+    ).toThrow(UNSAFE_LEGACY_PURCHASE_MESSAGE);
+
+    const after = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(after.purchase).toEqual(before.purchase);
+    expect(after.items).toEqual(before.items);
+
+    expect(getVariantCostState('PURCHASE001')).toEqual(inventoryBefore);
+
+    expect(getSupplierBalance(supplierId)).toBe(supplierBalanceBefore);
+
+    expect(getSupplierTotalPurchased(supplierId)).toBe(totalPurchasedBefore);
+
+    expectSupplierAccountingInvariant(supplierId);
+  });
+
   it('recalculates purchase discount server-side when editing an invoice', () => {
     const supplierId = createTestSupplier();
 
@@ -5017,6 +5765,300 @@ describe('purchases repository', () => {
     const state = getVariantCostState('PURCHASE001');
 
     expect(Number(state.inventory_value)).toBe(506.25);
+  });
+
+  function sellPrecisionTestPiece(
+    variant: PurchaseVariantTestRow,
+    price: number,
+  ) {
+    return createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: price,
+      discount_value: 0,
+      grand_total: price,
+      change_amount: 0,
+      payment_method: 'cash',
+      paid: price,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: price,
+        },
+      ],
+    });
+  }
+
+  function changePrecisionTestBuyPrice(
+    variant: PurchaseVariantTestRow,
+    price: number,
+  ) {
+    updateVariant({
+      id: variant.variant_id,
+      barcode: variant.barcode,
+      size: variant.size,
+      color: variant.color,
+      buy_price: price,
+      sell_price: variant.sell_price,
+      min_stock: variant.min_stock,
+      is_active: variant.is_active,
+    });
+  }
+
+  function getPrecisionTestSales(variantId: number) {
+    return getDb()
+      .prepare(
+        'SELECT cost_value, line_total FROM sale_items WHERE variant_id = ? ORDER BY id',
+      )
+      .all(variantId) as Array<{
+      cost_value: number;
+      line_total: number;
+    }>;
+  }
+
+  it('preserves total profit across individual sales of precise purchases', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 6,
+          unit_cost: 935 / 6,
+        },
+      ],
+    });
+
+    expect(purchase.total_amount).toBe(935);
+
+    expect(getVariantCostState('PURCHASE001').inventory_value).toBe(935);
+
+    sellPrecisionTestPiece(variant, 200);
+
+    const before = getVariantCostState('PURCHASE001');
+
+    expect(before.stock).toBe(5);
+
+    changePrecisionTestBuyPrice(variant, 180);
+
+    const after = getVariantCostState('PURCHASE001');
+
+    expect(after.buy_price).toBe(180);
+    expect(after.stock).toBe(before.stock);
+    expect(after.average_cost).toBe(before.average_cost);
+    expect(after.inventory_value).toBe(before.inventory_value);
+
+    for (let i = 0; i < 5; i += 1) {
+      sellPrecisionTestPiece(variant, 200);
+    }
+
+    const sales = getPrecisionTestSales(variant.variant_id);
+
+    expect(sales).toHaveLength(6);
+
+    const costCents = sales.reduce(
+      (total, sale) => total + Math.round(Number(sale.cost_value) * 100),
+      0,
+    );
+
+    const revenueCents = sales.reduce(
+      (total, sale) => total + Math.round(Number(sale.line_total) * 100),
+      0,
+    );
+
+    expect(costCents).toBe(93500);
+    expect(revenueCents).toBe(120000);
+    expect(revenueCents - costCents).toBe(26500);
+
+    const final = getVariantCostState('PURCHASE001');
+
+    expect(final.stock).toBe(0);
+    expect(final.inventory_value).toBe(0);
+    expect(final.average_cost).toBe(0);
+    expect(final.buy_price).toBe(180);
+
+    expect(getSupplierBalance(supplierId)).toBe(935);
+  });
+
+  it('keeps opening stock costs independent of manual buy price changes', () => {
+    const variant = seedPurchaseProduct(10);
+
+    const initial = getVariantCostState('PURCHASE001');
+
+    expect(initial.stock).toBe(10);
+    expect(initial.inventory_value).toBe(1000);
+    expect(initial.average_cost).toBe(100);
+
+    sellPrecisionTestPiece(variant, 200);
+
+    changePrecisionTestBuyPrice(variant, 150);
+
+    const updated = getVariantCostState('PURCHASE001');
+
+    expect(updated.buy_price).toBe(150);
+    expect(updated.average_cost).toBe(100);
+    expect(updated.inventory_value).toBe(900);
+    expect(updated.stock).toBe(9);
+
+    for (let i = 0; i < 9; i += 1) {
+      sellPrecisionTestPiece(variant, 200);
+    }
+
+    const sales = getPrecisionTestSales(variant.variant_id);
+
+    expect(sales).toHaveLength(10);
+
+    for (const sale of sales) {
+      expect(Number(sale.cost_value)).toBe(100);
+      expect(Number(sale.line_total)).toBe(200);
+    }
+
+    const final = getVariantCostState('PURCHASE001');
+
+    expect(final.stock).toBe(0);
+    expect(final.inventory_value).toBe(0);
+    expect(final.average_cost).toBe(0);
+    expect(final.buy_price).toBe(150);
+  });
+
+  it('uses discounted acquisition cost instead of the reference purchase price for profit', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      discount_type: 'amount',
+      discount_input: 50,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 1000,
+        },
+      ],
+    });
+
+    const initial = getVariantCostState('PURCHASE001');
+
+    expect(initial.buy_price).toBe(1000);
+    expect(initial.inventory_value).toBe(950);
+    expect(initial.average_cost).toBe(950);
+
+    changePrecisionTestBuyPrice(variant, 1200);
+
+    sellPrecisionTestPiece(variant, 1500);
+
+    const sales = getPrecisionTestSales(variant.variant_id);
+
+    expect(sales).toHaveLength(1);
+    expect(Number(sales[0].cost_value)).toBe(950);
+    expect(Number(sales[0].line_total)).toBe(1500);
+
+    expect(Number(sales[0].line_total) - Number(sales[0].cost_value)).toBe(550);
+
+    expect(getVariantCostState('PURCHASE001').buy_price).toBe(1200);
+
+    expect(getVariantCostState('PURCHASE001').inventory_value).toBe(0);
+
+    expect(getSupplierBalance(supplierId)).toBe(950);
+  });
+
+  it('returns the full discounted purchase value without losing cents', () => {
+    const supplierId = createTestSupplier();
+    const variant = seedPurchaseProduct();
+
+    const purchase = createPurchaseInvoice({
+      supplier_id: supplierId,
+      actor_id: 1,
+      paid_amount: 0,
+      discount_type: 'percent',
+      discount_input: 10,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 3,
+          unit_cost: 20.01,
+        },
+      ],
+    });
+
+    expect(purchase.total_amount).toBe(54.02);
+
+    const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    const purchaseItemId = Number(invoice.items[0].id);
+
+    const createReturn = () =>
+      createPurchaseReturn({
+        purchase_id: purchase.purchaseId,
+        actor_id: 1,
+        refund_mode: 'credit',
+        items: [
+          {
+            purchase_item_id: purchaseItemId,
+            quantity: 1,
+          },
+        ],
+      });
+
+    const first = createReturn();
+    const second = createReturn();
+
+    const beforeFinal = getVariantCostState('PURCHASE001');
+    const debtBeforeFinal = getSupplierBalance(supplierId);
+
+    const third = createReturn();
+
+    const returnedCents = [first, second, third].reduce(
+      (total, result) => total + Math.round(result.total_amount * 100),
+      0,
+    );
+
+    expect(returnedCents).toBe(5402);
+
+    const empty = getVariantCostState('PURCHASE001');
+
+    expect(empty.stock).toBe(0);
+    expect(empty.inventory_value).toBe(0);
+    expect(getSupplierBalance(supplierId)).toBe(0);
+    expect(getSupplierTotalPurchased(supplierId)).toBe(0);
+
+    const cancelled = cancelPurchaseReturn({
+      return_id: third.return_id,
+      actor_id: 1,
+      reason: 'Restore precise returned cost',
+    });
+
+    expect(cancelled.ok).toBe(true);
+
+    const restored = getVariantCostState('PURCHASE001');
+
+    expect(restored.stock).toBe(1);
+    expect(restored.inventory_value).toBe(beforeFinal.inventory_value);
+
+    expect(getSupplierBalance(supplierId)).toBe(debtBeforeFinal);
+
+    const replacement = createReturn();
+
+    expect(replacement.total_amount).toBe(third.total_amount);
+
+    const final = getVariantCostState('PURCHASE001');
+
+    expect(final.stock).toBe(0);
+    expect(final.inventory_value).toBe(0);
+    expect(getSupplierBalance(supplierId)).toBe(0);
+    expect(getSupplierTotalPurchased(supplierId)).toBe(0);
   });
 
   it('allocates precise purchase returns cumulatively without losing cents', () => {
@@ -5374,9 +6416,9 @@ describe('purchases repository', () => {
 
     const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
 
-    expect(Number(invoice.purchase.sub_total)).toBe(60.02);
+    expect(Number(invoice.purchase.sub_total)).toBe(60.03);
 
-    expect(Number(invoice.purchase.total_amount)).toBe(60.02);
+    expect(Number(invoice.purchase.total_amount)).toBe(60.03);
 
     expect(Number(invoice.items[0].unit_cost)).toBe(10.005);
 
@@ -5388,9 +6430,69 @@ describe('purchases repository', () => {
       0,
     );
 
-    expect(allocatedLines).toBe(60.02);
+    expect(allocatedLines).toBe(60.03);
 
-    expect(getSupplierBalance(supplierId)).toBe(60.02);
+    expect(getSupplierBalance(supplierId)).toBe(60.03);
+
+    expect(Number(invoice.purchase.remaining_amount)).toBe(60.03);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      30.02,
+    );
+
+    expect(Number(getVariantCostState('PURCHASE002').inventory_value)).toBe(
+      30.01,
+    );
+
+    updatePurchaseInvoice({
+      purchase_id: purchase.purchaseId,
+      actor_id: 1,
+      reason: 'Apply precise percentage discount',
+      supplier_id: supplierId,
+      discount_type: 'percent',
+      discount_input: 10,
+      discount_value: 999,
+      paid_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: first.variant_id,
+          quantity: 3,
+          unit_cost: 10.005,
+        },
+        {
+          variant_id: second.variant_id,
+          quantity: 3,
+          unit_cost: 10.005,
+        },
+      ],
+    });
+
+    const edited = getPurchaseInvoice(purchase.purchaseId) as any;
+
+    expect(Number(edited.purchase.sub_total)).toBe(60.03);
+    expect(Number(edited.purchase.discount_input)).toBe(10);
+    expect(Number(edited.purchase.discount_value)).toBe(6.01);
+    expect(Number(edited.purchase.total_amount)).toBe(54.02);
+    expect(Number(edited.purchase.remaining_amount)).toBe(54.02);
+
+    expect(edited.items.map((item: any) => Number(item.unit_cost))).toEqual([
+      10.005, 10.005,
+    ]);
+
+    expect(edited.items.map((item: any) => Number(item.line_total))).toEqual([
+      27.01, 27.01,
+    ]);
+
+    expect(Number(getVariantCostState('PURCHASE001').inventory_value)).toBe(
+      27.01,
+    );
+
+    expect(Number(getVariantCostState('PURCHASE002').inventory_value)).toBe(
+      27.01,
+    );
+
+    expect(getSupplierBalance(supplierId)).toBe(54.02);
   });
 
   it('repairs legacy supplier credit bug without creating fake cash or payments', () => {

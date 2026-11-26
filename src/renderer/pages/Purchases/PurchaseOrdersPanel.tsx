@@ -5,14 +5,9 @@ import type { CSSProperties } from 'react';
 import { useCatalogVersion } from '../../utils/use-catalog-version';
 
 import { CASH_ACCOUNT_OPTIONS } from '../../utils/payment-method';
-import {
-  truncateMoney,
-  formatPreciseMoney,
-  preservePrecision,
-  preciseMultiply,
-  preciseSum,
-  roundMoney,
-} from '../../../shared/money';
+import { calculatePurchaseFinancials } from '../../../shared/purchase-financials';
+import { calculatePurchasePaymentPreview } from '../../../shared/purchase-payment-preview';
+import { formatPreciseMoney, roundMoney } from '../../../shared/money';
 import PaginationBar, {
   SYSTEM_PAGE_SIZE,
 } from '../../components/PaginationBar';
@@ -555,22 +550,114 @@ export default function PurchaseOrdersPanel({
     [suggestions, selected],
   );
 
-  const selectedEstimatedCost = useMemo(
-    () =>
-      selectedSuggestions.reduce((sum, row) => {
-        const quantity = Math.max(0, Number(quantities[row.variant_id] || 0));
+  const selectedEstimatedCost = useMemo(() => {
+    try {
+      return calculatePurchaseFinancials(
+        selectedSuggestions.map((row) => ({
+          variantId: row.variant_id,
+          quantity: Number(quantities[row.variant_id] || 0),
+          unitCost: Number(costs[row.variant_id] || 0),
+        })),
+      ).totalAmount;
+    } catch {
+      return null;
+    }
+  }, [selectedSuggestions, quantities, costs]);
 
-        const cost = Math.max(0, Number(costs[row.variant_id] || 0));
+  const detailFinancials = useMemo(() => {
+    try {
+      return calculatePurchaseFinancials(
+        detailItems.map((item) => ({
+          variantId: Number(item.variant_id),
+          quantity: Number(item.quantity || 0),
+          unitCost: Number(item.unit_cost || 0),
+        })),
+      );
+    } catch {
+      return null;
+    }
+  }, [detailItems]);
 
-        return sum + quantity * cost;
-      }, 0),
-    [selectedSuggestions, quantities, costs],
-  );
+  const receiveInvoiceTotal = detailFinancials?.totalAmount ?? 0;
 
-  const receiveInvoiceTotal = useMemo(
-    () => preciseSum(detailItems.map((item) => Number(item.line_total || 0))),
-    [detailItems],
-  );
+  const receiveSupplierId =
+    detail?.order.status === 'ordered' ? Number(detail.order.supplier_id) : 0;
+
+  const receiveOrderId =
+    detail?.order.status === 'ordered' ? Number(detail.order.id) : 0;
+
+  const [receiveCreditSnapshot, setReceiveCreditSnapshot] = useState<{
+    orderId: number;
+    supplierId: number;
+    amount: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let requestId = 0;
+
+    setReceiveCreditSnapshot(null);
+
+    if (!open || !receiveSupplierId || !receiveOrderId) {
+      return;
+    }
+
+    async function refreshCredit() {
+      const request = ++requestId;
+
+      try {
+        const statement =
+          await window.api.getSupplierStatement(receiveSupplierId);
+
+        if (!active || request !== requestId) return;
+
+        const amount = Number(statement.summary?.aging?.supplier_credit);
+
+        if (!Number.isFinite(amount)) {
+          throw new Error('Invalid supplier credit');
+        }
+
+        setReceiveCreditSnapshot({
+          orderId: receiveOrderId,
+          supplierId: receiveSupplierId,
+          amount: Math.max(0, amount),
+        });
+      } catch (error) {
+        if (active && request === requestId) {
+          setReceiveCreditSnapshot(null);
+        }
+
+        console.error('Order credit preview failed:', error);
+      }
+    }
+
+    void refreshCredit();
+
+    window.addEventListener('focus', refreshCredit);
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', refreshCredit);
+    };
+  }, [open, receiveSupplierId, receiveOrderId]);
+
+  const receiveAvailableCredit =
+    receiveCreditSnapshot?.supplierId === receiveSupplierId &&
+    receiveCreditSnapshot.orderId === receiveOrderId
+      ? receiveCreditSnapshot.amount
+      : null;
+
+  const receivePaymentPreview = calculatePurchasePaymentPreview({
+    totalAmount: receiveInvoiceTotal,
+    paidAmount: Number(receivePaid || 0),
+    availableCredit: receiveAvailableCredit,
+    settleFullInvoice: receiveSettleFullBalance,
+  });
+
+  const receivePreviewReady =
+    detailFinancials !== null &&
+    receivePaymentPreview.paymentPreviewReady &&
+    receivePaymentPreview.purchaseOverpayment === 0;
 
   function toggleAllSuggestions() {
     const allSelected =
@@ -668,42 +755,12 @@ export default function PurchaseOrdersPanel({
 
   function updateDetailItem(
     variantId: number,
-
     patch: Partial<PurchaseOrderItem>,
   ) {
-    setDetailItems((prev) =>
-      prev.map((item) => {
-        if (item.variant_id !== variantId) {
-          return item;
-        }
-
-        const nextItem = {
-          ...item,
-          ...patch,
-        };
-
-        const quantity = Math.max(0, Number(nextItem.quantity || 0));
-
-        const unitCost = Math.max(0, Number(nextItem.unit_cost || 0));
-
-        const originalItem = (detail?.items || []).find(
-          (candidate) => Number(candidate.variant_id) === variantId,
-        );
-
-        const matchesOriginal =
-          originalItem &&
-          Math.abs(quantity - Number(originalItem.quantity || 0)) <= 0.000001 &&
-          preservePrecision(unitCost) ===
-            preservePrecision(Number(originalItem.unit_cost || 0));
-
-        return {
-          ...nextItem,
-
-          line_total: matchesOriginal
-            ? preservePrecision(Number(originalItem.line_total || 0))
-            : truncateMoney(preciseMultiply(quantity, unitCost)),
-        };
-      }),
+    setDetailItems((previous) =>
+      previous.map((item) =>
+        item.variant_id === variantId ? { ...item, ...patch } : item,
+      ),
     );
   }
 
@@ -866,13 +923,35 @@ export default function PurchaseOrdersPanel({
       return;
     }
 
-    const paid = receiveSettleFullBalance
-      ? roundMoney(receiveInvoiceTotal)
-      : Number(receivePaid || 0);
+    if (!detailFinancials) {
+      showMessage(
+        '\u0631\u0627\u062c\u0639 \u0642\u064a\u0645 \u0623\u0645\u0631 \u0627\u0644\u0634\u0631\u0627\u0621',
+      );
+      return;
+    }
+
+    const paid = receivePaymentPreview.cashPaidAmount;
 
     if (!Number.isFinite(paid) || paid < 0) {
       showMessage('قيمة المدفوع غير صحيحة');
 
+      return;
+    }
+
+    if (
+      !receiveSettleFullBalance &&
+      (!Number.isFinite(Number(receivePaid || 0)) ||
+        Number(receivePaid || 0) < 0)
+    ) {
+      showMessage('قيمة المدفوع غير صحيحة');
+      return;
+    }
+
+    if (
+      !receivePaymentPreview.valid ||
+      receivePaymentPreview.purchaseOverpayment > 0
+    ) {
+      showMessage('المدفوع أكبر من المستحق');
       return;
     }
 
@@ -1127,7 +1206,10 @@ export default function PurchaseOrdersPanel({
                     color: '#6ee7b7',
                   }}
                 >
-                  التكلفة التقديرية: {money(selectedEstimatedCost)}
+                  التكلفة التقديرية:{' '}
+                  {selectedEstimatedCost === null
+                    ? '---'
+                    : money(selectedEstimatedCost)}
                 </strong>
 
                 <button
@@ -1539,7 +1621,7 @@ export default function PurchaseOrdersPanel({
                 </thead>
 
                 <tbody>
-                  {detailItems.map((item) => (
+                  {detailItems.map((item, index) => (
                     <tr key={item.variant_id}>
                       <td style={tdStyle}>
                         <strong>
@@ -1634,7 +1716,11 @@ export default function PurchaseOrdersPanel({
                           fontWeight: 900,
                         }}
                       >
-                        {money(item.line_total)}
+                        {detail.order.status === 'draft'
+                          ? detailFinancials
+                            ? money(detailFinancials.lines[index].netTotal)
+                            : '---'
+                          : money(item.line_total)}
                       </td>
                     </tr>
                   ))}
@@ -1731,6 +1817,52 @@ export default function PurchaseOrdersPanel({
                 >
                   استلام وتحويل إلى فاتورة شراء
                 </strong>
+
+                <div style={{ fontWeight: 800 }}>
+                  {
+                    '\u0625\u062c\u0645\u0627\u0644\u064a \u0641\u0627\u062a\u0648\u0631\u0629 \u0627\u0644\u0634\u0631\u0627\u0621: '
+                  }
+                  {detailFinancials ? money(receiveInvoiceTotal) : '---'}
+                </div>
+
+                <div style={filtersStyle}>
+                  {[
+                    {
+                      label: 'الرصيد الدائن المتاح',
+                      value: receivePaymentPreview.availableSupplierCredit,
+                      ready: receivePaymentPreview.creditPreviewReady,
+                    },
+                    {
+                      label: 'المسدد من الرصيد الدائن',
+                      value: receivePaymentPreview.supplierCreditApplied,
+                      ready: receivePreviewReady,
+                    },
+                    {
+                      label: 'إجمالي المسدد',
+                      value: receivePaymentPreview.paid,
+                      ready: receivePreviewReady,
+                    },
+                    {
+                      label: 'المتبقي للمورد',
+                      value: receivePaymentPreview.remaining,
+                      ready: receivePreviewReady,
+                    },
+                    {
+                      label: 'فرق التسوية',
+                      value: receivePaymentPreview.roundingAdjustment,
+                      ready: receivePreviewReady,
+                    },
+                  ].map((field) => (
+                    <div key={field.label} style={fieldStyle}>
+                      <label style={labelStyle}>{field.label}</label>
+                      <input
+                        readOnly
+                        value={field.ready ? money(field.value) : '---'}
+                        style={{ ...inputStyle, opacity: 0.85 }}
+                      />
+                    </div>
+                  ))}
+                </div>
 
                 <div style={filtersStyle}>
                   <div style={fieldStyle}>

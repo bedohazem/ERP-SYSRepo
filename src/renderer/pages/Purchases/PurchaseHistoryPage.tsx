@@ -14,6 +14,7 @@ import PaginationBar, {
 } from '../../components/PaginationBar';
 import {
   formatPreciseMoney,
+  truncateForDisplay,
   preservePrecision,
   roundMoney,
   hasPositivePreciseAmount,
@@ -1753,7 +1754,7 @@ export default function PurchaseHistoryPage() {
               />
 
               <InfoCard
-                title="الخصم"
+                title="الخصم المحاسبي"
                 value={
                   selectedPurchase.purchase.discount_type === 'percent'
                     ? `${money(selectedPurchase.purchase.discount_value || 0)} (${Number(selectedPurchase.purchase.discount_input || 0)}%)`
@@ -1770,7 +1771,7 @@ export default function PurchaseHistoryPage() {
               />
 
               <InfoCard
-                title="فرق التقريب"
+                title="فرق التسوية النقدية"
                 value={formatSignedPreciseMoney(
                   selectedPurchase.purchase.effective_rounding_adjustment ??
                     selectedPurchase.purchase.rounding_adjustment ??
@@ -1885,7 +1886,7 @@ export default function PurchaseHistoryPage() {
               <table
                 style={{
                   width: '100%',
-                  minWidth: '760px',
+                  minWidth: '960px',
                   borderCollapse: 'collapse',
                   direction: 'rtl',
                 }}
@@ -1899,9 +1900,10 @@ export default function PurchaseHistoryPage() {
                     <th style={thStyle}>الكمية</th>
                     <th style={thStyle}>مرتجع</th>
                     <th style={thStyle}>متاح</th>
-                    <th style={thStyle}>سعر الشراء</th>
+                    <th style={thStyle}>سعر الشراء المحفوظ</th>
+                    <th style={thStyle}>تكلفة الوحدة</th>
                     <th style={thStyle}>سعر البيع الحالي</th>
-                    <th style={thStyle}>الإجمالي</th>
+                    <th style={thStyle}>صافي الصنف</th>
                     <th style={thStyle}>طباعة</th>
                   </tr>
                 </thead>
@@ -1942,7 +1944,25 @@ export default function PurchaseHistoryPage() {
                       <td style={tdStyle}>
                         {item.returnable_quantity ?? item.quantity}
                       </td>
-                      <td style={tdStyle}>{money(item.unit_cost)}</td>
+                      <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
+                        {String(preservePrecision(item.unit_cost))}
+                        {' ج.م'}
+                      </td>
+
+                      <td
+                        style={{
+                          ...tdStyle,
+                          whiteSpace: 'nowrap',
+                          color: '#6ee7b7',
+                        }}
+                      >
+                        {Number(item.quantity) > 0 && item.line_total != null
+                          ? truncateForDisplay(
+                              preciseDivide(item.line_total, item.quantity),
+                              6,
+                            ) + ' ج.م'
+                          : '-'}
+                      </td>
 
                       <td style={tdStyle}>
                         {item.sell_price == null ? (

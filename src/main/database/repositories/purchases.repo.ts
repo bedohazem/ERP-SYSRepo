@@ -1,4 +1,9 @@
 import { getDb } from '../db';
+import {
+  hasUnsafeStoredPurchaseDiscount,
+  UNSAFE_LEGACY_PURCHASE_MESSAGE,
+} from '../../../shared/purchase-legacy-guard';
+import { calculatePurchaseFinancials } from '../../../shared/purchase-financials';
 import { getSupplierFinancialTraces } from './supplier-financial-trace.repo';
 import {
   getSupplierAgingSummary,
@@ -22,7 +27,6 @@ import {
   preciseSubtract,
   preciseSum,
   isEffectivelyZero,
-  allocateTruncatedMoneyAcrossWeights,
   truncateMoney,
 } from '../../../shared/money';
 import {
@@ -735,7 +739,7 @@ function preparePurchaseItemInput(
     throw new Error(`سعر شراء غير صحيح للصنف ${productName}`);
   }
 
-  const rawLineTotal = truncateMoney(preciseMultiply(quantity, unitCost));
+  const rawLineTotal = preciseMultiply(quantity, unitCost);
 
   if (!Number.isFinite(rawLineTotal) || rawLineTotal <= 0) {
     throw new Error(`إجمالي شراء غير صحيح للصنف ${productName}`);
@@ -744,7 +748,6 @@ function preparePurchaseItemInput(
   return {
     quantity,
     unitCost,
-    rawLineTotal,
   };
 }
 
@@ -806,91 +809,55 @@ function getPurchaseBuyPriceFromSnapshot(item: { unit_cost?: number | null }) {
   return preservePrecision(unitCost);
 }
 
-function resolvePurchaseInvoiceDiscount(
-  subTotalInput: number,
-  discountTypeInput: unknown,
-  discountInputValue: unknown,
-) {
-  const subTotal = truncateMoney(Math.max(0, Number(subTotalInput || 0)));
-
-  const discountType = discountTypeInput === 'percent' ? 'percent' : 'amount';
-
-  const rawDiscountInput = Number(discountInputValue ?? 0);
-
-  if (!Number.isFinite(rawDiscountInput) || rawDiscountInput < 0) {
-    throw new Error('قيمة خصم فاتورة الشراء غير صحيحة');
-  }
-
-  if (discountType === 'percent' && rawDiscountInput > 100) {
-    throw new Error('نسبة خصم فاتورة الشراء لا يمكن أن تتجاوز 100%');
-  }
-
-  const discountInput =
-    discountType === 'percent'
-      ? preservePrecision(rawDiscountInput)
-      : preservePrecision(rawDiscountInput);
-
-  const calculatedDiscount =
-    discountType === 'percent'
-      ? preciseMultiply(subTotal, preciseDivide(discountInput, 100))
-      : discountInput;
-
-  const discountValue = truncateMoney(
-    Math.min(subTotal, Math.max(0, calculatedDiscount)),
-  );
-
-  return {
-    discountType,
-    discountInput,
-    discountValue,
-  };
-}
-
-function applyPurchaseInvoiceDiscount<
+function pricePurchaseItems<
   T extends {
+    variant: { id: number };
     quantity: number;
     unitCost: number;
-    rawLineTotal: number;
   },
->(items: T[], discountValueInput: number) {
-  const grossLineTotals = items.map((item) => truncateMoney(item.rawLineTotal));
+>(items: T[], discountTypeInput: unknown, discountInputValue: unknown) {
+  const discountType = discountTypeInput === 'percent' ? 'percent' : 'amount';
 
-  const subTotal = preciseSum(grossLineTotals);
+  const discountInput = Number(discountInputValue ?? 0);
 
-  const discountValue = truncateMoney(
-    Math.min(subTotal, Math.max(0, Number(discountValueInput || 0))),
-  );
-
-  const lineDiscounts = allocateTruncatedMoneyAcrossWeights(
-    discountValue,
-    grossLineTotals,
-  );
-
-  return items.map((item, index) => {
-    const grossLineTotal = truncateMoney(grossLineTotals[index] || 0);
-
-    const lineDiscount = truncateMoney(lineDiscounts[index] || 0);
-
-    const lineTotal = truncateMoney(
-      Math.max(0, preciseSubtract(grossLineTotal, lineDiscount)),
+  if (!Number.isFinite(discountInput) || discountInput < 0) {
+    throw new Error(
+      '\u0642\u064a\u0645\u0629 \u062e\u0635\u0645 \u0641\u0627\u062a\u0648\u0631\u0629 \u0627\u0644\u0634\u0631\u0627\u0621 \u063a\u064a\u0631 \u0635\u062d\u064a\u062d\u0629',
     );
-    const effectiveUnitCost =
-      discountValue > 0 && item.quantity > 0
-        ? preciseDivide(lineTotal, item.quantity)
-        : item.unitCost;
+  }
 
-    return {
-      ...item,
+  if (discountType === 'percent' && discountInput > 100) {
+    throw new Error(
+      '\u0646\u0633\u0628\u0629 \u0627\u0644\u062e\u0635\u0645 \u0644\u0627 \u064a\u0645\u0643\u0646 \u0623\u0646 \u062a\u062a\u062c\u0627\u0648\u0632 100%',
+    );
+  }
 
-      grossLineTotal,
+  const financials = calculatePurchaseFinancials(
+    items.map((item) => ({
+      variantId: Number(item.variant.id),
+      quantity: item.quantity,
+      unitCost: item.unitCost,
+    })),
+    discountType,
+    discountInput,
+  );
 
-      lineDiscount,
+  const preparedItems = items.map((item, index) => ({
+    ...item,
+    grossLineTotal: financials.lines[index].grossTotal,
+    lineDiscount: financials.lines[index].discount,
+    lineTotal: financials.lines[index].netTotal,
+    effectiveUnitCost: financials.lines[index].effectiveUnitCost,
+  }));
 
-      lineTotal,
-
-      effectiveUnitCost,
-    };
-  });
+  return {
+    subTotal: financials.subTotal,
+    discountType,
+    discountInput,
+    discountValue: financials.discountValue,
+    exactTotalAmount: financials.totalAmount,
+    preparedItems,
+  };
 }
 
 export function createPurchaseInvoice(input: CreatePurchaseInput) {
@@ -989,24 +956,17 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
       };
     });
 
-    const subTotal = preciseSum(
-      basePreparedItems.map((item) => item.rawLineTotal),
-    );
-
-    const { discountType, discountInput, discountValue } =
-      resolvePurchaseInvoiceDiscount(
-        subTotal,
-        input.discount_type,
-        input.discount_input,
-      );
-
-    const preparedItems = applyPurchaseInvoiceDiscount(
-      basePreparedItems,
+    const {
+      subTotal,
+      discountType,
+      discountInput,
       discountValue,
-    );
-
-    const exactTotalAmount = preciseSum(
-      preparedItems.map((item) => item.lineTotal),
+      exactTotalAmount,
+      preparedItems,
+    } = pricePurchaseItems(
+      basePreparedItems,
+      input.discount_type,
+      input.discount_input,
     );
 
     const totalAmount = exactTotalAmount;
@@ -1435,10 +1395,10 @@ export function createPurchaseInvoice(input: CreatePurchaseInput) {
 
       SET
         total_purchased =
-            IFNULL(
+            ROUND(IFNULL(
               total_purchased,
               0
-            ) + ?,
+            ) + ?, 2),
  
         updated_at =
           CURRENT_TIMESTAMP
@@ -2025,6 +1985,10 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       throw new Error('لا توجد أصناف داخل فاتورة الشراء');
     }
 
+    if (hasUnsafeStoredPurchaseDiscount(purchase, oldItems)) {
+      throw new Error(UNSAFE_LEGACY_PURCHASE_MESSAGE);
+    }
+
     const oldItemByVariant = new Map<number, any>();
 
     const oldItemsByVariant = new Map<number, any[]>();
@@ -2112,24 +2076,17 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       };
     });
 
-    const subTotal = preciseSum(
-      basePreparedItems.map((item) => item.rawLineTotal),
-    );
-
-    const { discountType, discountInput, discountValue } =
-      resolvePurchaseInvoiceDiscount(
-        subTotal,
-        input.discount_type,
-        input.discount_input,
-      );
-
-    const preparedItems = applyPurchaseInvoiceDiscount(
-      basePreparedItems,
+    const {
+      subTotal,
+      discountType,
+      discountInput,
       discountValue,
-    );
-
-    const exactTotalAmount = preciseSum(
-      preparedItems.map((item) => item.lineTotal),
+      exactTotalAmount,
+      preparedItems,
+    } = pricePurchaseItems(
+      basePreparedItems,
+      input.discount_type,
+      input.discount_input,
     );
 
     const totalAmount = preservePrecision(exactTotalAmount);
@@ -2450,13 +2407,13 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
 
       SET
         total_purchased =
-          MAX(
+          ROUND(MAX(
               IFNULL(
                 total_purchased,
                 0
               ) - ?,
             0
-          ),
+          ), 2),
 
         updated_at =
           CURRENT_TIMESTAMP
@@ -2610,10 +2567,10 @@ export function updatePurchaseInvoice(input: UpdatePurchaseInput) {
       SET
         total_purchased =
 
-            IFNULL(
+            ROUND(IFNULL(
               total_purchased,
               0
-            ) + ?,
+            ) + ?, 2),
 
         updated_at =
           CURRENT_TIMESTAMP
@@ -3041,13 +2998,13 @@ export function cancelPurchaseInvoice(input: CancelPurchaseInput) {
 
       SET
         total_purchased =
-          MAX(
+          ROUND(MAX(
               IFNULL(
                 total_purchased,
                 0
               ) - ?,
             0
-          ),
+          ), 2),
 
         updated_at =
           CURRENT_TIMESTAMP
@@ -3717,14 +3674,14 @@ export function createPurchaseReturn(input: CreatePurchaseReturnInput) {
 
       SET
         total_purchased =
-          MAX(
+          ROUND(MAX(
 
               IFNULL(
                 total_purchased,
                 0
               ) - ?,
             0
-          ),
+          ), 2),
 
         updated_at =
           CURRENT_TIMESTAMP
@@ -4196,10 +4153,10 @@ export function cancelPurchaseReturn(input: CancelPurchaseReturnInput) {
 
         SET
           total_purchased =
-              IFNULL(
+              ROUND(IFNULL(
                 total_purchased,
                 0
-              ) + ?,
+              ) + ?, 2),
 
           updated_at =
             CURRENT_TIMESTAMP

@@ -33,6 +33,7 @@ import {
   createPurchaseInvoice,
   createPurchaseReturn,
   getPurchaseInvoice,
+  getSupplierStatement,
 } from '../../src/main/database/repositories/purchases.repo';
 
 import { createSupplier } from '../../src/main/database/repositories/suppliers.repo';
@@ -1014,6 +1015,122 @@ describe('reports repository', () => {
     expect(futureReport.summary.gross_sales).toBe(0);
     expect(futureReport.topProducts).toHaveLength(0);
     expect(futureReport.dailySales).toHaveLength(0);
+  });
+
+  it('reconciles precise purchases, returns, credit and supplier reports', () => {
+    const variant = seedReportProduct({
+      name: 'Precision Report Product',
+      barcode: 'REPORT-PRECISION',
+      openingQty: 0,
+      buyPrice: 20.01,
+      sellPrice: 100,
+    });
+
+    const supplier = createSupplier({
+      name: 'Precision Report Supplier',
+    }) as any;
+
+    createCashMovement({
+      type: 'deposit',
+      direction: 'in',
+      amount: 1000,
+      payment_method: 'store_cash',
+      reference_type: 'test_seed',
+      created_by: 1,
+    });
+
+    const first = createPurchaseInvoice({
+      supplier_id: supplier.id,
+      actor_id: 1,
+      paid_amount: 54,
+      settle_full_balance: true,
+      payment_method: 'store_cash',
+      discount_type: 'percent',
+      discount_input: 10,
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 3,
+          unit_cost: 20.01,
+        },
+      ],
+    });
+
+    expect(first.total_amount).toBe(54.02);
+    expect(first.paid_amount).toBe(54.02);
+    expect(first.cash_amount).toBe(54);
+    expect(first.rounding_adjustment).toBe(-0.02);
+
+    const details = getPurchaseInvoice(first.purchaseId) as any;
+
+    createPurchaseReturn({
+      purchase_id: first.purchaseId,
+      actor_id: 1,
+      refund_mode: 'credit',
+      items: [
+        {
+          purchase_item_id: Number(details.items[0].id),
+          quantity: 1,
+        },
+      ],
+    });
+
+    const afterReturn = getSupplierStatement(supplier.id, 1) as any;
+
+    expect(afterReturn.summary.total_returns).toBeCloseTo(18.01, 8);
+
+    expect(afterReturn.summary.total_purchased).toBeCloseTo(36.01, 8);
+
+    expect(afterReturn.summary.aging.supplier_credit).toBeCloseTo(18.01, 8);
+
+    const second = createPurchaseInvoice({
+      supplier_id: supplier.id,
+      actor_id: 1,
+      paid_amount: 0,
+      payment_method: 'store_cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          quantity: 1,
+          unit_cost: 100,
+        },
+      ],
+    });
+
+    expect(second.supplier_credit_applied).toBeCloseTo(18.01, 8);
+
+    expect(second.remaining_amount).toBeCloseTo(81.99, 8);
+
+    const report = getReportsSummary() as ReportsSummaryTestResult;
+
+    const statement = getSupplierStatement(supplier.id, 1) as any;
+
+    expect(report.summary.total_purchase_invoices).toBeCloseTo(154.02, 8);
+
+    expect(report.summary.total_purchase_exact_amount).toBeCloseTo(154.02, 8);
+
+    expect(report.summary.purchase_rounding_increase).toBe(0);
+
+    expect(report.summary.purchase_rounding_decrease).toBeCloseTo(0.02, 8);
+
+    expect(report.summary.purchase_rounding_net).toBeCloseTo(-0.02, 8);
+
+    expect(statement.summary.total_purchased).toBeCloseTo(136.01, 8);
+
+    expect(statement.summary.total_returns).toBeCloseTo(18.01, 8);
+
+    expect(statement.summary.total_paid).toBeCloseTo(54.02, 8);
+
+    expect(statement.summary.balance).toBeCloseTo(81.99, 8);
+
+    expect(statement.summary.aging.supplier_credit).toBe(0);
+
+    expect(statement.summary.aging.total).toBeCloseTo(81.99, 8);
+
+    expect(
+      report.summary.total_purchase_exact_amount -
+        statement.summary.total_returns,
+    ).toBeCloseTo(statement.summary.total_purchased, 8);
   });
 
   it('reports purchase invoices and manual cash movements', () => {
