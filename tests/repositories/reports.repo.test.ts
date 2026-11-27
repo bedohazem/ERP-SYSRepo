@@ -7290,6 +7290,188 @@ describe('reports repository', () => {
     expect(empty.net_sales).toBe(0);
   });
 
+  it.each([
+    { unitCost: 40.1, cash: 40, profit: -0.1, laterShift: false },
+    { unitCost: 40.6, cash: 41, profit: 0.4, laterShift: false },
+    { unitCost: 40.1, cash: 40, profit: -0.1, laterShift: true },
+    { unitCost: 40.6, cash: 41, profit: 0.4, laterShift: true },
+  ])(
+    'reconciles purchase return cash rounding: $unitCost / $cash / later shift $laterShift',
+    (scenario) => {
+      const db = getDb();
+
+      const variant = seedReportProduct({
+        name: 'Purchase Return Cash Rounding',
+        barcode: 'RETURN-CASH-ROUNDING',
+        openingQty: 0,
+        buyPrice: scenario.unitCost,
+        sellPrice: 100,
+      });
+
+      const supplier = createSupplier({
+        name: 'Cash Rounding Supplier',
+      }) as any;
+
+      const originalShift = getOpenCashShift()!;
+
+      createCashMovement({
+        type: 'deposit',
+        direction: 'in',
+        amount: 1000,
+        payment_method: 'store_cash',
+        reference_type: 'test_seed',
+        created_by: 1,
+      });
+
+      const purchaseTotal = Math.round(scenario.unitCost * 10);
+
+      const purchase = createPurchaseInvoice({
+        supplier_id: supplier.id,
+        actor_id: 1,
+        paid_amount: purchaseTotal,
+        payment_method: 'store_cash',
+        items: [
+          {
+            variant_id: variant.variant_id,
+            quantity: 10,
+            unit_cost: scenario.unitCost,
+          },
+        ],
+      });
+
+      expect(purchase.rounding_adjustment).toBe(0);
+
+      expect(purchase.remaining_amount).toBe(0);
+
+      const before = getReportsSummary().summary;
+
+      expect(before.purchase_rounding_net).toBe(0);
+
+      const invoice = getPurchaseInvoice(purchase.purchaseId) as any;
+
+      const result = createPurchaseReturn({
+        purchase_id: purchase.purchaseId,
+        actor_id: 1,
+        refund_mode: 'cash',
+        refund_payment_method: 'store_cash',
+        cash_refund_amount: scenario.cash,
+        settle_cash_refund: true,
+        items: [
+          {
+            purchase_item_id: Number(invoice.items[0].id),
+            quantity: 1,
+          },
+        ],
+      });
+
+      expect(result.total_amount).toBe(scenario.unitCost);
+
+      expect(result.cash_refund_amount).toBe(scenario.cash);
+
+      expect(result.credit_amount).toBe(0);
+
+      expect(result.debt_reduction_amount).toBe(0);
+
+      expect(result.rounding_adjustment).toBeCloseTo(scenario.profit, 8);
+
+      const after = getReportsSummary().summary;
+
+      expect(after.purchase_rounding_increase).toBeCloseTo(
+        Math.max(0, -scenario.profit),
+        8,
+      );
+
+      expect(after.purchase_rounding_decrease).toBeCloseTo(
+        Math.max(0, scenario.profit),
+        8,
+      );
+
+      expect(after.purchase_rounding_net).toBeCloseTo(-scenario.profit, 8);
+
+      expect(after.purchase_return_cost_adjustment).toBe(0);
+
+      expect(after.final_net_profit).toBeCloseTo(
+        before.final_net_profit + scenario.profit,
+        8,
+      );
+
+      if (scenario.laterShift) {
+        const closingAmount = 1000 - purchaseTotal + scenario.cash;
+
+        closeCashShift({
+          shift_id: originalShift.id,
+          closing_counted_amount: closingAmount,
+          left_for_next_shift: closingAmount,
+          closed_by: 1,
+        });
+
+        openCashShift({
+          opening_counted_amount: closingAmount,
+          opened_by: 1,
+        });
+      }
+
+      cancelPurchaseReturn({
+        return_id: result.return_id,
+        actor_id: 1,
+        reason: 'Reverse cash rounding settlement',
+      });
+
+      const cancelled = getReportsSummary().summary;
+
+      expect(cancelled.purchase_rounding_net).toBeCloseTo(
+        before.purchase_rounding_net,
+        8,
+      );
+
+      expect(cancelled.final_net_profit).toBeCloseTo(
+        before.final_net_profit,
+        8,
+      );
+
+      expect(getVariantByBarcode('RETURN-CASH-ROUNDING')?.stock).toBe(10);
+
+      if (scenario.laterShift) {
+        // Assign different report dates after all operations.
+        // Test database only.
+
+        const today = getLocalBusinessDate();
+
+        const previousDate = (
+          db.prepare("SELECT date(?, '-1 day') AS value").get(today) as {
+            value: string;
+          }
+        ).value;
+
+        db.prepare('UPDATE cash_shifts SET business_date = ? WHERE id = ?').run(
+          previousDate,
+          originalShift.id,
+        );
+
+        const historical = getReportsSummary({
+          date_from: previousDate,
+          date_to: previousDate,
+        }).summary;
+
+        const current = getReportsSummary({
+          date_from: today,
+          date_to: today,
+        }).summary;
+
+        expect(historical.purchase_rounding_net).toBeCloseTo(
+          -scenario.profit,
+          8,
+        );
+
+        expect(current.purchase_rounding_net).toBeCloseTo(scenario.profit, 8);
+
+        expect(historical.final_net_profit).toBeCloseTo(scenario.profit, 8);
+
+        expect(current.final_net_profit).toBeCloseTo(-scenario.profit, 8);
+      }
+    },
+  );
+
   it('does not infer legacy purchase return rounding without explicit settlement', () => {
     const variant = seedReportProduct({
       name: 'Legacy Purchase Return Rounding',

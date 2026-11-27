@@ -1527,7 +1527,7 @@ export function getReportsSummary(input?: ReportFilter) {
        * وبالتالي الربح ينقص 0.10.
        */
       SELECT
-          IFNULL(
+          -IFNULL(
             pr.rounding_adjustment,
             0
         ) AS adjustment
@@ -1547,7 +1547,7 @@ export function getReportsSummary(input?: ReportFilter) {
       * في تاريخ إلغائه الفعلي.
       */
       SELECT
-        -IFNULL(
+        IFNULL(
           pr.rounding_adjustment,
           0
         ) AS adjustment
