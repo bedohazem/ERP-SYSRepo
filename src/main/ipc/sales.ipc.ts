@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron';
+import { CASH_ACCOUNT_KEYS } from '../../shared/cash-accounts';
 import {
   logAction,
   runCriticalActionWithAudit,
@@ -526,6 +527,12 @@ function normalizeSaleCancellationInput(input: unknown) {
       payload.reason,
       'سبب إلغاء فاتورة البيع',
       500,
+    ),
+
+    refund_payment_method: optionalEnumValue(
+      payload.refund_payment_method,
+      CASH_ACCOUNT_KEYS,
+      '\u062d\u0633\u0627\u0628 \u0631\u062f \u0627\u0644\u0645\u0628\u0644\u063a',
     ),
 
     admin_username: optionalStringValue(
@@ -1602,7 +1609,11 @@ export function registerSalesIpc(): void {
         requireAdmin(actorId);
       }
 
-      if (access.requires_admin_password) {
+      if (input.refund_payment_method) {
+        requireAdmin(actorId);
+      }
+
+      if (access.requires_admin_password || input.refund_payment_method) {
         const approval = requireAdminApprovalForActor(
           actor,
 
@@ -1620,6 +1631,8 @@ export function registerSalesIpc(): void {
             sale_id: input.sale_id,
 
             reason: input.reason,
+
+            refund_payment_method: input.refund_payment_method,
 
             actor_id: actorId,
           }),
@@ -1639,6 +1652,10 @@ export function registerSalesIpc(): void {
             reason: input?.reason,
 
             refunded_amount: result.refunded_amount,
+
+            refund_payment_method: input.refund_payment_method ?? null,
+
+            refund_payments: result.refund_payments,
 
             removed_debt: result.removed_debt,
 

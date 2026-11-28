@@ -676,6 +676,8 @@ export default function InvoicesPage() {
 
   const [cancelSaleReason, setCancelSaleReason] = useState('');
 
+  const [cancelSaleRefundAccount, setCancelSaleRefundAccount] = useState('');
+
   const [cancelSalePassword, setCancelSalePassword] = useState('');
 
   const [cancelSaleAdminUsername, setCancelSaleAdminUsername] = useState('');
@@ -1309,6 +1311,11 @@ export default function InvoicesPage() {
     try {
       const result = await window.api.cancelSaleInvoice({
         sale_id: cancelSaleTarget.id,
+
+        refund_payment_method:
+          isAdmin && cancelSaleRefundAccount
+            ? cancelSaleRefundAccount
+            : undefined,
         reason:
           cancelSaleReason.trim() || `إلغاء فاتورة بيع #${cancelSaleTarget.id}`,
         admin_username: cancelSaleAdminUsername || undefined,
@@ -2599,6 +2606,7 @@ export default function InvoicesPage() {
                             type="button"
                             onClick={() => {
                               setCancelSaleTarget(sale);
+                              setCancelSaleRefundAccount('');
                               setCancelSaleReason(
                                 `إلغاء فاتورة بيع #${sale.id}`,
                               );
@@ -5669,7 +5677,10 @@ export default function InvoicesPage() {
         requireUsername={
           !isAdmin && Boolean(cancelSaleTarget?.requires_admin_password)
         }
-        requirePassword={Boolean(cancelSaleTarget?.requires_admin_password)}
+        requirePassword={
+          Boolean(cancelSaleTarget?.requires_admin_password) ||
+          (isAdmin && Boolean(cancelSaleRefundAccount))
+        }
         reason={cancelSaleReason}
         username={cancelSaleAdminUsername}
         password={cancelSalePassword}
@@ -5686,7 +5697,78 @@ export default function InvoicesPage() {
           setCancelSaleAdminUsername('');
         }}
         onConfirm={() => void confirmCancelSale()}
-      />
+      >
+        {isAdmin &&
+          cancelSaleTarget &&
+          Number(cancelSaleTarget.paid || 0) > 0 && (
+            <div style={{ display: 'grid', gap: '8px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  color: '#cbd5e1',
+                  fontWeight: 800,
+                }}
+              >
+                <span>
+                  {
+                    '\u0627\u0644\u0645\u0628\u0644\u063a \u0627\u0644\u0645\u0637\u0644\u0648\u0628 \u0631\u062f\u0647'
+                  }
+                </span>
+
+                <span>{money(cancelSaleTarget.paid)}</span>
+              </div>
+
+              <label
+                htmlFor="sale-cancel-refund-account"
+                style={{
+                  color: '#cbd5e1',
+                  fontWeight: 800,
+                }}
+              >
+                {
+                  '\u062d\u0633\u0627\u0628 \u0631\u062f \u0627\u0644\u0645\u0628\u0644\u063a'
+                }
+              </label>
+
+              <select
+                id="sale-cancel-refund-account"
+                value={cancelSaleRefundAccount}
+                disabled={cancellingSale}
+                onChange={(event) =>
+                  setCancelSaleRefundAccount(event.target.value)
+                }
+                style={inputStyle}
+              >
+                <option value="">
+                  {
+                    '\u062d\u0633\u0627\u0628\u0627\u062a \u0627\u0644\u062f\u0641\u0639 \u0627\u0644\u0623\u0635\u0644\u064a\u0629'
+                  }
+                </option>
+
+                {ADMIN_CASH_ACCOUNT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+
+              {cancelSaleRefundAccount && (
+                <div
+                  style={{
+                    color: '#fbbf24',
+                    fontSize: '12px',
+                    lineHeight: 1.8,
+                  }}
+                >
+                  {
+                    '\u0633\u064a\u062a\u0645 \u0631\u062f \u0643\u0627\u0645\u0644 \u0627\u0644\u0645\u0628\u0644\u063a \u0627\u0644\u0645\u062f\u0641\u0648\u0639 \u0645\u0646 \u0627\u0644\u062d\u0633\u0627\u0628 \u0627\u0644\u0645\u062e\u062a\u0627\u0631'
+                  }
+                </div>
+              )}
+            </div>
+          )}
+      </FinancialCancelModal>
 
       <FinancialCancelModal
         open={Boolean(cancelReturnTarget)}

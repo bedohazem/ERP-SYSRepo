@@ -4290,6 +4290,204 @@ describe('sales repository', () => {
     }
   });
 
+  it.each([false, true])(
+    'allows admin to refund split sale from another account, closed shift: %s',
+    (closeOriginalShift) => {
+      const db = getDb();
+      const variant = seedProduct();
+
+      const sale = createSale({
+        user_id: 1,
+        customer_id: null,
+        sub_total: 150,
+        discount_value: 0,
+        grand_total: 150,
+        paid: 150,
+        change_amount: 0,
+        payment_method: 'split',
+        payments: [
+          {
+            payment_method: 'cash',
+            amount: 50,
+          },
+          {
+            payment_method: 'bank_transfer',
+            amount: 100,
+          },
+        ],
+        items: [
+          {
+            variant_id: variant.variant_id,
+            product_name: variant.product_name,
+            barcode: variant.barcode,
+            size: variant.size,
+            color: variant.color,
+            quantity: 1,
+            unit_price: 150,
+          },
+        ],
+      });
+
+      const readPayments = () =>
+        db
+          .prepare('SELECT * FROM sale_payments WHERE sale_id = ? ORDER BY id')
+          .all(sale.saleId);
+
+      const originalPayments = readPayments();
+
+      const readRefunds = () =>
+        db
+          .prepare(
+            'SELECT payment_method, amount, direction FROM cash_movements WHERE reference_type = ? AND reference_id = ?',
+          )
+          .all('sale_cancel', sale.saleId);
+
+      const originalShift = getOpenCashShift()!;
+
+      const input = {
+        sale_id: sale.saleId,
+        actor_id: 1,
+        reason: 'Refund from selected account',
+        refund_payment_method: 'store_safe',
+      };
+
+      // Insufficient funds must not change invoice or stock.
+
+      expect(() => cancelSaleInvoice(input)).toThrow();
+
+      expect(getStockByBarcode('SALE001')).toBe(9);
+
+      expect(readRefunds()).toEqual([]);
+
+      expect(readPayments()).toEqual(originalPayments);
+
+      createCashMovement({
+        type: 'deposit',
+        direction: 'in',
+        amount: 150,
+        payment_method: 'store_safe',
+        reference_type: 'test_seed',
+        created_by: 1,
+      });
+
+      if (closeOriginalShift) {
+        closeCashShift({
+          shift_id: originalShift.id,
+          closing_counted_amount: 50,
+          left_for_next_shift: 50,
+          closed_by: 1,
+        });
+
+        expect(getOpenCashShift()).toBeNull();
+
+        expect(() =>
+          cancelSaleInvoice({
+            sale_id: sale.saleId,
+            actor_id: 1,
+          }),
+        ).toThrow();
+      }
+
+      const result = cancelSaleInvoice(input);
+
+      expect(result.ok).toBe(true);
+
+      expect(result.refunded_amount).toBe(150);
+
+      expect(result.refund_payments).toEqual([
+        {
+          payment_method: 'store_safe',
+          amount: 150,
+        },
+      ]);
+
+      expect(readRefunds()).toEqual([
+        {
+          payment_method: 'store_safe',
+          amount: 150,
+          direction: 'out',
+        },
+      ]);
+
+      expect(readPayments()).toEqual(originalPayments);
+
+      expect(getStockByBarcode('SALE001')).toBe(10);
+
+      expect(result.cancelled_shift_id).toBe(
+        closeOriginalShift ? null : originalShift.id,
+      );
+    },
+  );
+
+  it('rejects unauthorized or invalid sale cancellation refund accounts', () => {
+    const db = getDb();
+    const variant = seedProduct();
+
+    const sale = createSale({
+      user_id: 1,
+      customer_id: null,
+      sub_total: 150,
+      discount_value: 0,
+      grand_total: 150,
+      paid: 150,
+      change_amount: 0,
+      payment_method: 'cash',
+      items: [
+        {
+          variant_id: variant.variant_id,
+          product_name: variant.product_name,
+          barcode: variant.barcode,
+          size: variant.size,
+          color: variant.color,
+          quantity: 1,
+          unit_price: 150,
+        },
+      ],
+    });
+
+    db.prepare(
+      "INSERT INTO users (name, username, password, role, is_active) VALUES (?, ?, ?, 'cashier', 1)",
+    ).run('Refund Test Cashier', 'refund_test_cashier', 'test-password');
+
+    const cashier = db
+      .prepare('SELECT id FROM users WHERE username = ?')
+      .get('refund_test_cashier') as { id: number };
+
+    expect(() =>
+      cancelSaleInvoice({
+        sale_id: sale.saleId,
+        actor_id: cashier.id,
+        refund_payment_method: 'store_safe',
+      }),
+    ).toThrow();
+
+    for (const invalid of ['unknown', 'split', 'cash', '']) {
+      expect(() =>
+        cancelSaleInvoice({
+          sale_id: sale.saleId,
+          actor_id: 1,
+          refund_payment_method: invalid,
+        }),
+      ).toThrow();
+    }
+
+    expect(getStockByBarcode('SALE001')).toBe(9);
+
+    expect(
+      db
+        .prepare('SELECT cancelled_at FROM sales WHERE id = ?')
+        .get(sale.saleId),
+    ).toEqual({ cancelled_at: null });
+
+    expect(
+      db
+        .prepare(
+          "SELECT COUNT(*) AS count FROM cash_movements WHERE reference_type = 'sale_cancel' AND reference_id = ?",
+        )
+        .get(sale.saleId),
+    ).toEqual({ count: 0 });
+  });
+
   it('edits a sale while preserving invoice id and stock', () => {
     const variant = seedProduct();
 

@@ -1089,6 +1089,7 @@ declare global {
 
       cancelSaleInvoice: (input: {
         sale_id: number;
+        refund_payment_method?: string;
         reason: string;
         admin_username?: string;
         admin_password?: string;
@@ -1097,6 +1098,10 @@ declare global {
         message?: string;
         sale_id?: number;
         refunded_amount?: number;
+        refund_payments?: Array<{
+          payment_method: string;
+          amount: number;
+        }>;
         removed_debt?: number;
         cancelled_shift_id?: number;
       }>;

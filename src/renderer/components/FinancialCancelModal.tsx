@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react';
+
 type FinancialCancelModalProps = {
+  children?: ReactNode;
   open: boolean;
 
   title: string;
@@ -32,6 +35,7 @@ export default function FinancialCancelModal({
   open,
   title,
   description,
+  children,
   reason,
 
   username = '',
@@ -148,6 +152,8 @@ export default function FinancialCancelModal({
             }}
           />
         </div>
+
+        {children}
 
         {requireUsername && (
           <div>

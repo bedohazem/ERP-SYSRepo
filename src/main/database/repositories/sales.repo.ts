@@ -16,7 +16,8 @@ import {
   issueStockForCostReversal,
   receiveStockAtCost,
 } from '../inventory-cost';
-import { roundCost, roundMoney } from '../../../shared/money';
+import { roundCost, roundMoney, preciseSum } from '../../../shared/money';
+import { isCashAccountKey } from '../../../shared/cash-accounts';
 import { resolveFinancialBusinessDate } from '../financial-business-date';
 import { getOrCreateSalespersonForUser } from './salespeople.repo';
 import { getRetainedOriginalNormalDiscount } from './sales-normal-discount.repo';
@@ -4992,6 +4993,7 @@ export function updateSaleInvoice(input: UpdateSaleInvoiceInput) {
 
 export function cancelSaleInvoice(input: {
   sale_id: number;
+  refund_payment_method?: string | null;
   reason?: string | null;
   actor_id?: number | null;
 }) {
@@ -5007,6 +5009,22 @@ export function cancelSaleInvoice(input: {
   const actorId = Number(input.actor_id || 0);
 
   const isAdmin = isSalesAdmin(actorId);
+
+  const refundAccountOverride = input.refund_payment_method;
+
+  if (refundAccountOverride != null) {
+    if (!isAdmin) {
+      throw new Error(
+        '\u062a\u063a\u064a\u064a\u0631 \u062d\u0633\u0627\u0628 \u0631\u062f \u0627\u0644\u0645\u0628\u0644\u063a \u0645\u062a\u0627\u062d \u0644\u0644\u0645\u062f\u064a\u0631 \u0641\u0642\u0637',
+      );
+    }
+
+    if (!isCashAccountKey(refundAccountOverride)) {
+      throw new Error(
+        '\u062d\u0633\u0627\u0628 \u0631\u062f \u0627\u0644\u0645\u0628\u0644\u063a \u063a\u064a\u0631 \u0635\u062d\u064a\u062d',
+      );
+    }
+  }
   const tx = db.transaction(() => {
     const sale = db
       .prepare(
@@ -5184,7 +5202,7 @@ export function cancelSaleInvoice(input: {
       amount: number;
     }>;
 
-    const refundPayments =
+    const originalRefundPayments =
       storedPayments.length > 0
         ? storedPayments
         : paidAmount > 0
@@ -5196,6 +5214,29 @@ export function cancelSaleInvoice(input: {
               },
             ]
           : [];
+
+    const originalRefundTotal = roundCost(
+      preciseSum(originalRefundPayments.map((payment) => payment.amount)),
+    );
+
+    if (
+      refundAccountOverride &&
+      (originalRefundTotal <= 0 ||
+        originalRefundTotal !== roundCost(paidAmount))
+    ) {
+      throw new Error(
+        '\u0644\u0627 \u064a\u0645\u0643\u0646 \u062a\u063a\u064a\u064a\u0631 \u062d\u0633\u0627\u0628 \u0627\u0644\u0631\u062f \u0642\u0628\u0644 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0642\u064a\u0645\u0629 \u0627\u0644\u0645\u062f\u0641\u0648\u0639',
+      );
+    }
+
+    const refundPayments = refundAccountOverride
+      ? [
+          {
+            payment_method: refundAccountOverride,
+            amount: originalRefundTotal,
+          },
+        ]
+      : originalRefundPayments;
 
     const refundAccounts = refundPayments
       .filter((payment) => Number(payment.amount || 0) > 0)
@@ -5349,6 +5390,11 @@ export function cancelSaleInvoice(input: {
       ok: true,
       sale_id: saleId,
       refunded_amount: paidAmount,
+
+      refund_payments: refundPayments.map((payment) => ({
+        payment_method: resolveCashAccount(payment.payment_method),
+        amount: Number(payment.amount),
+      })),
       removed_debt: remainingAmount,
       restored_items: items.length,
       cancelled_shift_id: openShift?.id ?? null,
