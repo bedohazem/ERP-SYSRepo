@@ -500,7 +500,7 @@ export default function AppShell({
     });
   }
 
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 1024);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [appLogoUrl, setAppLogoUrl] = useState('');
   const [appName, setAppName] = useState('ERP Store');
@@ -556,7 +556,7 @@ export default function AppShell({
 
   useEffect(() => {
     function handleResize() {
-      const nextIsMobile = window.innerWidth <= 900;
+      const nextIsMobile = window.innerWidth <= 1024;
       setIsMobile(nextIsMobile);
 
       if (!nextIsMobile) {
@@ -658,18 +658,19 @@ export default function AppShell({
 
   return (
     <div
+      className="app-shell"
       style={{
         display: 'grid',
         gridTemplateColumns: isMobile
-          ? '1fr'
+          ? 'minmax(0, 1fr)'
           : sidebarOpen
-            ? '280px 1fr'
-            : '92px 1fr',
+            ? 'var(--app-sidebar-width) minmax(0, 1fr)'
+            : '92px minmax(0, 1fr)',
         gridTemplateAreas: isMobile ? '"main"' : '"sidebar main"',
         minHeight: '100vh',
         height: '100vh',
-        gap: isMobile ? '10px' : '16px',
-        padding: isMobile ? '10px' : '16px',
+        gap: 'var(--app-layout-gap)',
+        padding: 'var(--app-shell-padding)',
         background: isLight ? '#eef2ff' : '#08152f',
         color: isLight ? '#111827' : '#fff',
         fontFamily: 'Segoe UI, Tahoma, sans-serif',
@@ -699,7 +700,7 @@ export default function AppShell({
           gridArea: 'main',
           display: 'grid',
           gridTemplateRows: 'auto minmax(0, 1fr)',
-          gap: isMobile ? '10px' : '16px',
+          gap: 'var(--app-layout-gap)',
           minWidth: 0,
           minHeight: 0,
           overflow: 'hidden',
@@ -714,7 +715,7 @@ export default function AppShell({
               ? '1px solid rgba(15,23,42,0.10)'
               : '1px solid rgba(255,255,255,0.08)',
             borderRadius: isMobile ? '18px' : '24px',
-            padding: isMobile ? '14px' : '20px 24px',
+            padding: 'var(--app-header-padding)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -722,34 +723,57 @@ export default function AppShell({
             flexWrap: 'wrap',
           }}
         >
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                color: isLight ? '#64748b' : '#94a3b8',
-                fontSize: '13px',
-                marginBottom: '6px',
-              }}
-            >
-              أهلاً بك
-            </div>
-
-            <h1
-              style={{
-                margin: 0,
-                fontSize: isMobile ? '21px' : '28px',
-                lineHeight: 1.25,
-                color: isLight ? '#0f172a' : '#fff',
-                wordBreak: 'break-word',
-              }}
-            >
-              {title}
-            </h1>
-          </div>
-
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
+              gap: '12px',
+              minWidth: 0,
+            }}
+          >
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(true)}
+                style={mobileMenuButtonStyle}
+              >
+                ☰
+              </button>
+            )}
+
+            <div style={{ minWidth: 0 }}>
+              <div
+                style={{
+                  color: isLight ? '#64748b' : '#94a3b8',
+                  fontSize: '13px',
+                  marginBottom: '6px',
+                }}
+              >
+                أهلاً بك
+              </div>
+
+              <h1
+                style={{
+                  margin: 0,
+                  fontSize: 'var(--app-header-title-size)',
+                  lineHeight: 1.25,
+                  color: isLight ? '#0f172a' : '#fff',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {title}
+              </h1>
+            </div>
+          </div>
+
+          <div
+            className="app-header-actions"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              minWidth: 0,
+              maxWidth: '100%',
               gap: '10px',
             }}
           >
@@ -793,16 +817,6 @@ export default function AppShell({
             >
               {pageStickyEnabled ? '📌 التثبيت مفعّل' : '📍 التثبيت ملغي'}
             </button>
-
-            {isMobile && (
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen(true)}
-                style={mobileMenuButtonStyle}
-              >
-                ☰
-              </button>
-            )}
           </div>
         </header>
 
@@ -817,10 +831,10 @@ export default function AppShell({
               ? '1px solid rgba(15,23,42,0.10)'
               : '1px solid rgba(255,255,255,0.08)',
             borderRadius: isMobile ? '18px' : '24px',
-            padding: isMobile ? '12px' : '24px',
+            padding: 'var(--app-content-padding)',
             minHeight: 0,
             overflowY: 'auto',
-            overflowX: 'hidden',
+            overflowX: 'auto',
             boxSizing: 'border-box',
           }}
         >

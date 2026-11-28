@@ -234,7 +234,7 @@ body,
 #root {
   margin: 0;
   width: 100%;
-  min-width: 1024px;
+  min-width: 0;
   min-height: 100%;
   color: var(--text);
   background:
@@ -1273,4 +1273,67 @@ html[data-theme='light'] .product-sticky-surface {
   width: 0;
   height: 0;
   display: none;
+}
+
+/* Responsive application layout */
+
+.app-shell {
+  --app-sidebar-width: 280px;
+  --app-shell-padding: 16px;
+  --app-layout-gap: 16px;
+  --app-header-padding: 20px 24px;
+  --app-content-padding: 24px;
+  --app-header-title-size: 28px;
+}
+
+.app-main-scroll {
+  min-width: 0;
+}
+
+.app-header-actions {
+  row-gap: 8px;
+}
+
+@media (max-width: 1440px) {
+  .app-shell {
+    --app-sidebar-width: 250px;
+    --app-shell-padding: 12px;
+    --app-layout-gap: 12px;
+    --app-header-padding: 14px 18px;
+    --app-content-padding: 18px;
+    --app-header-title-size: 24px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .app-shell {
+    --app-sidebar-width: 230px;
+    --app-content-padding: 14px;
+    --app-header-title-size: 23px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-shell {
+    --app-shell-padding: 8px;
+    --app-layout-gap: 8px;
+    --app-header-padding: 10px 12px;
+    --app-content-padding: 12px;
+    --app-header-title-size: 21px;
+  }
+}
+
+@media (max-height: 800px) {
+  .app-shell {
+    --app-layout-gap: 10px;
+    --app-header-padding: 10px 14px;
+  }
+}
+
+@media (max-height: 650px) {
+  .app-shell {
+    --app-layout-gap: 8px;
+    --app-header-padding: 8px 12px;
+    --app-header-title-size: 20px;
+  }
 }

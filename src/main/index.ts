@@ -143,6 +143,15 @@ function createWindow(): void {
 
   const isDev = !app.isPackaged && !e2eSmokeEnabled;
 
+  if (isDev && process.env.NODE_ENV === 'development') {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.key === 'F12') {
+        event.preventDefault();
+        mainWindow?.webContents.toggleDevTools();
+      }
+    });
+  }
+
   if (isDev) {
     void mainWindow.loadURL('http://localhost:3000');
   } else {
