@@ -1838,6 +1838,29 @@ function CashierRevenueView({
               )}
             </div>
 
+            {summary.shift && summary.date && (
+              <div
+                style={{
+                  marginTop: '8px',
+                  color: '#94a3b8',
+                  fontWeight: 800,
+                  fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <span>
+                  {
+                    '\u062a\u0627\u0631\u064a\u062e \u0627\u0644\u0634\u0641\u062a:'
+                  }
+                </span>
+                <span dir="ltr">
+                  {summary.date.split('-').reverse().join('/')}
+                </span>
+              </div>
+            )}
+
             <p
               style={{
                 margin: '6px 0 0',
